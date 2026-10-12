@@ -1,0 +1,454 @@
+//! New task: the user describes a problem and an agent fixes it on this
+//! computer. Each turn runs our own copy of the Codex CLI (`codex exec --json`)
+//! against the relay with a dedicated key, in a Codex home of our own so the
+//! user's `~/.codex` and its history are left alone. Events stream to the UI
+//! over a channel; the UI-facing transcript is saved in `store`.
+
+mod instructions;
+mod runtime;
+pub mod store;
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::process::Stdio;
+use std::sync::Arc;
+
+use base64::Engine;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use tauri::ipc::Channel;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::sync::{oneshot, Mutex};
+
+use crate::error::{Error, Result};
+use crate::lang::tr;
+use crate::tools;
+
+pub use store::{Session as StoredSession, Summary};
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Event {
+    /// The Codex runtime is being downloaded; `percent` is None before the size is known.
+    Runtime { percent: Option<u8> },
+    Item { item: Value },
+    Done,
+    Stopped,
+    Failed { kind: &'static str, message: String },
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Attachment {
+    /// `data:image/...;base64,...`
+    pub data: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SendOptions {
+    pub session: String,
+    pub prompt: String,
+    #[serde(default)]
+    pub images: Vec<Attachment>,
+    pub model: String,
+    pub effort: String,
+    pub lang: String,
+}
+
+/// Running turns by session id, so Stop can reach them.
+#[derive(Default)]
+pub struct Runs {
+    stops: Mutex<HashMap<String, oneshot::Sender<()>>>,
+    /// Serialises runtime downloads.
+    install: Mutex<()>,
+}
+
+pub type SharedRuns = Arc<Runs>;
+
+/// `<app data>/agent`, holding the runtime, Codex's home and our sessions.
+pub fn root() -> PathBuf {
+    let base = dirs::data_dir().unwrap_or_else(|| tools::home_dir().join(".cloudborne-desktop"));
+    let name = if cfg!(debug_assertions) { "cn.cloudborne.desktop.dev" } else { "cn.cloudborne.desktop" };
+    base.join(name).join("agent")
+}
+
+fn codex_home(root: &Path) -> PathBuf {
+    root.join("codex-home")
+}
+
+const PROVIDER: &str = "cloudborne";
+const KEY_ENV: &str = "CLOUDBORNE_AGENT_KEY";
+
+/// Our Codex home's config: the relay as the only provider, nothing that
+/// phones home or nags about updates.
+fn write_config(home: &Path, origin: &str) -> Result<()> {
+    let base = format!("{}/v1", origin.trim_end_matches('/'));
+    let text = format!(
+        "model_provider = \"{PROVIDER}\"\n\
+         check_for_update_on_startup = false\n\
+         \n\
+         [model_providers.{PROVIDER}]\n\
+         name = \"Cloudborne\"\n\
+         base_url = {base:?}\n\
+         wire_api = \"responses\"\n\
+         env_key = \"{KEY_ENV}\"\n\
+         \n\
+         [analytics]\n\
+         enabled = false\n\
+         \n\
+         [feedback]\n\
+         enabled = false\n"
+    );
+    crate::fsx::write_atomic(&home.join("config.toml"), &text)
+}
+
+/// Writes data-URL screenshots to temp files for `--image`.
+fn save_images(dir: &Path, images: &[Attachment]) -> Result<Vec<PathBuf>> {
+    std::fs::create_dir_all(dir).map_err(|e| Error::io(dir, e))?;
+    images
+        .iter()
+        .enumerate()
+        .map(|(i, a)| {
+            let (head, b64) = a.data.split_once(',').ok_or_else(|| Error::Other("bad image".into()))?;
+            let ext = match head {
+                h if h.contains("image/jpeg") => "jpg",
+                h if h.contains("image/gif") => "gif",
+                h if h.contains("image/webp") => "webp",
+                _ => "png",
+            };
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(b64)
+                .map_err(|e| Error::Other(e.to_string()))?;
+            let p = dir.join(format!("{i}.{ext}"));
+            std::fs::write(&p, bytes).map_err(|e| Error::io(&p, e))?;
+            Ok(p)
+        })
+        .collect()
+}
+
+/// Sorts a Codex failure message into what the user can do about it.
+pub fn classify(message: &str) -> &'static str {
+    let m = message.to_ascii_lowercase();
+    if m.contains(" 402") || m.contains("insufficient balance") || m.contains("quota exceeded") || m.contains("insufficient_quota") {
+        "balance"
+    } else if m.contains(" 401") || m.contains("unauthorized") || m.contains("invalid api key") {
+        "auth"
+    } else if m.contains(" 429") || m.contains("rate limit") || m.contains("too many requests") {
+        "rate"
+    } else if m.contains("connection failed") || m.contains("error sending request") || m.contains("timed out") || m.contains("dns") {
+        "network"
+    } else {
+        "other"
+    }
+}
+
+/// Codex reports transient retries as top-level `error` events; only the
+/// last one before `turn.failed` matters, and that arrives inside it.
+fn is_retry_notice(msg: &str) -> bool {
+    msg.starts_with("Reconnecting...")
+}
+
+pub struct Prepared {
+    pub api_key: String,
+    pub origin: String,
+}
+
+/// Runs one turn to completion, streaming events to `ch` and recording the
+/// result in the session file.
+pub async fn run_turn(runs: SharedRuns, opts: SendOptions, prep: Prepared, ch: Channel<Event>) -> Result<()> {
+    let root = root();
+    let now = chrono::Utc::now().timestamp();
+    let mut session = store::load(&root, &opts.session)?.unwrap_or_else(|| store::Session {
+        id: opts.session.clone(),
+        title: title_of(&opts.prompt),
+        updated_at: now,
+        thread_id: None,
+        turns: vec![],
+    });
+    store::settle_interrupted(&mut session);
+    session.updated_at = now;
+    session.turns.push(store::Turn {
+        prompt: opts.prompt.clone(),
+        images: opts.images.iter().map(|a| a.data.clone()).collect(),
+        items: vec![],
+        status: "running".into(),
+        failure: None,
+    });
+    store::save(&root, &session)?;
+
+    let (stop_tx, stop_rx) = oneshot::channel();
+    runs.stops.lock().await.insert(opts.session.clone(), stop_tx);
+    let outcome = drive(&runs, &root, &opts, &prep, &mut session, &ch, stop_rx).await;
+    runs.stops.lock().await.remove(&opts.session);
+
+    let turn = session.turns.last_mut().expect("turn just pushed");
+    let event = match outcome {
+        Ok(Outcome::Done) => {
+            turn.status = "done".into();
+            Event::Done
+        }
+        Ok(Outcome::Stopped) => {
+            turn.status = "stopped".into();
+            Event::Stopped
+        }
+        Ok(Outcome::Failed(kind, message)) => {
+            turn.status = "failed".into();
+            turn.failure = Some(store::Failure { kind: kind.into(), message: message.clone() });
+            Event::Failed { kind, message }
+        }
+        Err(e) => {
+            let message = e.to_string();
+            let kind = if turn.items.is_empty() && runtime::installed(&root).is_none() { "runtime" } else { classify(&message) };
+            turn.status = "failed".into();
+            turn.failure = Some(store::Failure { kind: kind.into(), message: message.clone() });
+            Event::Failed { kind, message }
+        }
+    };
+    session.updated_at = chrono::Utc::now().timestamp();
+    store::save_if_present(&root, &session)?;
+    let _ = ch.send(event);
+    Ok(())
+}
+
+enum Outcome {
+    Done,
+    Stopped,
+    Failed(&'static str, String),
+}
+
+async fn drive(
+    runs: &Runs,
+    root: &Path,
+    opts: &SendOptions,
+    prep: &Prepared,
+    session: &mut store::Session,
+    ch: &Channel<Event>,
+    mut stop_rx: oneshot::Receiver<()>,
+) -> Result<Outcome> {
+    let bin = match runtime::installed(root) {
+        Some(b) => b,
+        None => {
+            let _guard = runs.install.lock().await;
+            let _ = ch.send(Event::Runtime { percent: None });
+            let ch2 = ch.clone();
+            runtime::ensure(root, move |pct| {
+                let _ = ch2.send(Event::Runtime { percent: Some(pct) });
+            })
+            .await?
+        }
+    };
+
+    let home = codex_home(root);
+    write_config(&home, &prep.origin)?;
+    let work = tools::home_dir();
+    let tmp = root.join("tmp").join(&opts.session);
+    let images = save_images(&tmp, &opts.images)?;
+
+    let mut cmd = tokio::process::Command::new(&bin);
+    cmd.arg("exec")
+        .arg("--json")
+        .arg("--skip-git-repo-check")
+        .arg("--dangerously-bypass-approvals-and-sandbox")
+        .arg("--cd")
+        .arg(&work)
+        .arg("--model")
+        .arg(&opts.model)
+        .arg("-c")
+        .arg(format!("model_reasoning_effort={:?}", opts.effort))
+        .arg("-c")
+        .arg(format!(
+            "developer_instructions={}",
+            toml_string(&instructions::text(&opts.lang, &work, &prep.origin))
+        ));
+    if let Some(thread) = &session.thread_id {
+        cmd.arg("resume");
+        for p in &images {
+            cmd.arg(format!("--image={}", p.display()));
+        }
+        cmd.arg(thread);
+    } else {
+        for p in &images {
+            cmd.arg(format!("--image={}", p.display()));
+        }
+    }
+    cmd.arg("-");
+
+    // A GUI app's PATH is minimal; give the agent the user's usual tool dirs,
+    // plus the ripgrep that ships with the runtime.
+    let mut path: Vec<PathBuf> = tools::detect::search_path(&work);
+    if let Some(v) = runtime::vendor(root) {
+        path.insert(0, v.join("codex-path"));
+    }
+    if let Ok(joined) = std::env::join_paths(path) {
+        cmd.env("PATH", joined);
+    }
+    cmd.env("CODEX_HOME", &home)
+        .env(KEY_ENV, &prep.api_key)
+        .current_dir(&work)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let mut child = cmd.spawn().map_err(|e| Error::io(&bin, e))?;
+    {
+        let mut stdin = child.stdin.take().expect("piped stdin");
+        let prompt = opts.prompt.clone();
+        tokio::spawn(async move {
+            let _ = stdin.write_all(prompt.as_bytes()).await;
+        });
+    }
+    let stderr = child.stderr.take().expect("piped stderr");
+    let stderr_tail = tokio::spawn(async move {
+        let mut lines = BufReader::new(stderr).lines();
+        let mut tail: Vec<String> = Vec::new();
+        while let Ok(Some(l)) = lines.next_line().await {
+            tail.push(l);
+            if tail.len() > 20 {
+                tail.remove(0);
+            }
+        }
+        tail.join("\n")
+    });
+    let mut lines = BufReader::new(child.stdout.take().expect("piped stdout")).lines();
+
+    let mut failure: Option<String> = None;
+    let mut last_error: Option<String> = None;
+    let mut completed = false;
+    let mut stopped = false;
+    loop {
+        tokio::select! {
+            _ = &mut stop_rx => {
+                stopped = true;
+                let _ = child.start_kill();
+                break;
+            }
+            line = lines.next_line() => {
+                let Ok(Some(line)) = line else { break };
+                let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
+                match v.get("type").and_then(Value::as_str).unwrap_or("") {
+                    "thread.started" => {
+                        if let Some(id) = v.get("thread_id").and_then(Value::as_str) {
+                            if session.thread_id.as_deref() != Some(id) {
+                                session.thread_id = Some(id.to_string());
+                                store::save_if_present(root, session)?;
+                            }
+                        }
+                    }
+                    "item.started" | "item.updated" | "item.completed" => {
+                        if let Some(item) = v.get("item") {
+                            // Codex's own notices (model metadata, resume hints) aren't for the user.
+                            if item.get("type").and_then(Value::as_str) == Some("error") {
+                                continue;
+                            }
+                            upsert(&mut session.turns.last_mut().expect("turn").items, item.clone());
+                            let _ = ch.send(Event::Item { item: item.clone() });
+                        }
+                    }
+                    "turn.completed" => completed = true,
+                    "turn.failed" => {
+                        failure = v.pointer("/error/message").and_then(Value::as_str).map(str::to_string);
+                    }
+                    "error" => {
+                        if let Some(m) = v.get("message").and_then(Value::as_str) {
+                            if !is_retry_notice(m) {
+                                last_error = Some(m.to_string());
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    let status = child.wait().await.ok();
+    let stderr = stderr_tail.await.unwrap_or_default();
+    let _ = std::fs::remove_dir_all(&tmp);
+
+    if stopped {
+        return Ok(Outcome::Stopped);
+    }
+    if let Some(m) = failure.or(last_error) {
+        return Ok(Outcome::Failed(classify(&m), m));
+    }
+    if completed {
+        return Ok(Outcome::Done);
+    }
+    let code = status.and_then(|s| s.code()).map(|c| c.to_string()).unwrap_or_else(|| "?".into());
+    let message = if stderr.trim().is_empty() { format!("codex exited ({code})") } else { stderr };
+    Ok(Outcome::Failed(classify(&message), message))
+}
+
+/// Codex re-sends an item as it changes; keep the latest by id.
+fn upsert(items: &mut Vec<Value>, item: Value) {
+    let id = item.get("id").cloned();
+    match items.iter_mut().find(|x| id.is_some() && x.get("id") == id.as_ref()) {
+        Some(slot) => *slot = item,
+        None => items.push(item),
+    }
+}
+
+fn toml_string(s: &str) -> String {
+    toml_edit::value(s).to_string().trim().to_string()
+}
+
+pub fn title_of(prompt: &str) -> String {
+    let line = prompt.trim().lines().next().unwrap_or("").trim();
+    let mut t: String = line.chars().take(40).collect();
+    if line.chars().count() > 40 {
+        t.push('…');
+    }
+    t
+}
+
+pub async fn stop(runs: &Runs, id: &str) {
+    if let Some(tx) = runs.stops.lock().await.remove(id) {
+        let _ = tx.send(());
+    }
+}
+
+pub fn not_available() -> Error {
+    Error::Other(tr("你的账号下没有可用的 GPT 分组", "Your account has no GPT group").into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classifies_relay_failures() {
+        assert_eq!(classify("unexpected status 402 Payment Required: Insufficient balance, url: x"), "balance");
+        assert_eq!(classify("Quota exceeded. Check your plan and billing details."), "balance");
+        assert_eq!(classify("unexpected status 401 Unauthorized: bad key"), "auth");
+        assert_eq!(classify("unexpected status 429 Too Many Requests"), "rate");
+        assert_eq!(classify("Connection failed: error sending request"), "network");
+        assert_eq!(classify("something else"), "other");
+    }
+
+    #[test]
+    fn upsert_replaces_by_id() {
+        let mut items = vec![];
+        upsert(&mut items, serde_json::json!({"id": "a", "status": "in_progress"}));
+        upsert(&mut items, serde_json::json!({"id": "b"}));
+        upsert(&mut items, serde_json::json!({"id": "a", "status": "completed"}));
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0]["status"], "completed");
+    }
+
+    #[test]
+    fn instructions_are_a_valid_toml_string() {
+        let s = toml_string("line one\n\"quoted\" \\ back");
+        let doc: toml_edit::DocumentMut = format!("x = {s}").parse().unwrap();
+        assert_eq!(doc["x"].as_str(), Some("line one\n\"quoted\" \\ back"));
+    }
+
+    #[test]
+    fn titles_are_first_line_and_short() {
+        assert_eq!(title_of("  fix it\nmore"), "fix it");
+        assert_eq!(title_of(&"字".repeat(50)).chars().count(), 41);
+    }
+}

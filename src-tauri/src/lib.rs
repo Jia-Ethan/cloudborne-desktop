@@ -1,3 +1,4 @@
+mod agent;
 mod api;
 mod commands;
 mod error;
@@ -16,6 +17,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(session)
+        .manage(agent::SharedRuns::default())
         .setup(|app| {
             let config = app.config().app.windows.first().cloned().expect("main window config");
             window::style(tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?).build()?;
@@ -33,6 +35,12 @@ pub fn run() {
             commands::install_tool,
             commands::relay_origin,
             commands::set_language,
+            commands::agent_models,
+            commands::agent_sessions,
+            commands::agent_session,
+            commands::agent_delete_session,
+            commands::agent_send,
+            commands::agent_stop,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
