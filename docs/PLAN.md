@@ -65,12 +65,14 @@ Teamo 还做了这些，我们不跟：改 Codex 的 `auth.json` 和桌面版 `a
 | --- | --- | --- |
 | Codex CLI | `npm i -g @openai/codex`（npmmirror 镜像） | 同左 |
 | Claude Code | 官方脚本 `curl -fsSL https://claude.ai/install.sh \| bash` | 官方 PowerShell 脚本 `irm https://claude.ai/install.ps1 \| iex` |
-| Grok Build | 官方脚本 `curl -fsSL https://x.ai/cli/install.sh \| bash` | 待确认官方 Windows 安装方式 |
-| ZCode | 下载官方安装包并打开 | 同左；官方下载地址待确认 |
+| Grok Build | 官方脚本 `curl -fsSL https://x.ai/cli/install.sh \| bash`，装到 `~/.grok/bin` | 官方 PowerShell 脚本 `irm https://x.ai/cli/install.ps1 \| iex`，装到 `%USERPROFILE%\.grok\bin` |
+| ZCode | 下载官方 `.dmg`（区分 `macos-arm64` / `macos-x64`），挂载后拷进「应用程序」 | 下载官方 `.exe`（`windows-x64` / `windows-arm64`）并运行 |
 
 - 用 npm 安装时，如果本机没有 Node.js，先引导安装 Node.js LTS，不在客户端里内置 Node。
 - 跑脚本的安装一律打开一个可见的终端窗口（macOS 用「终端」，Windows 用 PowerShell），让用户看到每一步在做什么，不在后台静默执行。
 - 安装命令和下载地址写在一份配置里，不硬编码在代码各处，方便以后改。
+- ZCode 安装包的地址格式是 `https://cdn-zcode.z.ai/zcode/electron/releases/<版本>/<平台>/ZCode-<版本>-<平台后缀>.<dmg|exe>`（2026-10-12 官网 zcode.z.ai/cn 上是 3.14.5）。CDN 根目录没有 `latest.yml`，最新版本号要从官网页面里解析；解析失败时退回配置里写死的版本号。
+- 以上脚本地址 2026-10-12 实测都返回 200：`x.ai/cli/install.sh`、`x.ai/cli/install.ps1`、`claude.ai/install.sh`、`claude.ai/install.ps1`。
 
 ## 界面
 
@@ -94,6 +96,5 @@ Teamo 还做了这些，我们不跟：改 Codex 的 `auth.json` 和桌面版 `a
 
 ## 待确认
 
-- ZCode 官方安装包的下载地址，以及 ZCode 是否需要重启才会读到新的 provider。
-- Grok Build 在 Windows 上的官方安装方式。
+- ZCode 是否需要重启才会读到新的 provider。
 - 中转站给 Codex 和 Grok 用的模型名清单：从 `/v1/models` 拿，还是在客户端里写一份默认列表。
