@@ -1,0 +1,153 @@
+@import 'tailwindcss';
+
+/* Palette follows the app icon: dawn blue at the top, rose in the middle,
+   apricot below, near-black ink for the mark. Raw values live on :root so
+   dark mode can swap them; @theme inline points the utilities at them. */
+:root {
+  --ink: #141414;
+  --ink-2: #55525a;
+  --ink-3: #8e8a93;
+  --paper: #fbf8f5;
+  --line: rgb(20 20 20 / 0.08);
+  --surface: rgb(255 255 255 / 0.72);
+  --field: rgb(255 255 255 / 0.85);
+  --quiet: rgb(20 20 20 / 0.05);
+  --quiet-hover: rgb(20 20 20 / 0.09);
+  --solid: #141414;
+  --solid-hover: #2a2a2a;
+  --on-solid: #ffffff;
+  --wash-sky: rgb(148 177 255 / 0.45);
+  --wash-rose: rgb(255 175 203 / 0.35);
+  --wash-sun: rgb(255 141 92 / 0.28);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #f4f1ee;
+    --ink-2: #c3bec8;
+    --ink-3: #8f8a96;
+    --paper: #17151a;
+    --line: rgb(255 255 255 / 0.09);
+    --surface: rgb(36 33 40 / 0.72);
+    --field: rgb(255 255 255 / 0.05);
+    --quiet: rgb(255 255 255 / 0.07);
+    --quiet-hover: rgb(255 255 255 / 0.12);
+    --solid: #f4f1ee;
+    --solid-hover: #ffffff;
+    --on-solid: #141414;
+    --wash-sky: rgb(98 120 210 / 0.28);
+    --wash-rose: rgb(190 90 130 / 0.2);
+    --wash-sun: rgb(220 110 60 / 0.2);
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-paper: var(--paper);
+  --color-line: var(--line);
+  --color-ok: #2f9e6e;
+  --color-warn: #c7772a;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Segoe UI',
+    'Microsoft YaHei UI', sans-serif;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    color: var(--ink);
+    background: var(--paper);
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+  }
+  input {
+    user-select: text;
+  }
+  :focus-visible {
+    outline: 2px solid #ff8d5c;
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Soft dawn wash behind everything, like the icon background. */
+  .dawn {
+    background:
+      radial-gradient(60% 50% at 92% 0%, var(--wash-sky), transparent 70%),
+      radial-gradient(45% 45% at 0% 40%, var(--wash-rose), transparent 70%),
+      radial-gradient(70% 55% at 50% 110%, var(--wash-sun), transparent 70%),
+      var(--paper);
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    height: 2.5rem;
+    padding: 0 1.1rem;
+    border-radius: 999px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    white-space: nowrap;
+    transition:
+      transform 0.15s ease,
+      background-color 0.15s ease,
+      opacity 0.15s ease;
+    cursor: pointer;
+  }
+  .btn:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .btn-primary {
+    background: var(--solid);
+    color: var(--on-solid);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--solid-hover);
+  }
+  .btn-quiet {
+    background: var(--quiet);
+    color: var(--ink);
+  }
+  .btn-quiet:hover:not(:disabled) {
+    background: var(--quiet-hover);
+  }
+
+  .field {
+    width: 100%;
+    height: 2.75rem;
+    padding: 0 0.95rem;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: var(--field);
+    font-size: 0.9375rem;
+    color: var(--ink);
+  }
+  .field:focus {
+    outline: none;
+    border-color: #ff8d5c;
+    box-shadow: 0 0 0 3px rgb(255 141 92 / 0.18);
+  }
+}
