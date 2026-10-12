@@ -99,6 +99,8 @@ jobs:
           [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "tauri.conf.json is $v, tag is $GITHUB_REF_NAME"; exit 1; }
       - name: Write latest.json
         run: |
+          # Artifacts keep their target/ subpaths; flatten them.
+          find out -mindepth 2 -type f -exec mv {} out/ \;
           cd out && ls -la
           base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
           mac=$(ls *.app.tar.gz); win=$(ls *-setup.exe)
