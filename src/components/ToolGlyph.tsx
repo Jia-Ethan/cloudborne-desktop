@@ -8,15 +8,16 @@ const STYLE: Record<ToolId, { label: string; from: string; to: string }> = {
   grok: { label: 'G', from: '#e4dcf5', to: '#c6b6ea' },
 };
 
-export function ToolGlyph({ id }: { id: ToolId }) {
+export function ToolGlyph({ id, size = 'md' }: { id: ToolId; size?: 'sm' | 'md' }) {
   const s = STYLE[id];
+  const box = size === 'sm' ? 'size-6 rounded-[7px] text-[11px]' : 'size-12 rounded-[14px] text-[15px]';
   return (
     <div
-      className="flex size-12 shrink-0 items-center justify-center rounded-[14px] text-[15px] font-bold tracking-tight text-[#141414] shadow-[inset_0_0_0_1px_rgb(255_255_255/0.6)]"
+      className={`flex ${box} shrink-0 items-center justify-center font-bold tracking-tight text-[#141414] shadow-[inset_0_0_0_1px_rgb(255_255_255/0.6)]`}
       style={{ background: `linear-gradient(145deg, ${s.from}, ${s.to})` }}
       aria-hidden
     >
-      <span className={id === 'codex' ? 'font-mono text-[13px]' : ''}>{s.label}</span>
+      <span className={id === 'codex' ? `font-mono ${size === 'sm' ? 'text-[9px]' : 'text-[13px]'}` : ''}>{s.label}</span>
     </div>
   );
 }

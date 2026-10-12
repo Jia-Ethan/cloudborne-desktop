@@ -151,3 +151,324 @@
     box-shadow: 0 0 0 3px rgb(255 141 92 / 0.18);
   }
 }
+
+/* Motion, after TeamoRouter's desktop client: content rises in with a short
+   blur, the login panel's wash drifts slowly, and the hero runs in Hero.tsx. */
+@layer components {
+  .login-shell {
+    display: grid;
+    grid-template-columns: minmax(360px, 0.85fr) minmax(340px, 1fr);
+    gap: 12px;
+    padding: 12px;
+    background: var(--paper);
+  }
+
+  .brand-panel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    border-radius: 20px;
+    overflow: hidden;
+    isolation: isolate;
+    color: #141414;
+    animation: soft-in 0.72s ease-out backwards;
+  }
+  /* The icon's dawn: sky on top, rose through the middle, apricot below. */
+  .brand-panel::after {
+    content: '';
+    position: absolute;
+    inset: -16%;
+    z-index: -2;
+    background:
+      radial-gradient(55% 45% at 20% 18%, #94b1ff 0%, transparent 70%),
+      radial-gradient(50% 40% at 85% 30%, #c9d3ff 0%, transparent 70%),
+      radial-gradient(60% 45% at 30% 62%, #ffafcb 0%, transparent 72%),
+      radial-gradient(70% 50% at 75% 95%, #ff8d5c 0%, transparent 70%),
+      linear-gradient(180deg, #c9d3ff 0%, #fcdce6 52%, #ffc4a3 100%);
+    animation: aurora-drift 20s ease-in-out infinite alternate;
+  }
+  /* Fine grain so the gradient doesn't band. */
+  .brand-panel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    mix-blend-mode: soft-light;
+    opacity: 0.6;
+    pointer-events: none;
+  }
+
+  .hero-stage {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    perspective: 1100px;
+    perspective-origin: 50% 46%;
+  }
+  .hero-ring,
+  .hero-core {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 104px;
+    height: 104px;
+    margin: -52px 0 0 -52px;
+  }
+  .hero-ring {
+    border: 1.5px solid rgb(255 255 255 / 0.95);
+    border-radius: 32px;
+    opacity: 0;
+    z-index: 2;
+  }
+  .hero-core {
+    display: grid;
+    place-items: center;
+    background: rgb(255 255 255 / 0.72);
+    border: 1px solid rgb(255 255 255 / 0.85);
+    border-radius: 30px;
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.95),
+      0 16px 38px rgb(150 64 14 / 0.2);
+    opacity: 0;
+    z-index: 50;
+    will-change: transform, opacity;
+  }
+  .hero-core::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 30px;
+    background: radial-gradient(120% 80% at 28% 14%, rgb(255 255 255 / 0.55), transparent 55%);
+    pointer-events: none;
+  }
+  .hero-sparkle {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    color: #fff;
+    filter: drop-shadow(0 2px 6px rgb(18 18 18 / 0.18));
+    animation: sparkle-twinkle 2.2s ease-in-out infinite alternate;
+  }
+  .hero-sparkle.s1 {
+    width: 24px;
+    height: 24px;
+    translate: 44px -70px;
+  }
+  .hero-sparkle.s2 {
+    width: 13px;
+    height: 13px;
+    translate: 70px -38px;
+    animation-delay: 0.9s;
+  }
+  .hero-chip-pos {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    opacity: 0;
+    will-change: transform, opacity;
+  }
+  .hero-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 14px 7px 8px;
+    color: #1b1b1b;
+    background: linear-gradient(180deg, rgb(255 255 255 / 0.95), rgb(255 255 255 / 0.89));
+    border: 1px solid rgb(255 255 255 / 0.92);
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.95),
+      0 10px 30px rgb(150 64 14 / 0.14);
+  }
+
+  /* Dot grid that shows up around the pointer. */
+  .dot-field {
+    position: relative;
+  }
+  .dot-field::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle, color-mix(in srgb, var(--ink) 28%, transparent) 1px, transparent 1.5px);
+    background-size: 16px 16px;
+    opacity: 0;
+    transition: opacity 0.32s ease;
+    pointer-events: none;
+    mask-image: radial-gradient(220px circle at var(--mx, 50%) var(--my, 50%), #000, transparent 75%);
+    -webkit-mask-image: radial-gradient(220px circle at var(--mx, 50%) var(--my, 50%), #000, transparent 75%);
+  }
+  .dot-field:hover::before {
+    opacity: 0.55;
+  }
+  .dot-field > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    max-width: 380px;
+    margin: auto;
+  }
+  .login-form > * {
+    animation: rise-in 0.54s cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+  }
+  .login-form > :nth-child(1) {
+    animation-delay: 0.12s;
+  }
+  .login-form > :nth-child(2) {
+    animation-delay: 0.2s;
+  }
+  .login-form > :nth-child(3) {
+    animation-delay: 0.28s;
+  }
+  .login-form > :nth-child(n + 4) {
+    animation-delay: 0.36s;
+  }
+
+  /* Home: header, balance, then the tool cards one after another. */
+  .rise {
+    animation: rise-in 0.54s cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+    animation-delay: calc(var(--i, 0) * 55ms + 80ms);
+  }
+  .lift {
+    transition:
+      border-color 0.14s ease,
+      box-shadow 0.18s ease,
+      transform 0.18s ease;
+  }
+  .lift:hover {
+    box-shadow: 0 6px 18px color-mix(in srgb, var(--ink) 6%, transparent);
+    transform: translateY(-1px);
+  }
+  .slide-in {
+    animation: slide-in 0.2s ease-out;
+  }
+  .toast-in {
+    animation: toast-in 0.2s ease-out;
+  }
+
+  /* Arc that travels round a tool's tile while it is being connected. */
+  .logo-ring {
+    position: absolute;
+    inset: -4px;
+    width: calc(100% + 8px);
+    height: calc(100% + 8px);
+    pointer-events: none;
+  }
+  .logo-ring rect {
+    fill: none;
+    stroke-width: 2.5;
+    stroke-linecap: round;
+  }
+  .logo-ring .track {
+    stroke: rgb(255 141 92 / 0.18);
+  }
+  .logo-ring .arc {
+    stroke: #ff8d5c;
+    stroke-dasharray: 26 74;
+    animation: ring-travel 1.5s linear infinite;
+  }
+
+  /* Status dot turning green. */
+  .dot-pop {
+    animation: dot-pop 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.4);
+  }
+}
+
+@keyframes aurora-drift {
+  0% {
+    transform: translate3d(-5%, -4%, 0) scale(1) rotate(0);
+  }
+  50% {
+    transform: translate3d(6%, 5%, 0) scale(1.12) rotate(2deg);
+  }
+  to {
+    transform: translate3d(-4%, 6%, 0) scale(1.05) rotate(-1.5deg);
+  }
+}
+@keyframes rise-in {
+  0% {
+    opacity: 0;
+    transform: translateY(16px);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+@keyframes soft-in {
+  0% {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes slide-in {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes toast-in {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes sparkle-twinkle {
+  0% {
+    opacity: 0.45;
+    scale: 0.72;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+@keyframes ring-travel {
+  to {
+    stroke-dashoffset: -100;
+  }
+}
+@keyframes dot-pop {
+  0% {
+    scale: 0.4;
+    box-shadow: 0 0 0 0 rgb(47 158 110 / 0.5);
+  }
+  60% {
+    scale: 1.5;
+    box-shadow: 0 0 0 6px rgb(47 158 110 / 0);
+  }
+  to {
+    scale: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}

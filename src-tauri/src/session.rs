@@ -1,6 +1,6 @@
-//! Login session. Tokens live in the OS keychain (macOS Keychain, Windows
-//! Credential Manager); nothing secret is written to plain files. Requests that
-//! come back 401 refresh the access token once and retry.
+//! Login session. Tokens and the device ID live in the OS keychain (macOS
+//! Keychain, Windows Credential Manager); nothing secret is written to plain
+//! files. Requests that come back 401 refresh the access token once and retry.
 
 use std::future::Future;
 
@@ -11,9 +11,25 @@ use crate::error::{Error, Result};
 
 const SERVICE: &str = "cn.cloudborne.desktop";
 const ACCOUNT: &str = "session";
+const DEVICE: &str = "device";
 
 fn entry() -> Result<keyring::Entry> {
     keyring::Entry::new(SERVICE, ACCOUNT).map_err(|e| Error::Keychain(e.to_string()))
+}
+
+/// Random per-install ID, kept in the keychain next to the session. If the
+/// keychain is unavailable a fresh ID is used, which only costs a re-login.
+fn device_id() -> String {
+    let fresh = || uuid::Uuid::new_v4().to_string();
+    let Ok(e) = keyring::Entry::new(SERVICE, DEVICE) else { return fresh() };
+    match e.get_password() {
+        Ok(id) if uuid::Uuid::parse_str(&id).is_ok() => id,
+        _ => {
+            let id = fresh();
+            let _ = e.set_password(&id);
+            id
+        }
+    }
 }
 
 fn load_tokens() -> Result<Option<Tokens>> {
@@ -47,7 +63,7 @@ impl Session {
     pub fn new() -> Result<Self> {
         let origin = std::env::var("CLOUDBORNE_ORIGIN").unwrap_or_else(|_| DEFAULT_ORIGIN.to_string());
         Ok(Self {
-            client: Client::new(&origin)?,
+            client: Client::new(&origin, &device_id())?,
             tokens: Mutex::new(load_tokens().unwrap_or(None)),
             pending_2fa: Mutex::new(None),
         })

@@ -10,7 +10,17 @@ use serde_json::{json, Value};
 use crate::error::{Error, Result};
 
 pub const DEFAULT_ORIGIN: &str = "https://api.cloudborne.cn";
-const UA: &str = concat!("CloudborneDesktop/", env!("CARGO_PKG_VERSION"));
+
+/// `CloudborneDesktop/<ver> (<os>; device=<id>)`. The relay binds desktop
+/// sessions to the device ID rather than IP + User-Agent, so switching networks
+/// or updating the app keeps the user signed in.
+fn user_agent(device_id: &str) -> String {
+    format!(
+        "CloudborneDesktop/{} ({}; device={device_id})",
+        env!("CARGO_PKG_VERSION"),
+        std::env::consts::OS
+    )
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tokens {
@@ -103,9 +113,9 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new(origin: &str) -> Result<Self> {
+    pub fn new(origin: &str, device_id: &str) -> Result<Self> {
         let http = reqwest::Client::builder()
-            .user_agent(UA)
+            .user_agent(user_agent(device_id))
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(30))
             .build()
@@ -289,6 +299,14 @@ pub fn parse_model_ids(v: &Value) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Must match desktopDeviceID in the relay's internal/service/session_binding.go.
+    #[test]
+    fn user_agent_carries_the_device_id() {
+        let ua = user_agent("3f2a9c1e-7b4d-4e8a-9c0f-1a2b3c4d5e6f");
+        assert!(ua.starts_with("CloudborneDesktop/"));
+        assert!(ua.ends_with("; device=3f2a9c1e-7b4d-4e8a-9c0f-1a2b3c4d5e6f)"));
+    }
 
     #[test]
     fn parses_model_ids_from_any_platform_shape() {

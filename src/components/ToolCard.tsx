@@ -1,10 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { api, errorText, type Group, type ToolStatus } from '../api';
 import { ToolGlyph } from './ToolGlyph';
 
 type Phase = 'idle' | 'picking' | 'working' | 'confirm-disconnect';
 
-export function ToolCard({ tool, onChanged }: { tool: ToolStatus; onChanged: (msg: string) => void }) {
+export function ToolCard({
+  tool,
+  index,
+  onChanged,
+}: {
+  tool: ToolStatus;
+  index: number;
+  onChanged: (msg: string) => void;
+}) {
   const [phase, setPhase] = useState<Phase>('idle');
   const [groups, setGroups] = useState<Group[]>([]);
   const [error, setError] = useState('');
@@ -67,15 +75,34 @@ export function ToolCard({ tool, onChanged }: { tool: ToolStatus; onChanged: (ms
 
   const busy = phase === 'working';
 
+  // Pop the status dot only when the tool turns connected while on screen.
+  const wasConnected = useRef(tool.connected);
+  const [justConnected, setJustConnected] = useState(false);
+  useEffect(() => {
+    if (tool.connected && !wasConnected.current) setJustConnected(true);
+    wasConnected.current = tool.connected;
+  }, [tool.connected]);
+
   return (
-    <div className="card p-5">
+    <div className="card rise lift p-5" style={{ '--i': index } as CSSProperties}>
       <div className="flex items-center gap-4">
-        <ToolGlyph id={tool.id} />
+        <div className="relative shrink-0">
+          <ToolGlyph id={tool.id} />
+          {busy && (
+            <svg className="logo-ring" viewBox="0 0 56 56" aria-hidden>
+              <rect className="track" x="1.25" y="1.25" width="53.5" height="53.5" rx="16" pathLength="100" />
+              <rect className="arc" x="1.25" y="1.25" width="53.5" height="53.5" rx="16" pathLength="100" />
+            </svg>
+          )}
+        </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h3 className="text-[17px] font-semibold tracking-tight">{tool.name}</h3>
             <span className="inline-flex items-center gap-1.5 text-xs text-ink-2">
-              <span className={`size-1.5 rounded-full ${status.dot}`} />
+              <span
+                className={`size-1.5 rounded-full ${status.dot} ${justConnected ? 'dot-pop' : ''}`}
+                onAnimationEnd={() => setJustConnected(false)}
+              />
               {status.text}
             </span>
           </div>
@@ -111,7 +138,7 @@ export function ToolCard({ tool, onChanged }: { tool: ToolStatus; onChanged: (ms
       </div>
 
       {phase === 'picking' && (
-        <div className="mt-4 border-t border-line pt-4">
+        <div className="slide-in mt-4 border-t border-line pt-4">
           <p className="mb-2.5 text-[13px] text-ink-2">选择要用的分组：</p>
           <div className="flex flex-wrap gap-2">
             {groups.map((g) => (
@@ -130,7 +157,7 @@ export function ToolCard({ tool, onChanged }: { tool: ToolStatus; onChanged: (ms
       )}
 
       {phase === 'confirm-disconnect' && (
-        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-4">
+        <div className="slide-in mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-4">
           <p className="mr-auto text-[13px] text-ink-2">断开后恢复成连接前的配置。要不要同时删除中转站上的专用密钥？</p>
           <button
             className="btn btn-quiet"
