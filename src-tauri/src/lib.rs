@@ -11,6 +11,8 @@ pub fn run() {
     let session = session::Session::new().expect("failed to start session");
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(session)
         .invoke_handler(tauri::generate_handler![
             commands::login,

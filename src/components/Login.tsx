@@ -1,8 +1,8 @@
-import { useState, type FormEvent, type MouseEvent } from 'react';
+import { useState, type FormEvent, type MouseEvent, type ReactNode } from 'react';
 import { api, errorText, type User } from '../api';
 import { Hero } from './Hero';
 
-export function Login({ onDone }: { onDone: (u: User) => void }) {
+export function Login({ onDone, update }: { onDone: (u: User) => void; update?: ReactNode }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
@@ -38,6 +38,7 @@ export function Login({ onDone }: { onDone: (u: User) => void }) {
       </aside>
 
       <section className="dot-field flex min-h-0 flex-col px-8" onMouseMove={trackPointer}>
+        <div className="flex h-12 shrink-0 items-center justify-end pt-2">{update}</div>
         <form key={twoFactor === null ? 'password' : 'totp'} onSubmit={submit} className="login-form">
           <h1 className="text-[28px] font-extrabold leading-9 tracking-tight">
             {twoFactor === null ? '登录 Cloudborne' : '两步验证'}

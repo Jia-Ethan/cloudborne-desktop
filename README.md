@@ -10,6 +10,7 @@ v0.2 内测中（未签名）。已完成：
 
 - 邮箱密码登录、两步验证、令牌自动刷新；令牌存在系统钥匙串。注册和找回密码在中转站网页上做，客户端不提供。
 - 登录状态不随网络变化失效：首次启动生成一个随机设备 ID，存在系统钥匙串里，放进 User-Agent（`CloudborneDesktop/<版本> (<系统>; device=<ID>)`）。中转站的会话绑定对这种 UA 只校验设备 ID，不校验 IP 和版本号；其他客户端仍按 IP + UA 校验。需要中转站 `0.2.8-cloudborne.8-devicebind` 及以上，旧版中转站上换网络仍会被要求重新登录。
+- 应用内更新：启动 3 秒后和每 6 小时静默检查一次，发现新版本时右上角出现「更新到 vX」，点了下载、安装、重启；平时那里显示当前版本号，点一下手动检查。更新源是本仓库 Latest Release 里的 `latest.json`，安装包用更新密钥签名（minisign，和苹果、微软的代码签名无关），客户端只装签名对得上的包。
 - 登录页左边是品牌面板（渐变缓慢流动，四个工具标签绕图标转），首页各块依次淡入上移，连接时工具图标外圈转动，连上后状态点弹一下。系统开了「减少动态效果」时动画都关掉。
 - 首页显示余额。v0.1 不做充值。
 - 四个工具的检测、连接、断开。每个工具在中转站上用一把专用密钥，名字是 `Cloudborne Desktop · <工具名>`。
@@ -72,3 +73,12 @@ brand/render.sh          # 用本机 Chrome 渲染 app-icon-1024.png 和 preview
 | `mark.svg` | 单色标志，`currentColor`，网页内联用 |
 | `mark-ink.svg` / `mark-white.svg` | 浅底 / 深底的单色标志 |
 | `mark-path.json` | 标志的单一路径和 viewBox，给不支持 mask 的渲染器用（如 Satori） |
+
+## 发版与推送更新
+
+1. 改 `package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml` 三处版本号，提交。
+2. 打带说明的 tag 并推送：`git tag -a v0.2.1 -m "更新说明"`、`git push origin v0.2.1`。tag 说明会成为更新提示里的 notes。
+3. CI 构建 macOS 通用包和 Windows 安装包，生成 `.app.tar.gz` / `-setup.exe` 的签名和 `latest.json`，挂到一个 draft Release 上。
+4. 检查 draft 没问题后点 Publish（不要勾 pre-release，保持 Latest）。发布那一刻起，已安装的客户端在下次检查时就会看到更新。
+
+更新私钥在本机 `~/.cloudborne-desktop-signing/`（权限 700），CI 里是 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 两个 secret。私钥丢了，已装的客户端就收不到后续更新，只能手动重装，所以要另外备份。0.2.0 及更早的版本没有更新功能，需要手动装一次 0.2.1。

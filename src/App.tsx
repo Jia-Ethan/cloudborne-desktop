@@ -3,6 +3,8 @@ import { api, errorText, type ToolStatus, type User } from './api';
 import { Login } from './components/Login';
 import { Mark } from './components/Mark';
 import { ToolCard } from './components/ToolCard';
+import { UpdateButton } from './components/UpdateButton';
+import { useUpdater } from './update';
 
 const usd = (n: number) => `$${n.toFixed(2)}`;
 
@@ -11,6 +13,7 @@ export function App() {
   const [tools, setTools] = useState<ToolStatus[]>([]);
   const [toast, setToast] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const updater = useUpdater();
 
   const loadTools = useCallback(async () => {
     setTools(await api.toolsStatus());
@@ -42,6 +45,7 @@ export function App() {
   if (user === null)
     return (
       <Login
+        update={<UpdateButton updater={updater} onlyWhenAvailable />}
         onDone={(u) => {
           setUser(u);
           loadTools();
@@ -56,6 +60,7 @@ export function App() {
         <span className="text-[17px] font-semibold tracking-tight">Cloudborne</span>
         <span className="text-[13px] text-ink-3">栖云</span>
         <div className="ml-auto flex items-center gap-2">
+          <UpdateButton updater={updater} />
           <span className="max-w-[220px] truncate text-[13px] text-ink-2">{user.email}</span>
           <button
             className="btn btn-quiet h-8 px-3 text-[13px]"

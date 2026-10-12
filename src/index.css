@@ -472,3 +472,26 @@
     transition-duration: 1ms !important;
   }
 }
+
+@layer components {
+  .update-pill {
+    animation: slide-in 0.2s ease-out;
+  }
+  .update-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: #ff8d5c;
+    box-shadow: 0 0 0 0 rgb(255 141 92 / 0.6);
+    animation: update-pulse 1.8s ease-out infinite;
+  }
+}
+@keyframes update-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgb(255 141 92 / 0.6);
+  }
+  70%,
+  to {
+    box-shadow: 0 0 0 6px rgb(255 141 92 / 0);
+  }
+}
