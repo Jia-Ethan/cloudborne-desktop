@@ -6,6 +6,7 @@ pub mod claude;
 pub mod codex;
 pub mod detect;
 pub mod grok;
+pub mod pi;
 pub mod zcode;
 
 use std::path::{Path, PathBuf};
@@ -30,10 +31,11 @@ pub enum ToolId {
     Claude,
     Zcode,
     Grok,
+    Pi,
 }
 
 impl ToolId {
-    pub const ALL: [ToolId; 4] = [ToolId::Codex, ToolId::Claude, ToolId::Zcode, ToolId::Grok];
+    pub const ALL: [ToolId; 5] = [ToolId::Codex, ToolId::Claude, ToolId::Zcode, ToolId::Grok, ToolId::Pi];
 
     pub fn display_name(self) -> &'static str {
         match self {
@@ -41,6 +43,7 @@ impl ToolId {
             ToolId::Claude => "Claude Code",
             ToolId::Zcode => "ZCode",
             ToolId::Grok => "Grok Build",
+            ToolId::Pi => "Pi",
         }
     }
 
@@ -52,6 +55,8 @@ impl ToolId {
             // Domestic models over the OpenAI-compatible endpoint.
             ToolId::Zcode => &["zhipu", "deepseek", "kimi", "minimax"],
             ToolId::Grok => &["grok"],
+            // Pi speaks every protocol the relay does.
+            ToolId::Pi => &["openai", "anthropic", "grok", "zhipu", "deepseek", "kimi", "minimax"],
         }
     }
 }
@@ -64,6 +69,8 @@ pub struct Connection {
     pub api_key: String,
     /// Model ids the key's group serves, as returned by `/v1/models`.
     pub models: Vec<String>,
+    /// The key's group platform (`openai`, `anthropic`, …).
+    pub platform: String,
 }
 
 impl Connection {
@@ -89,6 +96,7 @@ pub fn is_connected(tool: ToolId, home: &Path) -> Result<bool> {
         ToolId::Claude => claude::is_connected(home),
         ToolId::Zcode => zcode::is_connected(home),
         ToolId::Grok => grok::is_connected(home),
+        ToolId::Pi => pi::is_connected(home),
     }
 }
 
@@ -98,6 +106,7 @@ pub fn connect(tool: ToolId, home: &Path, conn: &Connection) -> Result<Vec<PathB
         ToolId::Claude => claude::connect(home, conn),
         ToolId::Zcode => zcode::connect(home, conn),
         ToolId::Grok => grok::connect(home, conn),
+        ToolId::Pi => pi::connect(home, conn),
     }
 }
 
@@ -107,6 +116,7 @@ pub fn disconnect(tool: ToolId, home: &Path) -> Result<Vec<PathBuf>> {
         ToolId::Claude => claude::disconnect(home),
         ToolId::Zcode => zcode::disconnect(home),
         ToolId::Grok => grok::disconnect(home),
+        ToolId::Pi => pi::disconnect(home),
     }
 }
 
@@ -116,5 +126,6 @@ pub(crate) fn test_conn() -> Connection {
         origin: "https://relay.example".into(),
         api_key: "sk-test-123".into(),
         models: vec!["model-a".into(), "model-b".into()],
+        platform: "openai".into(),
     }
 }

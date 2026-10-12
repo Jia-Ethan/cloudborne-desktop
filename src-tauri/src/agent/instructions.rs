@@ -43,6 +43,8 @@ Shell profiles (~/.zshrc, ~/.bashrc, PowerShell profile) or system environment v
 ANTHROPIC_* take precedence and are a common cause of problems. Skills live in ~/.claude/skills.
 - ZCode: ~/.zcode/v2/config.json and ~/.zcode/cli/config.json.
 - Grok Build: ~/.grok/config.toml.
+- Pi: ~/.pi/agent/models.json (provider `cloudborne`) and ~/.pi/agent/settings.json \
+(`defaultProvider`, `defaultModel`); `PI_CODING_AGENT_DIR` moves both. Skills live in ~/.pi/agent/skills.
 
 Current state:
 {tools}

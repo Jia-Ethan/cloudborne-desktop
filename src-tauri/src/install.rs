@@ -15,6 +15,8 @@ const CLAUDE_SH: &str = "curl -fsSL https://claude.ai/install.sh | bash";
 const CLAUDE_PS: &str = "irm https://claude.ai/install.ps1 | iex";
 const GROK_SH: &str = "curl -fsSL https://x.ai/cli/install.sh | bash";
 const GROK_PS: &str = "irm https://x.ai/cli/install.ps1 | iex";
+const PI_SH: &str = "curl -fsSL https://pi.dev/install.sh | sh";
+const PI_PS: &str = "irm https://pi.dev/install.ps1 | iex";
 const CODEX_NPM: &str = "npm install -g @openai/codex --registry=https://registry.npmmirror.com";
 const NODE_DOWNLOAD: &str = "https://nodejs.org/zh-cn/download";
 const ZCODE_PAGE: &str = "https://zcode.z.ai/cn";
@@ -47,6 +49,8 @@ fn script_for(tool: ToolId) -> Option<&'static str> {
         (ToolId::Claude, true) => Some(CLAUDE_PS),
         (ToolId::Grok, false) => Some(GROK_SH),
         (ToolId::Grok, true) => Some(GROK_PS),
+        (ToolId::Pi, false) => Some(PI_SH),
+        (ToolId::Pi, true) => Some(PI_PS),
         (ToolId::Codex, _) => Some(CODEX_NPM),
         (ToolId::Zcode, _) => None,
     }

@@ -1,12 +1,12 @@
 # Cloudborne Desktop
 
-Cloudborne（栖云）中转站的桌面客户端：用中转站账号登录、看余额，一键把 Codex、Claude Code、ZCode 和 Grok Build 接到 Cloudborne，没装的工具可以一键安装。支持 macOS 和 Windows。
+Cloudborne（栖云）中转站的桌面客户端：用中转站账号登录、看余额，一键把 Codex、Claude Code、ZCode、Grok Build 和 Pi 接到 Cloudborne，没装的工具可以一键安装。支持 macOS 和 Windows。
 
 产品形态参照 TeamoRouter 桌面端（首页是客户端卡片列表，每张卡片一个「连接」按钮）。只参照交互，不复用对方的代码、素材或图形。
 
 ## 状态
 
-v0.4 内测中（未签名）。已完成：
+v0.5 内测中（未签名）。已完成：
 
 - 邮箱密码登录、两步验证、令牌自动刷新；令牌存在系统钥匙串。注册和找回密码在中转站网页上做，客户端不提供。
 - 登录状态不随网络变化失效：首次启动生成一个随机设备 ID，存在系统钥匙串里，放进 User-Agent（`CloudborneDesktop/<版本> (<系统>; device=<ID>)`）。中转站的会话绑定对这种 UA 只校验设备 ID，不校验 IP 和版本号；其他客户端仍按 IP + UA 校验。需要中转站 `0.2.8-cloudborne.8-devicebind` 及以上，旧版中转站上换网络仍会被要求重新登录。
@@ -14,11 +14,13 @@ v0.4 内测中（未签名）。已完成：
 - 布局：左侧边栏（新任务、首页、最近任务；底部头像菜单：复制邮箱、控制台、语言、检查更新、关于、退出账号），右侧主页面顶部一抹晨光渐变。
 - 语言：简体中文和英文，首次按系统语言选择，可在登录页右上角或头像菜单里切换，不用重启。Rust 侧的报错和安装窗口提示通过 `set_language` 跟着切换。
 - 应用内更新：启动 3 秒后和每 6 小时静默检查一次，发现新版本时首页右上角出现「更新到 vX」、头像旁出现小红点，点了下载、安装、重启；头像菜单里的「检查更新」可以手动检查。更新源是本仓库 Latest Release 里的 `latest.json`，安装包用更新密钥签名（minisign，和苹果、微软的代码签名无关），客户端只装签名对得上的包。
-- 登录页左边是品牌面板（渐变缓慢流动，四个工具标签绕图标转），首页各块依次淡入上移，连接时工具图标外圈转动，连上后状态点弹一下。系统开了「减少动态效果」时动画都关掉。
+- 登录页左边是品牌面板（渐变缓慢流动，五个工具标签绕图标转），首页各块依次淡入上移，连接时工具图标外圈转动，连上后状态点弹一下。系统开了「减少动态效果」时动画都关掉。
 - 新任务：描述问题，AI 在本机检查、配置、修复 AI 工具，见下一节。
 - 首页显示余额。不做充值。
-- 四个工具的检测、连接、断开。每个工具在中转站上用一把专用密钥，名字是 `Cloudborne Desktop · <工具名>`。
-- 一键安装：Claude Code、Grok Build 在可见的终端里跑官方脚本；Codex 用 npm（没有 Node.js 时打开 Node.js 下载页）；ZCode 从官方 CDN 下载安装包并打开。
+- 首页右上角「实时折扣」：取这个账号在 GPT、Claude、Grok 各家能用的分组里最低的倍率（中转站给账号设了专属倍率时用专属倍率），按 `倍率 ÷ 汇率` 换成折扣，保留一位小数并向上取整，三家每 3 秒轮换。充值是 ¥1 = $1，所以付 ¥倍率 就能用到官方 $1 的量。汇率读中转站后台「支付设置 → 订阅 CNY 换算汇率」（`/api/v1/payment/config` 的 `subscription_usd_to_cny_rate`），没设时按 7.2。倍率和汇率每次刷新余额时重新读。
+- 工具图标用各家官方 logo（矢量来自 [lobe-icons](https://github.com/lobehub/lobe-icons)，MIT），见 `src/components/Logo.tsx`。
+- 五个工具的检测、连接、断开。每个工具在中转站上用一把专用密钥，名字是 `Cloudborne Desktop · <工具名>`。
+- 一键安装：Claude Code、Grok Build、Pi 在可见的终端里跑官方脚本；Codex 用 npm（没有 Node.js 时打开 Node.js 下载页）；ZCode 从官方 CDN 下载安装包并打开。
 
 方案和边界见 [`docs/PLAN.md`](docs/PLAN.md)。
 
@@ -41,10 +43,11 @@ v0.4 内测中（未签名）。已完成：
 | Claude Code | `~/.claude/settings.json` | `env` 里的 `ANTHROPIC_BASE_URL`、`ANTHROPIC_AUTH_TOKEN`；暂时移走 `ANTHROPIC_API_KEY` | 三个键恢复原值和原顺序 |
 | ZCode | `~/.zcode/v2/config.json`、`~/.zcode/cli/config.json` | `provider.cloudborne`（OpenAI 兼容） | 只删 `provider.cloudborne` |
 | Grok Build | `~/.grok/config.toml` | 文件末尾一段带标记的 `[model."cloudborne/<模型>"]` | 删掉这段 |
+| Pi | `~/.pi/agent/models.json`、`~/.pi/agent/settings.json`（设了 `PI_CODING_AGENT_DIR` 时在那里） | `providers.cloudborne`，协议跟着分组走：GPT、Grok 用 Responses，Claude 用 Messages，国产模型用 Chat Completions；`defaultProvider` / `defaultModel` 改成它 | 只删 `providers.cloudborne`；默认模型还是我们设的就改回原值，用户自己换过就不动 |
 
 - 每次写之前把原文件复制成 `<文件名>.cloudborne-backup-<时间>`，写入是原子替换，写完重新读一遍校验，校验失败就恢复备份。
 - 原文件解析不了时直接报错，不会去改它。
-- Claude Code 被覆盖前的原值记在 `~/.cloudborne-desktop/state.json`。
+- Claude Code 和 Pi 被覆盖前的原值记在 `~/.cloudborne-desktop/state.json`。
 - 用本机真实的 Codex、Claude Code、ZCode、Grok 配置文件副本做过「连接 + 断开」，五个文件都和原来逐字节一致。
 
 ## 开发

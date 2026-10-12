@@ -893,6 +893,52 @@ html[data-glass='mica'] {
     background: rgb(20 20 20 / 0.07);
   }
 
+  .discount {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .discount-text {
+    padding: 8px 16px;
+    color: #141414;
+    font-size: 14px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    background: rgb(255 255 255 / 0.55);
+    border: 1px solid rgb(255 255 255 / 0.7);
+    border-radius: 999px;
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.8);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    animation: discount-in 0.36s cubic-bezier(0.2, 0.7, 0.3, 1);
+  }
+  .discount-logos {
+    display: flex;
+  }
+  .discount-logo {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    margin-left: -7px;
+    color: #141414;
+    background: #fff;
+    border-radius: 999px;
+    box-shadow:
+      0 0 0 2px rgb(255 255 255 / 0.6),
+      0 4px 12px rgb(20 20 20 / 0.1);
+    transition: transform 0.3s cubic-bezier(0.2, 0.7, 0.3, 1);
+  }
+  .discount-logo:first-child {
+    margin-left: 0;
+  }
+  .discount-logo.on {
+    position: relative;
+    z-index: 1;
+    transform: translateY(-2px) scale(1.08);
+  }
+
   .tool-card {
     padding: 14px 16px;
     border-radius: 14px;
@@ -1643,6 +1689,13 @@ html[data-glass='mica'] {
     -webkit-background-clip: text;
     background-clip: text;
     animation: shimmer 1.8s ease-in-out infinite;
+  }
+}
+
+@keyframes discount-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
   }
 }
 

@@ -133,6 +133,16 @@ async fn ensure_key(s: &Session, tool: ToolId, group_id: i64) -> Result<ApiKey> 
     s.authed(|a| async move { c.create_key(&a, name, group_id).await }).await
 }
 
+async fn group_platform(s: &Session, group_id: i64) -> Result<String> {
+    let c = &s.client;
+    let groups = s.authed(|a| async move { c.groups(&a).await }).await?;
+    groups
+        .into_iter()
+        .find(|g| g.id == group_id)
+        .map(|g| g.platform)
+        .ok_or_else(|| Error::Other(tr("找不到这个分组", "Group not found").into()))
+}
+
 #[derive(Serialize)]
 pub struct ConnectResult {
     backups: Vec<String>,
@@ -145,9 +155,10 @@ pub async fn connect_tool(s: State<'_, Session>, tool: ToolId, group_id: i64) ->
     let models = match tool {
         // Codex and Claude Code choose models themselves.
         ToolId::Codex | ToolId::Claude => vec![],
-        ToolId::Zcode | ToolId::Grok => s.client.models(&key.key).await?,
+        ToolId::Zcode | ToolId::Grok | ToolId::Pi => s.client.models(&key.key).await?,
     };
-    let conn = Connection { origin: s.client.origin().to_string(), api_key: key.key, models };
+    let platform = if tool == ToolId::Pi { group_platform(s.inner(), group_id).await? } else { String::new() };
+    let conn = Connection { origin: s.client.origin().to_string(), api_key: key.key, models, platform };
     let home = tools::home_dir();
     let backups = tools::connect(tool, &home, &conn)?;
     Ok(ConnectResult {
@@ -169,6 +180,52 @@ pub async fn disconnect_tool(s: State<'_, Session>, tool: ToolId, delete_key: bo
         }
     }
     Ok(backups.iter().map(|p| p.display().to_string()).collect())
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+pub struct PlatformRate {
+    platform: String,
+    rate: f64,
+}
+
+/// The lowest multiplier this account pays on each platform, its own rate
+/// taking precedence over the group's.
+pub fn best_rates(groups: &[Group], own: &std::collections::HashMap<i64, f64>) -> Vec<PlatformRate> {
+    let mut best: Vec<PlatformRate> = vec![];
+    for g in groups.iter().filter(|g| g.status.is_empty() || g.status == "active") {
+        let rate = own.get(&g.id).copied().unwrap_or(g.rate_multiplier);
+        if rate <= 0.0 {
+            continue;
+        }
+        match best.iter_mut().find(|b| b.platform == g.platform) {
+            Some(b) if rate < b.rate => b.rate = rate,
+            Some(_) => {}
+            None => best.push(PlatformRate { platform: g.platform.clone(), rate }),
+        }
+    }
+    best
+}
+
+/// Used when the relay admin has not set an exchange rate.
+const DEFAULT_CNY_PER_USD: f64 = 7.2;
+
+#[derive(Serialize)]
+pub struct Rates {
+    cny_per_usd: f64,
+    rates: Vec<PlatformRate>,
+}
+
+#[tauri::command]
+pub async fn rates(s: State<'_, Session>) -> Result<Rates> {
+    let c = &s.client;
+    let groups = s.authed(|a| async move { c.groups(&a).await }).await?;
+    // Older relays have no per-user rates; the group's own then applies.
+    let own = s.authed(|a| async move { c.group_rates(&a).await }).await.unwrap_or_default();
+    let cny = s.authed(|a| async move { c.cny_per_usd(&a).await }).await.unwrap_or(0.0);
+    Ok(Rates {
+        cny_per_usd: if cny > 0.0 { cny } else { DEFAULT_CNY_PER_USD },
+        rates: best_rates(&groups, &own),
+    })
 }
 
 #[tauri::command]
@@ -298,6 +355,30 @@ pub async fn agent_stop(runs: State<'_, agent::SharedRuns>, id: String) -> Resul
 #[cfg(test)]
 mod agent_tests {
     use super::*;
+
+    fn group(id: i64, platform: &str, rate: f64, status: &str) -> Group {
+        Group { id, name: String::new(), platform: platform.into(), status: status.into(), rate_multiplier: rate }
+    }
+
+    #[test]
+    fn best_rate_per_platform_prefers_the_accounts_own() {
+        let groups = [
+            group(1, "openai", 0.37, "active"),
+            group(2, "openai", 0.7, "active"),
+            group(3, "anthropic", 2.85, "active"),
+            group(4, "anthropic", 1.2, "active"),
+            group(5, "anthropic", 0.1, "disabled"),
+        ];
+        let own = [(2, 0.25)].into_iter().collect();
+        let r = best_rates(&groups, &own);
+        assert_eq!(
+            r,
+            [
+                PlatformRate { platform: "openai".into(), rate: 0.25 },
+                PlatformRate { platform: "anthropic".into(), rate: 1.2 },
+            ]
+        );
+    }
 
     #[test]
     fn agent_models_newest_first_without_codex_variants() {

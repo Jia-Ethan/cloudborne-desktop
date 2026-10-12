@@ -33,6 +33,7 @@ pub fn run() {
             commands::connect_tool,
             commands::disconnect_tool,
             commands::install_tool,
+            commands::rates,
             commands::relay_origin,
             commands::set_language,
             commands::agent_models,
@@ -53,6 +54,7 @@ pub fn roundtrip_for_dev(connect_only: bool) {
         origin: "https://relay.example".into(),
         api_key: "sk-sandbox".into(),
         models: vec!["glm-5.3".into(), "grok-4.7".into()],
+        platform: "openai".into(),
     };
     for t in tools::ToolId::ALL {
         let r = tools::connect(t, &home, &conn).map(|_| ());

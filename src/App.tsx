@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, type CSSProperties } from 'react';
-import { api, errorText, type ToolStatus, type User } from './api';
+import { api, errorText, type Rates, type ToolStatus, type User } from './api';
 import { About } from './components/About';
 import { AccountMenu } from './components/AccountMenu';
+import { DiscountBar } from './components/DiscountBar';
 import { Icon } from './components/Icon';
 import { Login } from './components/Login';
 import { Mark } from './components/Mark';
@@ -20,6 +21,7 @@ export function App() {
   const { t, lang } = useI18n();
   const [user, setUser] = useState<User | null | undefined>(undefined);
   const [tools, setTools] = useState<ToolStatus[]>([]);
+  const [rates, setRates] = useState<Rates | null>(null);
   const [toast, setToast] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [about, setAbout] = useState(false);
@@ -31,17 +33,22 @@ export function App() {
     setTools(await api.toolsStatus());
   }, []);
 
+  const loadRates = useCallback(() => {
+    api.rates().then(setRates, () => {});
+  }, []);
+
   const refresh = useCallback(async () => {
     setRefreshing(true);
     try {
       const [u] = await Promise.all([api.me(), loadTools()]);
       setUser(u);
+      if (u) loadRates();
     } catch (e) {
       setToast(errorText(e, t('common.genericError')));
     } finally {
       setRefreshing(false);
     }
-  }, [loadTools, t]);
+  }, [loadTools, loadRates, t]);
 
   useEffect(() => {
     // Once on launch; switching language must not refetch.
@@ -62,6 +69,7 @@ export function App() {
         onDone={(u) => {
           setUser(u);
           loadTools();
+          loadRates();
         }}
       />
     );
@@ -154,7 +162,10 @@ export function App() {
                     <Icon name="refresh" className={`size-[15px] ${refreshing ? 'animate-spin' : ''}`} />
                   </button>
                 </div>
-                <UpdateButton updater={updater} />
+                <div className="flex items-center gap-3">
+                  <UpdateButton updater={updater} />
+                  <DiscountBar rates={rates} />
+                </div>
               </div>
 
               <div className="rise mb-2.5 mt-7 flex items-baseline justify-between px-1" style={{ '--i': 1 } as CSSProperties}>

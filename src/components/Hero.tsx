@@ -8,6 +8,7 @@ const CHIPS: { id: ToolId; name: string }[] = [
   { id: 'claude', name: 'Claude Code' },
   { id: 'zcode', name: 'ZCode' },
   { id: 'grok', name: 'Grok Build' },
+  { id: 'pi', name: 'Pi' },
 ];
 
 // Where each chip lands before it joins the orbit.
@@ -16,6 +17,7 @@ const START = [
   { x: 120, y: -110 },
   { x: -140, y: 40 },
   { x: 140, y: 40 },
+  { x: 0, y: 130 },
 ];
 
 const TAU = Math.PI * 2;

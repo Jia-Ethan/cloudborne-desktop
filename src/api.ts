@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 
-export type ToolId = 'codex' | 'claude' | 'zcode' | 'grok';
+export type ToolId = 'codex' | 'claude' | 'zcode' | 'grok' | 'pi';
 
 export interface User {
   id: number;
@@ -31,6 +31,17 @@ export interface Group {
   rate_multiplier: number;
 }
 
+export interface PlatformRate {
+  platform: string;
+  rate: number;
+}
+
+export interface Rates {
+  /** From the relay admin's exchange rate setting. */
+  cny_per_usd: number;
+  rates: PlatformRate[];
+}
+
 export type InstallStarted =
   | { kind: 'terminal' }
   | { kind: 'package'; path: string }
@@ -47,6 +58,7 @@ export const api = {
     invoke<{ backups: string[]; models: number }>('connect_tool', { tool, groupId }),
   disconnect: (tool: ToolId, deleteKey: boolean) => invoke<string[]>('disconnect_tool', { tool, deleteKey }),
   install: (tool: ToolId) => invoke<InstallStarted>('install_tool', { tool }),
+  rates: () => invoke<Rates>('rates'),
   relayOrigin: () => invoke<string>('relay_origin'),
   setLanguage: (code: string) => invoke<void>('set_language', { code }),
 };

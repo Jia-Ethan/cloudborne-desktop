@@ -20,6 +20,7 @@ pub fn extra_bin_dirs(home: &Path) -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = vec![
         home.join(".local").join("bin"),
         home.join(".grok").join("bin"),
+        home.join(".pi").join("agent").join("bin"),
         home.join(".claude").join("local"),
         home.join(".volta").join("bin"),
         home.join(".asdf").join("shims"),
@@ -106,6 +107,7 @@ pub fn locate(tool: ToolId, home: &Path) -> Option<PathBuf> {
         ToolId::Codex => find_binary(home, "codex").or_else(codex_desktop),
         ToolId::Claude => find_binary(home, "claude"),
         ToolId::Grok => find_binary(home, "grok"),
+        ToolId::Pi => find_binary(home, "pi"),
         ToolId::Zcode => zcode_app(home),
     }
 }

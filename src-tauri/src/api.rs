@@ -249,6 +249,20 @@ impl Client {
         self.send(self.http.get(self.url("/api/v1/groups/available")).bearer_auth(access)).await
     }
 
+    /// The account's own multipliers by group id, where an admin set one.
+    pub async fn group_rates(&self, access: &str) -> Result<std::collections::HashMap<i64, f64>> {
+        let m: Option<std::collections::HashMap<String, f64>> =
+            self.send(self.http.get(self.url("/api/v1/groups/rates")).bearer_auth(access)).await?;
+        Ok(m.unwrap_or_default().into_iter().filter_map(|(k, v)| Some((k.parse().ok()?, v))).collect())
+    }
+
+    /// Yuan per US dollar as set in the relay admin (the subscription
+    /// exchange rate); 0 when unset.
+    pub async fn cny_per_usd(&self, access: &str) -> Result<f64> {
+        let v: Value = self.send(self.http.get(self.url("/api/v1/payment/config")).bearer_auth(access)).await?;
+        Ok(v.get("subscription_usd_to_cny_rate").and_then(Value::as_f64).unwrap_or(0.0))
+    }
+
     pub async fn keys(&self, access: &str) -> Result<Vec<ApiKey>> {
         #[derive(Deserialize)]
         struct Page {
