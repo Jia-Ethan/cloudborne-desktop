@@ -65,7 +65,12 @@ impl Connection {
 
 /// Files a tool adapter reads and writes, rooted at a home directory so tests
 /// can point everything at a temp dir.
+/// `CLOUDBORNE_HOME` redirects every config read and write, for testing
+/// against a sandbox instead of the real home directory.
 pub fn home_dir() -> PathBuf {
+    if let Some(h) = std::env::var_os("CLOUDBORNE_HOME") {
+        return PathBuf::from(h);
+    }
     dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
 }
 
