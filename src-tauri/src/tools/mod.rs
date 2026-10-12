@@ -1,0 +1,106 @@
+//! One module per supported tool. Each knows where the tool keeps its config,
+//! how to tell whether we are connected, and how to add or remove exactly the
+//! part we own without disturbing anything else in the file.
+
+pub mod claude;
+pub mod codex;
+pub mod detect;
+pub mod grok;
+pub mod zcode;
+
+use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
+
+use crate::error::Result;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ToolId {
+    Codex,
+    Claude,
+    Zcode,
+    Grok,
+}
+
+impl ToolId {
+    pub const ALL: [ToolId; 4] = [ToolId::Codex, ToolId::Claude, ToolId::Zcode, ToolId::Grok];
+
+    pub fn display_name(self) -> &'static str {
+        match self {
+            ToolId::Codex => "Codex",
+            ToolId::Claude => "Claude Code",
+            ToolId::Zcode => "ZCode",
+            ToolId::Grok => "Grok Build",
+        }
+    }
+
+    /// Relay group platforms whose keys this tool can use, in preference order.
+    pub fn platforms(self) -> &'static [&'static str] {
+        match self {
+            ToolId::Codex => &["openai"],
+            ToolId::Claude => &["anthropic"],
+            // Domestic models over the OpenAI-compatible endpoint.
+            ToolId::Zcode => &["zhipu", "deepseek", "kimi", "minimax"],
+            ToolId::Grok => &["grok"],
+        }
+    }
+}
+
+/// What a tool needs to talk to the relay.
+#[derive(Debug, Clone)]
+pub struct Connection {
+    /// Relay origin without a trailing slash, e.g. `https://api.cloudborne.cn`.
+    pub origin: String,
+    pub api_key: String,
+    /// Model ids the key's group serves, as returned by `/v1/models`.
+    pub models: Vec<String>,
+}
+
+impl Connection {
+    pub fn v1(&self) -> String {
+        format!("{}/v1", self.origin.trim_end_matches('/'))
+    }
+}
+
+/// Files a tool adapter reads and writes, rooted at a home directory so tests
+/// can point everything at a temp dir.
+pub fn home_dir() -> PathBuf {
+    dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
+}
+
+pub fn is_connected(tool: ToolId, home: &Path) -> Result<bool> {
+    match tool {
+        ToolId::Codex => codex::is_connected(home),
+        ToolId::Claude => claude::is_connected(home),
+        ToolId::Zcode => zcode::is_connected(home),
+        ToolId::Grok => grok::is_connected(home),
+    }
+}
+
+pub fn connect(tool: ToolId, home: &Path, conn: &Connection) -> Result<Vec<PathBuf>> {
+    match tool {
+        ToolId::Codex => codex::connect(home, conn),
+        ToolId::Claude => claude::connect(home, conn),
+        ToolId::Zcode => zcode::connect(home, conn),
+        ToolId::Grok => grok::connect(home, conn),
+    }
+}
+
+pub fn disconnect(tool: ToolId, home: &Path) -> Result<Vec<PathBuf>> {
+    match tool {
+        ToolId::Codex => codex::disconnect(home),
+        ToolId::Claude => claude::disconnect(home),
+        ToolId::Zcode => zcode::disconnect(home),
+        ToolId::Grok => grok::disconnect(home),
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn test_conn() -> Connection {
+    Connection {
+        origin: "https://relay.example".into(),
+        api_key: "sk-test-123".into(),
+        models: vec!["model-a".into(), "model-b".into()],
+    }
+}
