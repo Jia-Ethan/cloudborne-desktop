@@ -2,13 +2,6 @@ import { useState } from 'react';
 import { api, errorText, type Group, type ToolStatus } from '../api';
 import { ToolGlyph } from './ToolGlyph';
 
-const BLURB: Record<ToolStatus['id'], string> = {
-  codex: 'OpenAI 分组 · Codex 桌面版和 CLI 共用',
-  claude: 'Anthropic 分组 · Claude Code 命令行',
-  zcode: '国产模型分组 · OpenAI 兼容协议',
-  grok: 'Grok 分组 · Grok Build 命令行',
-};
-
 type Phase = 'idle' | 'picking' | 'working' | 'confirm-disconnect';
 
 export function ToolCard({ tool, onChanged }: { tool: ToolStatus; onChanged: (msg: string) => void }) {
@@ -86,7 +79,6 @@ export function ToolCard({ tool, onChanged }: { tool: ToolStatus; onChanged: (ms
               {status.text}
             </span>
           </div>
-          <p className="mt-0.5 truncate text-[13px] text-ink-3">{BLURB[tool.id]}</p>
         </div>
 
         <div className="flex shrink-0 gap-2">

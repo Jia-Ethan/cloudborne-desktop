@@ -33,11 +33,9 @@ export function Login({ origin, onDone }: { origin: string; onDone: (u: User) =>
         <h1 className="mt-6 text-[22px] font-semibold tracking-tight">
           {twoFactor === null ? '登录 Cloudborne' : '两步验证'}
         </h1>
-        <p className="mt-1.5 text-sm text-ink-2">
-          {twoFactor === null
-            ? '使用中转站账号登录'
-            : `输入 ${twoFactor || '你的账号'} 绑定的验证器里的 6 位数字`}
-        </p>
+        {twoFactor !== null && (
+          <p className="mt-1.5 text-sm text-ink-2">输入 {twoFactor || '你的账号'} 绑定的验证器里的 6 位数字</p>
+        )}
 
         <div className="mt-7 space-y-3">
           {twoFactor === null ? (

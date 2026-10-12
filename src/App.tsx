@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import { openUrl } from '@tauri-apps/plugin-opener';
 import { api, errorText, type ToolStatus, type User } from './api';
 import { Login } from './components/Login';
 import { Mark } from './components/Mark';
@@ -96,9 +95,6 @@ export function App() {
               />
             </svg>
           </button>
-          <button className="btn btn-primary ml-auto" onClick={() => openUrl(`${origin}/purchase`)}>
-            充值
-          </button>
         </section>
 
         <div className="mb-3 mt-8 flex items-baseline justify-between">
@@ -119,10 +115,6 @@ export function App() {
             />
           ))}
         </div>
-
-        <p className="mt-8 text-center text-xs text-ink-3">
-          连接前会备份原配置文件，断开时只移除 Cloudborne 写入的部分。
-        </p>
       </main>
 
       {toast && (
