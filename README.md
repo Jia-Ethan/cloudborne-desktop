@@ -6,10 +6,50 @@ Cloudborne（栖云）中转站的桌面客户端：用中转站账号登录、�
 
 ## 状态
 
-还没开始写客户端代码。目前仓库里只有品牌资产和 v0.1 方案（`docs/PLAN.md`）。
+v0.1 开发中，还没发过安装包。已完成：
+
+- 邮箱密码登录、两步验证、令牌自动刷新；令牌存在系统钥匙串。
+- 首页显示余额，「充值」跳转到中转站网页。
+- 四个工具的检测、连接、断开。每个工具在中转站上用一把专用密钥，名字是 `Cloudborne Desktop · <工具名>`。
+- 一键安装：Claude Code、Grok Build 在可见的终端里跑官方脚本；Codex 用 npm（没有 Node.js 时打开 Node.js 下载页）；ZCode 从官方 CDN 下载安装包并打开。
+
+方案和边界见 [`docs/PLAN.md`](docs/PLAN.md)。
+
+## 连接时改了什么
+
+| 工具 | 文件 | 写入内容 | 断开时 |
+| --- | --- | --- | --- |
+| Codex | `~/.codex/config.toml` | 文件末尾一段带 `# >>> cloudborne-desktop` 标记的 `[model_providers.cloudborne]`，顶层 `model_provider` 改成 `cloudborne` | 删掉这段，`model_provider` 改回原值 |
+| Claude Code | `~/.claude/settings.json` | `env` 里的 `ANTHROPIC_BASE_URL`、`ANTHROPIC_AUTH_TOKEN`；暂时移走 `ANTHROPIC_API_KEY` | 三个键恢复原值和原顺序 |
+| ZCode | `~/.zcode/v2/config.json`、`~/.zcode/cli/config.json` | `provider.cloudborne`（OpenAI 兼容） | 只删 `provider.cloudborne` |
+| Grok Build | `~/.grok/config.toml` | 文件末尾一段带标记的 `[model."cloudborne/<模型>"]` | 删掉这段 |
+
+- 每次写之前把原文件复制成 `<文件名>.cloudborne-backup-<时间>`，写入是原子替换，写完重新读一遍校验，校验失败就恢复备份。
+- 原文件解析不了时直接报错，不会去改它。
+- Claude Code 被覆盖前的原值记在 `~/.cloudborne-desktop/state.json`。
+- 用本机真实的 Codex、Claude Code、ZCode、Grok 配置文件副本做过「连接 + 断开」，五个文件都和原来逐字节一致。
+
+## 开发
+
+需要 Node.js 22+ 和 Rust stable。
+
+```sh
+npm install
+npm run tauri dev                         # 开发模式
+npm run tauri build                       # 打包
+cargo test --manifest-path src-tauri/Cargo.toml
+```
+
+- `CLOUDBORNE_HOME=<目录>`：所有配置读写都改到这个目录，测试时不碰自己的真实配置。
+- `CLOUDBORNE_ORIGIN=<地址>`：换中转站地址，默认 `https://api.cloudborne.cn`。
+- `cargo run --example roundtrip`（配合 `CLOUDBORNE_HOME`）：对四个工具各做一次连接和断开。
+
+CI（`.github/workflows/ci.yml`）在 macOS 和 Windows 上跑测试，并打包未签名的 `.dmg`（universal）和 `.exe`（NSIS）。推 `v*` 标签时，安装包会附到一个草稿 Release 上。
 
 ## 目录
 
+- `src/`：界面（React + Tailwind）。
+- `src-tauri/src/`：`api.rs` 中转站接口，`session.rs` 登录和钥匙串，`tools/` 四个工具的读写，`install.rs` 一键安装，`fsx.rs` 备份、原子写入和标记段。
 - `brand/`：图标和 logo，全部从 `brand/build.mjs` 里的几何参数生成，不手改 SVG。
 - `docs/PLAN.md`：v0.1 的范围、技术栈和接口。
 
