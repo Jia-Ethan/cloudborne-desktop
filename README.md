@@ -1,12 +1,12 @@
 # Cloudborne Desktop
 
-Cloudborne（栖云）中转站的桌面客户端：登录账号、看余额，一键把 Codex、Claude Code 和 Claude Desktop 接到 Cloudborne。
+Cloudborne（栖云）中转站的桌面客户端：用中转站账号登录、看余额，一键把 Codex、Claude Code、ZCode 和 Grok Build 接到 Cloudborne，没装的工具可以一键安装。支持 macOS 和 Windows。
 
 产品形态参照 TeamoRouter 桌面端（首页是客户端卡片列表，每张卡片一个「连接」按钮）。只参照交互，不复用对方的代码、素材或图形。
 
 ## 状态
 
-还没开始写客户端代码。目前仓库里只有品牌资产和第一版方案。
+还没开始写客户端代码。目前仓库里只有品牌资产和 v0.1 方案（`docs/PLAN.md`）。
 
 ## 目录
 
