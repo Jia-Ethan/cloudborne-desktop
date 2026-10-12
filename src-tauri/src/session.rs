@@ -96,15 +96,13 @@ impl Session {
                 *guard = Some(t);
                 Ok(a)
             }
-            Err(e) => {
-                // A rejected refresh token means the session is over.
-                if matches!(e, Error::Unauthorized | Error::Api(_)) {
-                    *guard = None;
-                    let _ = clear_tokens();
-                    return Err(Error::Unauthorized);
-                }
-                Err(e)
+            // A rejected refresh token ends the session; a network error does not.
+            Err(Error::Unauthorized) => {
+                *guard = None;
+                let _ = clear_tokens();
+                Err(Error::Unauthorized)
             }
+            Err(e) => Err(e),
         }
     }
 
