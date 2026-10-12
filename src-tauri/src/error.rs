@@ -2,6 +2,8 @@ use std::path::Path;
 
 use serde::Serialize;
 
+use crate::tr_fmt;
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("{path}: {source}")]
@@ -10,15 +12,15 @@ pub enum Error {
         #[source]
         source: std::io::Error,
     },
-    #[error("配置文件无法解析：{0}")]
+    #[error("{}", tr_fmt!("配置文件无法解析：{}", "Config file could not be read: {}", .0))]
     Config(String),
     #[error("{0}")]
     Api(String),
-    #[error("登录已失效，请重新登录")]
+    #[error("{}", crate::lang::tr("登录已失效，请重新登录", "Your session has expired. Please sign in again."))]
     Unauthorized,
-    #[error("网络错误：{0}")]
+    #[error("{}", tr_fmt!("网络错误：{}", "Network error: {}", .0))]
     Network(String),
-    #[error("钥匙串错误：{0}")]
+    #[error("{}", tr_fmt!("钥匙串错误：{}", "Keychain error: {}", .0))]
     Keychain(String),
     #[error("{0}")]
     Other(String),

@@ -12,7 +12,9 @@ use std::path::{Path, PathBuf};
 use toml_edit::DocumentMut;
 
 use super::Connection;
+use super::no_models;
 use crate::error::{Error, Result};
+use crate::lang::tr;
 use crate::fsx;
 
 pub const PREFIX: &str = "cloudborne/";
@@ -53,7 +55,7 @@ pub fn is_connected(home: &Path) -> Result<bool> {
 
 pub fn connect(home: &Path, conn: &Connection) -> Result<Vec<PathBuf>> {
     if conn.models.is_empty() {
-        return Err(Error::Other("这个分组没有可用模型，无法为 Grok Build 生成配置".into()));
+        return Err(Error::Other(no_models("Grok Build")));
     }
     let path = config_path(home);
     let original = fsx::read_or_empty(&path)?;
@@ -69,7 +71,7 @@ pub fn connect(home: &Path, conn: &Connection) -> Result<Vec<PathBuf>> {
         if ours == conn.models.len() {
             Ok(())
         } else {
-            Err(Error::Config("写入后校验失败：cloudborne 模型条目数不对".into()))
+            Err(Error::Config(tr("写入后校验失败：cloudborne 模型条目数不对", "Check after writing failed: wrong number of cloudborne models").into()))
         }
     })?;
     Ok(bak.into_iter().collect())

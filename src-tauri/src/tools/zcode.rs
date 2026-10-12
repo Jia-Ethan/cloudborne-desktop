@@ -8,8 +8,10 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Map, Value};
 
-use super::Connection;
+use super::{no_models, Connection};
 use crate::error::{Error, Result};
+use crate::lang::tr;
+use crate::tr_fmt;
 use crate::fsx;
 
 pub const PROVIDER_ID: &str = "cloudborne";
@@ -37,7 +39,7 @@ fn load(path: &Path) -> Result<Map<String, Value>> {
     }
     match serde_json::from_str::<Value>(&text) {
         Ok(Value::Object(m)) => Ok(m),
-        Ok(_) => Err(Error::Config(format!("{}: 顶层不是对象", path.display()))),
+        Ok(_) => Err(Error::Config(tr_fmt!("{}: 顶层不是对象", "{}: not a JSON object", path.display()))),
         Err(e) => Err(Error::Config(format!("{}: {e}", path.display()))),
     }
 }
@@ -87,7 +89,7 @@ pub fn is_connected(home: &Path) -> Result<bool> {
 
 pub fn connect(home: &Path, conn: &Connection) -> Result<Vec<PathBuf>> {
     if conn.models.is_empty() {
-        return Err(Error::Other("这个分组没有可用模型，无法为 ZCode 生成配置".into()));
+        return Err(Error::Other(no_models("ZCode")));
     }
     // Parse everything first so a broken second file does not leave the first half-done.
     let loaded: Vec<(PathBuf, String, Map<String, Value>)> = targets(home)
@@ -100,7 +102,7 @@ pub fn connect(home: &Path, conn: &Connection) -> Result<Vec<PathBuf>> {
     let mut backups = vec![];
     for (path, raw, mut m) in loaded {
         if !m.get("provider").map_or(true, Value::is_object) {
-            return Err(Error::Config(format!("{}: provider 不是对象", path.display())));
+            return Err(Error::Config(tr_fmt!("{}: provider 不是对象", "{}: provider is not an object", path.display())));
         }
         m.entry("provider")
             .or_insert_with(|| Value::Object(Map::new()))
@@ -111,7 +113,7 @@ pub fn connect(home: &Path, conn: &Connection) -> Result<Vec<PathBuf>> {
             let v: Value = serde_json::from_str(t).map_err(|e| Error::Config(e.to_string()))?;
             match v.pointer(&format!("/provider/{PROVIDER_ID}/options/baseURL")) {
                 Some(_) => Ok(()),
-                None => Err(Error::Config("写入后校验失败：缺少 cloudborne provider".into())),
+                None => Err(Error::Config(tr("写入后校验失败：缺少 cloudborne provider", "Check after writing failed: the cloudborne provider is missing").into())),
             }
         })?;
         backups.extend(bak);

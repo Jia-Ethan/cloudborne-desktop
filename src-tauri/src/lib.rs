@@ -3,6 +3,8 @@ mod commands;
 mod error;
 mod fsx;
 mod install;
+mod lang;
+mod window;
 mod session;
 mod state;
 mod tools;
@@ -14,6 +16,11 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(session)
+        .setup(|app| {
+            let config = app.config().app.windows.first().cloned().expect("main window config");
+            window::style(tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?).build()?;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::login,
             commands::login_2fa,
@@ -25,6 +32,7 @@ pub fn run() {
             commands::disconnect_tool,
             commands::install_tool,
             commands::relay_origin,
+            commands::set_language,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

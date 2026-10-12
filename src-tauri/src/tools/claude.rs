@@ -8,6 +8,7 @@ use serde_json::{Map, Value};
 
 use super::Connection;
 use crate::error::{Error, Result};
+use crate::lang::tr;
 use crate::{fsx, state};
 
 const TOOL: &str = "claude";
@@ -29,7 +30,7 @@ fn load(path: &Path) -> Result<Map<String, Value>> {
     }
     match serde_json::from_str::<Value>(&text) {
         Ok(Value::Object(m)) => Ok(m),
-        Ok(_) => Err(Error::Config("~/.claude/settings.json 顶层不是对象".into())),
+        Ok(_) => Err(Error::Config(tr("~/.claude/settings.json 顶层不是对象", "~/.claude/settings.json is not a JSON object").into())),
         Err(e) => Err(Error::Config(format!("~/.claude/settings.json: {e}"))),
     }
 }
@@ -62,7 +63,7 @@ pub fn connect(home: &Path, conn: &Connection) -> Result<Vec<PathBuf>> {
     let mut st = state::load(home)?;
 
     if !m.get("env").map_or(true, Value::is_object) {
-        return Err(Error::Config("~/.claude/settings.json 里的 env 不是对象".into()));
+        return Err(Error::Config(tr("~/.claude/settings.json 里的 env 不是对象", "env in ~/.claude/settings.json is not an object").into()));
     }
     let env = m
         .entry("env")
@@ -90,7 +91,7 @@ pub fn connect(home: &Path, conn: &Connection) -> Result<Vec<PathBuf>> {
     let bak = fsx::replace_verified(&path, &render(&m, &raw), |t| {
         let v: Value = serde_json::from_str(t).map_err(|e| Error::Config(e.to_string()))?;
         if v.pointer("/env/ANTHROPIC_AUTH_TOKEN").is_none() {
-            return Err(Error::Config("写入后校验失败：缺少 ANTHROPIC_AUTH_TOKEN".into()));
+            return Err(Error::Config(tr("写入后校验失败：缺少 ANTHROPIC_AUTH_TOKEN", "Check after writing failed: ANTHROPIC_AUTH_TOKEN is missing").into()));
         }
         Ok(())
     })?;

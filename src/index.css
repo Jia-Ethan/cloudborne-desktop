@@ -19,7 +19,23 @@
   --wash-sky: rgb(148 177 255 / 0.45);
   --wash-rose: rgb(255 175 203 / 0.35);
   --wash-sun: rgb(255 141 92 / 0.28);
+  /* Window layers. Without a native backdrop they are solid; with one (see
+     html[data-glass]) they turn translucent so the desktop shows through. */
+  --canvas: var(--paper);
+  --pane: var(--paper);
+  --sidebar: color-mix(in srgb, var(--paper) 94%, var(--ink));
+  --menu: rgb(255 255 255 / 0.86);
+  --menu-solid: rgb(255 255 255 / 0.97);
+  --menu-shadow: 0 14px 36px rgb(20 20 20 / 0.14), 0 0 0 1px rgb(20 20 20 / 0.04);
+  --danger: #c93a3a;
   color-scheme: light;
+}
+
+html[data-glass='vibrancy'],
+html[data-glass='mica'] {
+  --canvas: rgb(250 247 244 / 0.3);
+  --pane: rgb(252 250 248 / 0.84);
+  --sidebar: linear-gradient(180deg, rgb(255 255 255 / 0.34), rgb(255 255 255 / 0.1));
 }
 
 @media (prefers-color-scheme: dark) {
@@ -39,7 +55,17 @@
     --wash-sky: rgb(98 120 210 / 0.28);
     --wash-rose: rgb(190 90 130 / 0.2);
     --wash-sun: rgb(220 110 60 / 0.2);
+    --menu: rgb(40 38 43 / 0.9);
+    --menu-solid: rgb(44 42 47 / 0.98);
+    --menu-shadow: 0 14px 36px rgb(0 0 0 / 0.45), 0 0 0 1px rgb(0 0 0 / 0.3);
+    --danger: #ee7e7e;
     color-scheme: dark;
+  }
+  html[data-glass='vibrancy'],
+  html[data-glass='mica'] {
+    --canvas: rgb(20 18 22 / 0.28);
+    --pane: linear-gradient(180deg, rgb(30 28 33 / 0.9), rgb(24 22 27 / 0.97) 48%);
+    --sidebar: linear-gradient(180deg, rgb(255 255 255 / 0.06), rgb(255 255 255 / 0.02));
   }
 }
 
@@ -68,6 +94,17 @@
     background: var(--paper);
     -webkit-font-smoothing: antialiased;
     user-select: none;
+    cursor: default;
+  }
+  html[data-glass='vibrancy'] body,
+  html[data-glass='mica'] body {
+    background: transparent;
+  }
+  #root {
+    background: var(--canvas);
+  }
+  html.lang-swap #root {
+    animation: lang-swap 0.13s ease-out;
   }
   input {
     user-select: text;
@@ -79,15 +116,6 @@
 }
 
 @layer components {
-  /* Soft dawn wash behind everything, like the icon background. */
-  .dawn {
-    background:
-      radial-gradient(60% 50% at 92% 0%, var(--wash-sky), transparent 70%),
-      radial-gradient(45% 45% at 0% 40%, var(--wash-rose), transparent 70%),
-      radial-gradient(70% 55% at 50% 110%, var(--wash-sun), transparent 70%),
-      var(--paper);
-  }
-
   .card {
     background: var(--surface);
     border: 1px solid var(--line);
@@ -103,7 +131,7 @@
     gap: 0.4rem;
     height: 2.5rem;
     padding: 0 1.1rem;
-    border-radius: 999px;
+    border-radius: 10px;
     font-size: 0.875rem;
     font-weight: 600;
     white-space: nowrap;
@@ -160,7 +188,7 @@
     grid-template-columns: minmax(360px, 0.85fr) minmax(340px, 1fr);
     gap: 12px;
     padding: 12px;
-    background: var(--paper);
+    background: var(--pane);
   }
 
   .brand-panel {
@@ -475,6 +503,7 @@
 
 @layer components {
   .update-pill {
+    border-radius: 999px;
     animation: slide-in 0.2s ease-out;
   }
   .update-dot {
@@ -493,5 +522,457 @@
   70%,
   to {
     box-shadow: 0 0 0 6px rgb(255 141 92 / 0);
+  }
+}
+
+/* Workspace: glass sidebar on the left, main pane on the right, after
+   TeamoRouter's desktop client. */
+@layer components {
+  .workspace {
+    display: grid;
+    grid-template-columns: 216px minmax(0, 1fr);
+    height: 100%;
+  }
+  .drag-strip {
+    position: fixed;
+    inset: 0 0 auto 0;
+    height: 28px;
+    z-index: 40;
+  }
+  html:not([data-glass='vibrancy']) .drag-strip {
+    display: none;
+  }
+
+  .sidebar {
+    position: relative;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-height: 0;
+    padding: 16px 10px 10px;
+    background: var(--sidebar);
+    border-right: 1px solid var(--line);
+    animation: soft-in 0.5s ease-out backwards;
+  }
+  html[data-glass='vibrancy'] .sidebar {
+    padding-top: 56px;
+  }
+  .sidebar-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 12px 4px;
+    font-size: 14px;
+    font-weight: 780;
+    letter-spacing: 0.01em;
+  }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 36px;
+    padding: 0 12px;
+    color: var(--ink-2);
+    border: 1px solid transparent;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: left;
+    transition:
+      background-color 0.14s ease,
+      border-color 0.14s ease,
+      color 0.14s ease;
+    cursor: pointer;
+  }
+  .nav-item:hover {
+    color: var(--ink);
+    background: var(--quiet);
+  }
+  .nav-item.selected {
+    color: var(--ink);
+    background: var(--quiet-hover);
+    border-color: var(--line);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.4);
+  }
+  .sidebar-footer {
+    margin-top: auto;
+    padding-top: 8px;
+    border-top: 1px solid var(--line);
+  }
+  .account-button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 6px 8px;
+    border-radius: 10px;
+    transition: background-color 0.14s ease;
+    cursor: pointer;
+  }
+  .account-button:hover,
+  .account-button[aria-expanded='true'] {
+    background: var(--quiet);
+  }
+  .avatar {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    color: #fff;
+    background: linear-gradient(150deg, #94b1ff, #ffafcb 55%, #ff8d5c);
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 700;
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.45),
+      0 0 0 1px color-mix(in srgb, var(--ink) 8%, transparent);
+  }
+
+  /* Glass menus. */
+  .menu {
+    position: absolute;
+    z-index: 60;
+    display: grid;
+    gap: 1px;
+    padding: 6px;
+    background: var(--menu);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: var(--menu-shadow);
+    backdrop-filter: blur(32px) saturate(160%);
+    -webkit-backdrop-filter: blur(32px) saturate(160%);
+    animation: menu-in 0.16s cubic-bezier(0.2, 0.7, 0.3, 1);
+  }
+  .account-menu {
+    bottom: calc(100% + 8px);
+    left: 0;
+    width: 244px;
+    transform-origin: bottom left;
+  }
+  .menu-identity {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+    padding: 11px 12px;
+    background: var(--quiet);
+    border-radius: 10px;
+    font-size: 14px;
+    text-align: left;
+    transition: background-color 0.12s ease;
+    cursor: pointer;
+  }
+  .menu-identity:hover {
+    background: var(--quiet-hover);
+  }
+  .menu-identity b {
+    min-width: 0;
+    flex: 1;
+    font-weight: 600;
+  }
+  .menu-identity-copy {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--ink-3);
+    font-size: 12px;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+  }
+  .menu-identity:hover .menu-identity-copy,
+  .menu-identity-copy.copied {
+    opacity: 1;
+  }
+  .menu-identity-copy.copied {
+    color: var(--color-ok);
+  }
+  .menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 34px;
+    padding: 0 10px;
+    color: var(--ink);
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    text-align: left;
+    white-space: nowrap;
+    transition: background-color 0.12s ease;
+    cursor: pointer;
+  }
+  .menu-item > svg:first-child {
+    color: var(--ink-2);
+  }
+  .menu-item:hover:not(:disabled) {
+    background: var(--quiet-hover);
+  }
+  .menu-item:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+  .menu-item.danger,
+  .menu-item.danger > svg:first-child {
+    color: var(--danger);
+  }
+  .menu-item.danger:hover {
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
+  }
+  .menu-meta {
+    color: var(--ink-3);
+    font-size: 12px;
+  }
+  .menu-sep {
+    height: 1px;
+    margin: 4px 6px;
+    background: var(--line);
+  }
+  .submenu-wrap {
+    position: relative;
+  }
+  /* Bridge so the pointer can cross the gap to the submenu. */
+  .submenu-wrap::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 100%;
+    width: 12px;
+  }
+  /* A backdrop filter inside another one has nothing to blur, so the
+     submenu is nearly opaque instead. */
+  .submenu {
+    display: none;
+    background: var(--menu-solid);
+    left: calc(100% + 10px);
+    bottom: -6px;
+    min-width: 168px;
+    transform-origin: bottom left;
+  }
+  .submenu-wrap:hover > .submenu,
+  .submenu-wrap:focus-within > .submenu {
+    display: grid;
+  }
+  .submenu-wrap:hover > .menu-item {
+    background: var(--quiet-hover);
+  }
+
+  .lang-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 12px;
+    color: var(--ink-2);
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 500;
+    transition:
+      background-color 0.14s ease,
+      color 0.14s ease;
+    cursor: pointer;
+  }
+  .lang-trigger:hover,
+  .lang-trigger[data-state='open'] {
+    color: var(--ink);
+    background: var(--quiet);
+  }
+  .lang-chevron {
+    color: var(--ink-3);
+    transition: transform 0.14s ease;
+  }
+  .lang-trigger[data-state='open'] .lang-chevron {
+    transform: rotate(180deg);
+  }
+  .lang-menu {
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 152px;
+    transform-origin: top right;
+  }
+
+  /* Main pane: a dawn wash fading down from the top, then the content. */
+  .main-pane {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    background: var(--pane);
+    overflow: hidden;
+  }
+  .aurora-header {
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 280px;
+    overflow: hidden;
+    pointer-events: none;
+    mask-image: linear-gradient(180deg, #000 30%, transparent 100%);
+    -webkit-mask-image: linear-gradient(180deg, #000 30%, transparent 100%);
+    animation: soft-in 0.72s ease-out backwards;
+  }
+  .aurora-header::before {
+    content: '';
+    position: absolute;
+    inset: -20%;
+    background:
+      radial-gradient(40% 70% at 70% 20%, #ff8d5c 0%, transparent 70%),
+      radial-gradient(35% 80% at 95% 30%, #94b1ff 0%, transparent 70%),
+      radial-gradient(45% 70% at 25% 30%, #ffd9c2 0%, transparent 75%),
+      radial-gradient(30% 60% at 5% 60%, #ffafcb 0%, transparent 75%);
+    opacity: 0.85;
+    animation: aurora-drift 24s ease-in-out infinite alternate;
+  }
+  @media (prefers-color-scheme: dark) {
+    .aurora-header::before {
+      opacity: 0.5;
+      filter: saturate(140%);
+    }
+  }
+  .main-scroll {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 44px 32px 32px;
+  }
+  .main-column {
+    max-width: 880px;
+    margin: 0 auto;
+  }
+  .balance-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .wallet {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px 9px 16px;
+    color: #141414;
+    background: rgb(255 255 255 / 0.55);
+    border: 1px solid rgb(255 255 255 / 0.7);
+    border-radius: 13px;
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.8),
+      0 6px 20px rgb(20 20 20 / 0.05);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+  }
+  .wallet-label {
+    color: rgb(20 20 20 / 0.6);
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .wallet-amount {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+  }
+  .wallet-refresh {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    color: rgb(20 20 20 / 0.45);
+    border-radius: 999px;
+    transition:
+      background-color 0.14s ease,
+      color 0.14s ease;
+    cursor: pointer;
+  }
+  .wallet-refresh:hover:not(:disabled) {
+    color: #141414;
+    background: rgb(20 20 20 / 0.07);
+  }
+
+  .tool-card {
+    padding: 14px 16px;
+    border-radius: 14px;
+  }
+  .tool-card:hover {
+    border-color: color-mix(in srgb, var(--ink) 14%, transparent);
+  }
+
+  .toast {
+    max-width: 560px;
+    padding: 10px 16px;
+    background: var(--menu);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: var(--menu-shadow);
+    font-size: 13px;
+    backdrop-filter: blur(32px) saturate(160%);
+    -webkit-backdrop-filter: blur(32px) saturate(160%);
+  }
+
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    display: grid;
+    place-items: center;
+    background: rgb(0 0 0 / 0.22);
+    animation: soft-in 0.16s ease-out;
+  }
+  .modal {
+    width: 300px;
+    padding: 28px 24px 20px;
+    text-align: center;
+    background: var(--menu-solid);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    box-shadow: var(--menu-shadow);
+    backdrop-filter: blur(32px) saturate(160%);
+    -webkit-backdrop-filter: blur(32px) saturate(160%);
+    animation: modal-in 0.24s cubic-bezier(0.2, 0.9, 0.3, 1.15);
+  }
+  .about-mark {
+    display: grid;
+    place-items: center;
+    width: 72px;
+    height: 72px;
+    margin: 0 auto;
+    background: linear-gradient(180deg, #fff, #f6f2ee);
+    border-radius: 22px;
+    box-shadow:
+      inset 0 1px 0 #fff,
+      0 10px 26px rgb(150 64 14 / 0.16);
+  }
+}
+
+@keyframes menu-in {
+  0% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes modal-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes lang-swap {
+  0% {
+    opacity: 0.72;
+  }
+  to {
+    opacity: 1;
   }
 }

@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::error::{Error, Result};
+use crate::lang::tr;
+use crate::tr_fmt;
 
 pub const DEFAULT_ORIGIN: &str = "https://api.cloudborne.cn";
 
@@ -77,12 +79,16 @@ enum RawErr {
 }
 use RawErr::{Other, Unauth401};
 
-/// Chinese wording for the relay's common auth errors; anything else is shown as sent.
+fn bad_credentials() -> &'static str {
+    tr("邮箱或密码不正确", "Wrong email or password")
+}
+
+/// Localized wording for the relay's common auth errors; anything else is shown as sent.
 fn friendly(env: &Envelope) -> String {
     match env.reason.as_deref() {
-        Some("INVALID_CREDENTIALS") => "邮箱或密码不正确".into(),
-        Some("USER_NOT_ACTIVE") | Some("USER_DISABLED") => "这个账号已被停用".into(),
-        Some("INVALID_TOTP_CODE") | Some("TOTP_INVALID") => "验证码不正确".into(),
+        Some("INVALID_CREDENTIALS") => bad_credentials().into(),
+        Some("USER_NOT_ACTIVE") | Some("USER_DISABLED") => tr("这个账号已被停用", "This account has been disabled").into(),
+        Some("INVALID_TOTP_CODE") | Some("TOTP_INVALID") => tr("验证码不正确", "That code is not correct").into(),
         _ => env.message.clone(),
     }
 }
@@ -142,7 +148,7 @@ impl Client {
     async fn send_public<T: DeserializeOwned>(&self, req: reqwest::RequestBuilder) -> Result<T> {
         match self.send_raw(req).await {
             Err(Unauth401(Some(env))) => Err(Error::Api(friendly(&env))),
-            Err(Unauth401(None)) => Err(Error::Api("邮箱或密码不正确".into())),
+            Err(Unauth401(None)) => Err(Error::Api(bad_credentials().into())),
             Err(Other(e)) => Err(e),
             Ok(v) => Ok(v),
         }
@@ -159,9 +165,18 @@ impl Client {
         let env: Envelope = parsed.map_err(|_| {
             Other(if status == reqwest::StatusCode::FORBIDDEN {
                 // The relay serves an HTML page to blocked regions.
-                Error::Api("中转站拒绝了这次请求（403），可能是所在地区受限".into())
+                Error::Api(
+                    tr(
+                        "中转站拒绝了这次请求（403），可能是所在地区受限",
+                        "The relay refused this request (403); your region may be restricted",
+                    )
+                    .into(),
+                )
             } else {
-                Error::Api(format!("中转站返回了无法识别的响应（HTTP {status}）"))
+                Error::Api(tr_fmt!(
+                    "中转站返回了无法识别的响应（HTTP {status}）",
+                    "The relay sent a response we could not read (HTTP {status})"
+                ))
             })
         })?;
         if env.code != 0 {
@@ -172,7 +187,7 @@ impl Client {
             })));
         }
         serde_json::from_value(env.data.unwrap_or(Value::Null))
-            .map_err(|e| Other(Error::Api(format!("响应格式不符：{e}"))))
+            .map_err(|e| Other(Error::Api(tr_fmt!("响应格式不符：{e}", "Unexpected response format: {e}"))))
     }
 
     fn url(&self, path: &str) -> String {
@@ -206,9 +221,9 @@ impl Client {
             return Ok((LoginOutcome::TwoFactor { temp_token, email_masked }, None));
         }
         let tokens: Tokens =
-            serde_json::from_value(v.clone()).map_err(|e| Error::Api(format!("登录响应缺少令牌：{e}")))?;
+            serde_json::from_value(v.clone()).map_err(|e| Error::Api(tr_fmt!("登录响应缺少令牌：{e}", "The sign-in response had no token: {e}")))?;
         let user: User = serde_json::from_value(v["user"].clone())
-            .map_err(|e| Error::Api(format!("登录响应缺少用户信息：{e}")))?;
+            .map_err(|e| Error::Api(tr_fmt!("登录响应缺少用户信息：{e}", "The sign-in response had no user: {e}")))?;
         Ok((LoginOutcome::Done { user }, Some(tokens)))
     }
 
@@ -279,7 +294,11 @@ impl Client {
             .await
             .map_err(|e| Error::Network(e.to_string()))?;
         if !resp.status().is_success() {
-            return Err(Error::Api(format!("获取模型列表失败（HTTP {}）", resp.status())));
+            return Err(Error::Api(tr_fmt!(
+                "获取模型列表失败（HTTP {}）",
+                "Could not load the model list (HTTP {})",
+                resp.status()
+            )));
         }
         let v: Value = resp.json().await.map_err(|e| Error::Api(e.to_string()))?;
         Ok(parse_model_ids(&v))

@@ -6,7 +6,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::error::{Error, Result};
+use crate::lang::tr;
 use crate::tools::ToolId;
+use crate::tr_fmt;
 
 // Kept in one place so a moved installer only needs a one-line change.
 const CLAUDE_SH: &str = "curl -fsSL https://claude.ai/install.sh | bash";
@@ -29,6 +31,14 @@ pub enum InstallStarted {
     Package { path: String },
     /// A prerequisite is missing; the user was sent to its download page.
     NeedsNode,
+}
+
+#[cfg(any(target_os = "macos", windows))]
+fn finished() -> &'static str {
+    tr(
+        "安装结束，可以关闭这个窗口，回到 Cloudborne 点「重新检测」。",
+        "Done. You can close this window and click Re-check in Cloudborne.",
+    )
 }
 
 fn script_for(tool: ToolId) -> Option<&'static str> {
@@ -60,8 +70,8 @@ pub async fn install(tool: ToolId, home: &Path) -> Result<InstallStarted> {
 #[cfg(target_os = "macos")]
 fn run_in_terminal(tool: ToolId, script: &str) -> Result<()> {
     // Terminal starts a login shell, so the user's PATH (npm, nvm) applies.
-    let banner = format!("echo '正在安装 {}…'; ", tool.display_name());
-    let done = "; echo; echo '安装结束，可以关闭这个窗口，回到 Cloudborne 点「重新检测」。'";
+    let banner = tr_fmt!("echo '正在安装 {}…'; ", "echo 'Installing {}…'; ", tool.display_name());
+    let done = format!("; echo; echo '{}'", finished());
     let cmd = format!("{banner}{script}{done}");
     let osa = format!(
         "tell application \"Terminal\"\nactivate\ndo script \"{}\"\nend tell",
@@ -71,27 +81,28 @@ fn run_in_terminal(tool: ToolId, script: &str) -> Result<()> {
         .arg("-e")
         .arg(osa)
         .spawn()
-        .map_err(|e| Error::Other(format!("无法打开终端：{e}")))?;
+        .map_err(|e| Error::Other(tr_fmt!("无法打开终端：{e}", "Could not open Terminal: {e}")))?;
     Ok(())
 }
 
 #[cfg(windows)]
 fn run_in_terminal(tool: ToolId, script: &str) -> Result<()> {
     let cmd = format!(
-        "Write-Host '正在安装 {}…'; {script}; Write-Host ''; Write-Host '安装结束，可以关闭这个窗口，回到 Cloudborne 点「重新检测」。'",
-        tool.display_name()
+        "Write-Host '{}'; {script}; Write-Host ''; Write-Host '{}'",
+        tr_fmt!("正在安装 {}…", "Installing {}…", tool.display_name()),
+        finished()
     );
     // `start` opens a new console window that stays open after the script.
     Command::new("cmd")
         .args(["/C", "start", "", "powershell", "-NoExit", "-ExecutionPolicy", "Bypass", "-Command", &cmd])
         .spawn()
-        .map_err(|e| Error::Other(format!("无法打开 PowerShell：{e}")))?;
+        .map_err(|e| Error::Other(tr_fmt!("无法打开 PowerShell：{e}", "Could not open PowerShell: {e}")))?;
     Ok(())
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
 fn run_in_terminal(_tool: ToolId, _script: &str) -> Result<()> {
-    Err(Error::Other("当前系统不支持一键安装".into()))
+    Err(Error::Other(tr("当前系统不支持一键安装", "One-click install is not supported on this system").into()))
 }
 
 fn zcode_platform() -> Result<(&'static str, &'static str, &'static str)> {
@@ -101,7 +112,7 @@ fn zcode_platform() -> Result<(&'static str, &'static str, &'static str)> {
         ("macos", _) => Ok(("macos-x64", "mac-x64", "dmg")),
         ("windows", "aarch64") => Ok(("windows-arm64", "win-arm64", "exe")),
         ("windows", _) => Ok(("windows-x64", "win-x64", "exe")),
-        _ => Err(Error::Other("ZCode 没有这个系统的安装包".into())),
+        _ => Err(Error::Other(tr("ZCode 没有这个系统的安装包", "ZCode has no installer for this system").into())),
     }
 }
 
@@ -141,7 +152,7 @@ async fn download_zcode() -> Result<PathBuf> {
             .send()
             .await
             .and_then(|r| r.error_for_status())
-            .map_err(|e| Error::Network(format!("下载 ZCode 失败：{e}")))?;
+            .map_err(|e| Error::Network(tr_fmt!("下载 ZCode 失败：{e}", "ZCode download failed: {e}")))?;
         let bytes = resp.bytes().await.map_err(|e| Error::Network(e.to_string()))?;
         let part = dest.with_extension("part");
         tokio::fs::write(&part, &bytes).await.map_err(|e| Error::io(&part, e))?;

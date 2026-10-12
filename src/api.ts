@@ -48,11 +48,12 @@ export const api = {
   disconnect: (tool: ToolId, deleteKey: boolean) => invoke<string[]>('disconnect_tool', { tool, deleteKey }),
   install: (tool: ToolId) => invoke<InstallStarted>('install_tool', { tool }),
   relayOrigin: () => invoke<string>('relay_origin'),
+  setLanguage: (code: string) => invoke<void>('set_language', { code }),
 };
 
 /** Tauri rejects with the Rust error's string form. */
-export function errorText(e: unknown): string {
+export function errorText(e: unknown, fallback: string): string {
   if (typeof e === 'string') return e;
   if (e instanceof Error) return e.message;
-  return '出了点问题，请重试';
+  return fallback;
 }

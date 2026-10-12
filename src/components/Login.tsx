@@ -1,8 +1,11 @@
 import { useState, type FormEvent, type MouseEvent, type ReactNode } from 'react';
 import { api, errorText, type User } from '../api';
+import { useI18n } from '../i18n';
 import { Hero } from './Hero';
+import { LanguagePicker } from './LanguagePicker';
 
 export function Login({ onDone, update }: { onDone: (u: User) => void; update?: ReactNode }) {
+  const { t } = useI18n();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
@@ -19,7 +22,7 @@ export function Login({ onDone, update }: { onDone: (u: User) => void; update?: 
       if (r.kind === 'done') onDone(r.user);
       else setTwoFactor(r.email_masked);
     } catch (err) {
-      setError(errorText(err));
+      setError(errorText(err, t('common.genericError')));
     } finally {
       setBusy(false);
     }
@@ -33,18 +36,21 @@ export function Login({ onDone, update }: { onDone: (u: User) => void; update?: 
 
   return (
     <div className="login-shell h-full">
-      <aside className="brand-panel">
+      <aside className="brand-panel" data-tauri-drag-region="deep">
         <Hero />
       </aside>
 
-      <section className="dot-field flex min-h-0 flex-col px-8" onMouseMove={trackPointer}>
-        <div className="flex h-12 shrink-0 items-center justify-end pt-2">{update}</div>
+      <section className="dot-field flex min-h-0 flex-col px-8" onMouseMove={trackPointer} data-tauri-drag-region>
+        <div className="flex h-14 shrink-0 items-center justify-end gap-2 pt-3">
+          {update}
+          <LanguagePicker />
+        </div>
         <form key={twoFactor === null ? 'password' : 'totp'} onSubmit={submit} className="login-form">
           <h1 className="text-[28px] font-extrabold leading-9 tracking-tight">
-            {twoFactor === null ? '登录 Cloudborne' : '两步验证'}
+            {twoFactor === null ? t('login.title') : t('login.twoFactor')}
           </h1>
           {twoFactor !== null && (
-            <p className="text-sm text-ink-2">输入 {twoFactor || '你的账号'} 绑定的验证器里的 6 位数字</p>
+            <p className="text-sm text-ink-2">{t('login.twoFactorHint', { email: twoFactor || t('login.yourAccount') })}</p>
           )}
 
           <div className="mt-3 space-y-3">
@@ -54,7 +60,7 @@ export function Login({ onDone, update }: { onDone: (u: User) => void; update?: 
                   className="field"
                   type="email"
                   autoComplete="username"
-                  placeholder="邮箱"
+                  placeholder={t('login.email')}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -64,7 +70,7 @@ export function Login({ onDone, update }: { onDone: (u: User) => void; update?: 
                   className="field"
                   type="password"
                   autoComplete="current-password"
-                  placeholder="密码"
+                  placeholder={t('login.password')}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -88,7 +94,7 @@ export function Login({ onDone, update }: { onDone: (u: User) => void; update?: 
           {error && <p className="text-sm text-[#c2410c]">{error}</p>}
 
           <button className="btn btn-primary mt-3 h-11 w-full" disabled={busy}>
-            {busy ? '请稍候…' : twoFactor === null ? '登录' : '验证'}
+            {busy ? t('common.wait') : twoFactor === null ? t('login.submit') : t('login.verify')}
           </button>
 
           {twoFactor !== null && (
@@ -101,7 +107,7 @@ export function Login({ onDone, update }: { onDone: (u: User) => void; update?: 
                 setError('');
               }}
             >
-              返回
+              {t('login.back')}
             </button>
           )}
         </form>

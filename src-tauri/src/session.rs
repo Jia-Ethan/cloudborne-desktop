@@ -9,7 +9,9 @@ use tokio::sync::Mutex;
 use crate::api::{Client, Tokens, DEFAULT_ORIGIN};
 use crate::error::{Error, Result};
 
-const SERVICE: &str = "cn.cloudborne.desktop";
+// Debug builds keep their own entries so they never touch (or prompt for)
+// the installed app's session.
+const SERVICE: &str = if cfg!(debug_assertions) { "cn.cloudborne.desktop.dev" } else { "cn.cloudborne.desktop" };
 const ACCOUNT: &str = "session";
 const DEVICE: &str = "device";
 

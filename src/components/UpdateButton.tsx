@@ -1,50 +1,24 @@
-import type { useUpdater } from '../update';
+import { useI18n, type T } from '../i18n';
+import type { UpdateState, Updater } from '../update';
 
-type Updater = ReturnType<typeof useUpdater>;
+/** Label for an update that is on offer or being installed. */
+export function updateLabel(state: UpdateState, t: T): string | null {
+  if (state.kind === 'available') return t('menu.updateTo', { version: state.version });
+  if (state.kind !== 'installing') return null;
+  if (state.percent === null) return t('update.downloading');
+  return state.percent < 100 ? t('update.downloadingPct', { pct: state.percent }) : t('update.installing');
+}
 
-/**
- * Header control: the current version doubles as "check for updates"; once a
- * newer release is found it turns into the update-and-restart button.
- */
-export function UpdateButton({ updater, onlyWhenAvailable = false }: { updater: Updater; onlyWhenAvailable?: boolean }) {
-  const { state, current } = updater;
-
-  if (state.kind === 'available' || state.kind === 'installing') {
-    const installing = state.kind === 'installing';
-    return (
-      <button className="btn btn-primary update-pill h-8 px-3.5 text-[13px]" disabled={installing} onClick={updater.install}>
-        {!installing && <span className="update-dot" />}
-        {installing
-          ? state.percent === null
-            ? '正在下载…'
-            : state.percent < 100
-              ? `正在下载 ${state.percent}%`
-              : '正在安装…'
-          : `更新到 v${state.version}`}
-      </button>
-    );
-  }
-
-  if (onlyWhenAvailable) return null;
-
-  const label =
-    state.kind === 'checking'
-      ? '正在检查…'
-      : state.kind === 'latest'
-        ? '已是最新版本'
-        : state.kind === 'error'
-          ? '检查失败'
-          : current
-            ? `v${current}`
-            : '检查更新';
-
+/** Pill shown only while a newer release is available or installing. */
+export function UpdateButton({ updater }: { updater: Updater }) {
+  const { t } = useI18n();
+  const { state } = updater;
+  const label = updateLabel(state, t);
+  if (!label) return null;
+  const installing = state.kind === 'installing';
   return (
-    <button
-      className="btn btn-quiet h-8 px-3 text-[13px] font-medium text-ink-2"
-      title={state.kind === 'error' ? state.message : '检查更新'}
-      disabled={state.kind === 'checking'}
-      onClick={updater.check}
-    >
+    <button className="btn btn-primary update-pill h-8 px-3.5 text-[13px]" disabled={installing} onClick={updater.install}>
+      {!installing && <span className="update-dot" />}
       {label}
     </button>
   );

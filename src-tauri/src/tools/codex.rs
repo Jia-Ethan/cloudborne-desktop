@@ -10,6 +10,7 @@ use toml_edit::{DocumentMut, Item};
 
 use super::Connection;
 use crate::error::{Error, Result};
+use crate::lang::tr;
 use crate::fsx;
 
 pub const PROVIDER_ID: &str = "cloudborne";
@@ -90,7 +91,7 @@ pub fn connect(home: &Path, conn: &Connection) -> Result<Vec<PathBuf>> {
         if ok {
             Ok(())
         } else {
-            Err(Error::Config("写入后校验失败：model_provider 未指向 cloudborne".into()))
+            Err(Error::Config(tr("写入后校验失败：model_provider 未指向 cloudborne", "Check after writing failed: model_provider does not point to cloudborne").into()))
         }
     })?;
     Ok(bak.into_iter().collect())
@@ -126,7 +127,7 @@ pub fn disconnect(home: &Path) -> Result<Vec<PathBuf>> {
     let bak = fsx::replace_verified(&path, &new, |t| {
         let d = parse(t)?;
         if d.get("model_provider").and_then(Item::as_str) == Some(PROVIDER_ID) {
-            return Err(Error::Config("断开后 model_provider 仍指向 cloudborne".into()));
+            return Err(Error::Config(tr("断开后 model_provider 仍指向 cloudborne", "model_provider still points to cloudborne after disconnecting").into()));
         }
         Ok(())
     })?;

@@ -1,18 +1,24 @@
 import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import { api, errorText, type ToolStatus, type User } from './api';
+import { About } from './components/About';
+import { AccountMenu } from './components/AccountMenu';
+import { Icon } from './components/Icon';
 import { Login } from './components/Login';
 import { Mark } from './components/Mark';
 import { ToolCard } from './components/ToolCard';
 import { UpdateButton } from './components/UpdateButton';
+import { useI18n } from './i18n';
 import { useUpdater } from './update';
 
 const usd = (n: number) => `$${n.toFixed(2)}`;
 
 export function App() {
+  const { t } = useI18n();
   const [user, setUser] = useState<User | null | undefined>(undefined);
   const [tools, setTools] = useState<ToolStatus[]>([]);
   const [toast, setToast] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [about, setAbout] = useState(false);
   const updater = useUpdater();
 
   const loadTools = useCallback(async () => {
@@ -25,27 +31,28 @@ export function App() {
       const [u] = await Promise.all([api.me(), loadTools()]);
       setUser(u);
     } catch (e) {
-      setToast(errorText(e));
+      setToast(errorText(e, t('common.genericError')));
     } finally {
       setRefreshing(false);
     }
-  }, [loadTools]);
+  }, [loadTools, t]);
 
   useEffect(() => {
+    // Once on launch; switching language must not refetch.
     refresh();
-  }, [refresh]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(''), 5000);
-    return () => clearTimeout(t);
+    const id = setTimeout(() => setToast(''), 5000);
+    return () => clearTimeout(id);
   }, [toast]);
 
-  if (user === undefined) return <div className="dawn h-full" />;
+  if (user === undefined) return <div className="h-full" data-tauri-drag-region />;
   if (user === null)
     return (
       <Login
-        update={<UpdateButton updater={updater} onlyWhenAvailable />}
+        update={<UpdateButton updater={updater} />}
         onDone={(u) => {
           setUser(u);
           loadTools();
@@ -54,79 +61,86 @@ export function App() {
     );
 
   return (
-    <div className="dawn flex h-full flex-col overflow-hidden">
-      <header className="rise flex items-center gap-3 px-8 pt-7">
-        <Mark className="h-7" />
-        <span className="text-[17px] font-semibold tracking-tight">Cloudborne</span>
-        <span className="text-[13px] text-ink-3">栖云</span>
-        <div className="ml-auto flex items-center gap-2">
-          <UpdateButton updater={updater} />
-          <span className="max-w-[220px] truncate text-[13px] text-ink-2">{user.email}</span>
-          <button
-            className="btn btn-quiet h-8 px-3 text-[13px]"
-            onClick={async () => {
+    <div className="workspace">
+      <div className="drag-strip" data-tauri-drag-region />
+
+      <aside className="sidebar">
+        <div className="sidebar-brand" data-tauri-drag-region>
+          <Mark className="h-[18px]" />
+          <span>Cloudborne</span>
+        </div>
+        <nav className="grid gap-0.5" aria-label={t('nav.main')}>
+          <button className="nav-item selected" aria-current="page">
+            <Icon name="home" className="size-[17px]" />
+            {t('nav.home')}
+          </button>
+        </nav>
+        <div className="sidebar-footer">
+          <AccountMenu
+            user={user}
+            updater={updater}
+            onAbout={() => setAbout(true)}
+            onLogout={async () => {
               await api.logout();
               setUser(null);
             }}
-          >
-            退出
-          </button>
+          />
         </div>
-      </header>
+      </aside>
 
-      <main className="flex-1 overflow-y-auto px-8 pb-8 pt-6">
-        <section className="card rise flex items-center gap-4 px-6 py-5" style={{ '--i': 1 } as CSSProperties}>
-          <div>
-            <p className="text-[13px] text-ink-3">钱包余额</p>
-            <p className="mt-0.5 text-[28px] font-semibold tracking-tight tabular-nums">{usd(user.balance)}</p>
+      <main className="main-pane">
+        <div className="aurora-header" aria-hidden />
+        <div className="main-scroll">
+          <div className="main-column">
+            <div className="balance-row rise" style={{ '--i': 0 } as CSSProperties}>
+              <div className="wallet">
+                <span className="wallet-label">{t('home.balance')}</span>
+                <span className="wallet-amount">{usd(user.balance)}</span>
+                <button
+                  className="wallet-refresh"
+                  title={t('home.refresh')}
+                  aria-label={t('home.refresh')}
+                  disabled={refreshing}
+                  onClick={refresh}
+                >
+                  <Icon name="refresh" className={`size-[15px] ${refreshing ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+              <UpdateButton updater={updater} />
+            </div>
+
+            <div className="rise mb-2.5 mt-7 flex items-baseline justify-between px-1" style={{ '--i': 1 } as CSSProperties}>
+              <h2 className="text-[15px] font-semibold">{t('home.connect')}</h2>
+              <button className="text-[13px] text-ink-3 transition-colors hover:text-ink" onClick={loadTools}>
+                {t('home.recheck')}
+              </button>
+            </div>
+            <div className="grid gap-2.5">
+              {tools.map((tool, i) => (
+                <ToolCard
+                  key={tool.id}
+                  index={i + 2}
+                  tool={tool}
+                  onChanged={(msg) => {
+                    setToast(msg);
+                    loadTools();
+                  }}
+                />
+              ))}
+            </div>
           </div>
-          <button
-            className="btn btn-quiet ml-2 size-9 p-0"
-            title="刷新"
-            disabled={refreshing}
-            onClick={refresh}
-            aria-label="刷新余额和工具状态"
-          >
-            <svg viewBox="0 0 20 20" className={`size-4 ${refreshing ? 'animate-spin' : ''}`} fill="none">
-              <path
-                d="M16.5 10a6.5 6.5 0 1 1-1.9-4.6M16.5 3.5v3.4h-3.4"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
-        </section>
-
-        <div className="rise mb-3 mt-8 flex items-baseline justify-between" style={{ '--i': 2 } as CSSProperties}>
-          <h2 className="text-[15px] font-semibold">一键接入</h2>
-          <button className="text-[13px] text-ink-3 hover:text-ink" onClick={loadTools}>
-            重新检测
-          </button>
-        </div>
-        <div className="space-y-3">
-          {tools.map((t, i) => (
-            <ToolCard
-              key={t.id}
-              index={i + 3}
-              tool={t}
-              onChanged={(msg) => {
-                setToast(msg);
-                loadTools();
-              }}
-            />
-          ))}
         </div>
       </main>
 
       {toast && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-6 flex justify-center px-6">
-          <div key={toast} className="card toast-in max-w-[560px] px-4 py-2.5 text-[13px] shadow-lg">
+        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-6">
+          <div key={toast} className="toast toast-in">
             {toast}
           </div>
         </div>
       )}
+
+      {about && <About version={updater.current} onClose={() => setAbout(false)} />}
     </div>
   );
 }

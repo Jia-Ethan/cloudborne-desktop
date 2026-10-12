@@ -7,6 +7,7 @@ use tauri::State;
 use crate::api::{ApiKey, Group, LoginOutcome, User};
 use crate::error::{Error, Result};
 use crate::install::{self, InstallStarted};
+use crate::lang::tr;
 use crate::session::Session;
 use crate::tools::{self, detect, Connection, ToolId};
 
@@ -22,7 +23,7 @@ pub async fn login(s: State<'_, Session>, email: String, password: String) -> Re
             *s.pending_2fa.lock().await = Some(temp_token.clone());
         }
         (LoginOutcome::Done { .. }, Some(t)) => s.set_tokens(t).await?,
-        (LoginOutcome::Done { .. }, None) => return Err(Error::Api("登录响应缺少令牌".into())),
+        (LoginOutcome::Done { .. }, None) => return Err(Error::Api(tr("登录响应缺少令牌", "The sign-in response had no token").into())),
     }
     Ok(outcome)
 }
@@ -34,7 +35,7 @@ pub async fn login_2fa(s: State<'_, Session>, code: String) -> Result<LoginOutco
         .lock()
         .await
         .clone()
-        .ok_or_else(|| Error::Other("两步验证已过期，请重新登录".into()))?;
+        .ok_or_else(|| Error::Other(tr("两步验证已过期，请重新登录", "Two-step verification expired. Please sign in again.").into()))?;
     let (outcome, tokens) = s.client.login_2fa(&temp, code.trim()).await?;
     if let Some(t) = tokens {
         s.set_tokens(t).await?;
@@ -175,4 +176,10 @@ pub async fn install_tool(tool: ToolId) -> Result<InstallStarted> {
 #[tauri::command]
 pub fn relay_origin(s: State<'_, Session>) -> String {
     s.client.origin().to_string()
+}
+
+/// The UI's language, for messages produced here.
+#[tauri::command]
+pub fn set_language(code: String) {
+    crate::lang::set(&code);
 }

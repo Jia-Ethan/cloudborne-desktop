@@ -13,6 +13,15 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
+use crate::tr_fmt;
+
+/// Error text for a group that offers no models to generate a config from.
+pub fn no_models(tool: &str) -> String {
+    tr_fmt!(
+        "这个分组没有可用模型，无法为 {tool} 生成配置",
+        "This group has no models, so no {tool} config can be generated"
+    )
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

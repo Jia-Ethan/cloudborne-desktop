@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { api, errorText, type Group, type ToolStatus } from '../api';
+import { useI18n } from '../i18n';
 import { ToolGlyph } from './ToolGlyph';
 
 type Phase = 'idle' | 'picking' | 'working' | 'confirm-disconnect';
@@ -13,6 +14,7 @@ export function ToolCard({
   index: number;
   onChanged: (msg: string) => void;
 }) {
+  const { t } = useI18n();
   const [phase, setPhase] = useState<Phase>('idle');
   const [groups, setGroups] = useState<Group[]>([]);
   const [error, setError] = useState('');
@@ -24,7 +26,7 @@ export function ToolCard({
       onChanged(await fn());
       setPhase('idle');
     } catch (e) {
-      setError(errorText(e));
+      setError(errorText(e, t('common.genericError')));
       setPhase('idle');
     }
   }
@@ -35,7 +37,7 @@ export function ToolCard({
     try {
       const gs = await api.groupsFor(tool.id);
       if (gs.length === 0) {
-        setError('你的账号下没有能给这个工具用的分组');
+        setError(t('tool.noGroups'));
         setPhase('idle');
       } else if (gs.length === 1) {
         await connect(gs[0]);
@@ -44,7 +46,7 @@ export function ToolCard({
         setPhase('picking');
       }
     } catch (e) {
-      setError(errorText(e));
+      setError(errorText(e, t('common.genericError')));
       setPhase('idle');
     }
   }
@@ -52,26 +54,26 @@ export function ToolCard({
   function connect(g: Group) {
     return run(async () => {
       await api.connect(tool.id, g.id);
-      return `${tool.name} 已连接到「${g.name}」分组，重启 ${tool.name} 后生效`;
+      return t('toast.connected', { tool: tool.name, group: g.name });
     });
   }
 
   function install() {
     return run(async () => {
       const r = await api.install(tool.id);
-      if (r.kind === 'needs_node') return '安装 Codex 需要先装 Node.js，已打开下载页';
-      if (r.kind === 'package') return `已下载并打开安装包：${r.path}`;
-      return `已在终端里开始安装 ${tool.name}，装完回来点「重新检测」`;
+      if (r.kind === 'needs_node') return t('toast.needsNode');
+      if (r.kind === 'package') return t('toast.package', { path: r.path });
+      return t('toast.terminal', { tool: tool.name });
     });
   }
 
   const status = tool.error
-    ? { text: '配置文件有问题', dot: 'bg-warn' }
+    ? { text: t('tool.badConfig'), dot: 'bg-warn' }
     : tool.connected
-      ? { text: '已连接 Cloudborne', dot: 'bg-ok' }
+      ? { text: t('tool.connected'), dot: 'bg-ok' }
       : tool.installed
-        ? { text: '已安装', dot: 'bg-ink-3' }
-        : { text: '未安装', dot: 'bg-ink-3/40' };
+        ? { text: t('tool.installed'), dot: 'bg-ink-3' }
+        : { text: t('tool.notInstalled'), dot: 'bg-ink-3/40' };
 
   const busy = phase === 'working';
 
@@ -84,7 +86,7 @@ export function ToolCard({
   }, [tool.connected]);
 
   return (
-    <div className="card rise lift p-5" style={{ '--i': index } as CSSProperties}>
+    <div className="card tool-card rise lift" style={{ '--i': index } as CSSProperties}>
       <div className="flex items-center gap-4">
         <div className="relative shrink-0">
           <ToolGlyph id={tool.id} />
@@ -112,26 +114,26 @@ export function ToolCard({
           {tool.connected ? (
             <>
               <button className="btn btn-quiet" disabled={busy} onClick={startConnect}>
-                更新配置
+                {t('tool.update')}
               </button>
               <button className="btn btn-quiet" disabled={busy} onClick={() => setPhase('confirm-disconnect')}>
-                断开
+                {t('tool.disconnect')}
               </button>
             </>
           ) : tool.installed || tool.id === 'codex' ? (
             <>
               {!tool.installed && (
                 <button className="btn btn-quiet" disabled={busy} onClick={install}>
-                  安装 CLI
+                  {t('tool.installCli')}
                 </button>
               )}
               <button className="btn btn-primary" disabled={busy || !!tool.error} onClick={startConnect}>
-                {busy ? '处理中…' : '连接 Cloudborne'}
+                {busy ? t('tool.working') : t('tool.connectCta')}
               </button>
             </>
           ) : (
             <button className="btn btn-primary" disabled={busy} onClick={install}>
-              {busy ? '处理中…' : '一键安装'}
+              {busy ? t('tool.working') : t('tool.install')}
             </button>
           )}
         </div>
@@ -139,7 +141,7 @@ export function ToolCard({
 
       {phase === 'picking' && (
         <div className="slide-in mt-4 border-t border-line pt-4">
-          <p className="mb-2.5 text-[13px] text-ink-2">选择要用的分组：</p>
+          <p className="mb-2.5 text-[13px] text-ink-2">{t('tool.pickGroup')}</p>
           <div className="flex flex-wrap gap-2">
             {groups.map((g) => (
               <button key={g.id} className="btn btn-quiet" onClick={() => connect(g)}>
@@ -150,7 +152,7 @@ export function ToolCard({
               </button>
             ))}
             <button className="btn text-ink-3" onClick={() => setPhase('idle')}>
-              取消
+              {t('common.cancel')}
             </button>
           </div>
         </div>
@@ -158,21 +160,21 @@ export function ToolCard({
 
       {phase === 'confirm-disconnect' && (
         <div className="slide-in mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-4">
-          <p className="mr-auto text-[13px] text-ink-2">断开后恢复成连接前的配置。要不要同时删除中转站上的专用密钥？</p>
+          <p className="mr-auto text-[13px] text-ink-2">{t('tool.disconnectAsk')}</p>
           <button
             className="btn btn-quiet"
-            onClick={() => run(async () => (await api.disconnect(tool.id, false), `${tool.name} 已断开`))}
+            onClick={() => run(async () => (await api.disconnect(tool.id, false), t('toast.disconnected', { tool: tool.name })))}
           >
-            只断开
+            {t('tool.disconnectOnly')}
           </button>
           <button
             className="btn btn-primary"
-            onClick={() => run(async () => (await api.disconnect(tool.id, true), `${tool.name} 已断开，专用密钥已删除`))}
+            onClick={() => run(async () => (await api.disconnect(tool.id, true), t('toast.disconnectedDeleted', { tool: tool.name })))}
           >
-            断开并删除密钥
+            {t('tool.disconnectAndDelete')}
           </button>
           <button className="btn text-ink-3" onClick={() => setPhase('idle')}>
-            取消
+            {t('common.cancel')}
           </button>
         </div>
       )}

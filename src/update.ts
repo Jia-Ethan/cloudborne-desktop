@@ -9,7 +9,7 @@ export type UpdateState =
   | { kind: 'latest' }
   | { kind: 'available'; version: string }
   | { kind: 'installing'; percent: number | null }
-  | { kind: 'error'; message: string };
+  | { kind: 'error'; phase: 'check' | 'install'; message: string };
 
 const RECHECK_MS = 6 * 60 * 60 * 1000;
 
@@ -31,7 +31,7 @@ export function useUpdater() {
       if (u) setState({ kind: 'available', version: u.version });
       else if (manual) setState({ kind: 'latest' });
     } catch (e) {
-      if (manual) setState({ kind: 'error', message: `检查更新失败：${String(e)}` });
+      if (manual) setState({ kind: 'error', phase: 'check', message: String(e) });
     }
   }, []);
 
@@ -51,7 +51,7 @@ export function useUpdater() {
       });
       await relaunch();
     } catch (e) {
-      setState({ kind: 'error', message: `更新失败：${String(e)}` });
+      setState({ kind: 'error', phase: 'install', message: String(e) });
     }
   }, []);
 
@@ -65,7 +65,7 @@ export function useUpdater() {
     };
   }, [run]);
 
-  // "Already latest" and errors fade back to the plain button.
+  // "Already latest" and errors fade back to the plain item.
   useEffect(() => {
     if (state.kind !== 'latest' && state.kind !== 'error') return;
     const t = setTimeout(() => setState(pending.current ? { kind: 'available', version: pending.current.version } : { kind: 'idle' }), 4000);
@@ -74,3 +74,5 @@ export function useUpdater() {
 
   return { state, current, check: () => run(true), install };
 }
+
+export type Updater = ReturnType<typeof useUpdater>;
