@@ -1,6 +1,7 @@
 // Cloudborne brand assets: app icon + standalone mark, generated from geometry.
 // Usage: node brand/build.mjs  ->  brand/dist/*.svg
 import { mkdirSync, writeFileSync } from 'node:fs';
+import pc from 'polygon-clipping';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -34,7 +35,37 @@ function spiral(cx, cy, a0, a1, rf, n = 160) {
   return 'M' + p.map(q => q.map(f).join(',')).join('L');
 }
 
-// 云起 mark: three-lobe cloud, right lobe carved into a 祥云 curl, sparkles in the dome
+function circlePts(cx, cy, r, n = 128) {
+  const p = [];
+  for (let i = 0; i < n; i++) { const a = (i / n) * 2 * Math.PI; p.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); }
+  return p;
+}
+function sparklePts(cx, cy, s, k = 0.12, n = 24) {
+  const tips = [[0, -s], [s, 0], [0, s], [-s, 0]], p = [];
+  for (let q = 0; q < 4; q++) {
+    const [ax, ay] = tips[q], [bx, by] = tips[(q + 1) % 4];
+    const c = [(ax + bx) * k, (ay + by) * k];
+    for (let i = 0; i < n; i++) {
+      const t = i / n;
+      p.push([cx + (1 - t) ** 2 * ax + 2 * (1 - t) * t * c[0] + t * t * bx, cy + (1 - t) ** 2 * ay + 2 * (1 - t) * t * c[1] + t * t * by]);
+    }
+  }
+  return p;
+}
+// stroke outline of a polyline with round caps
+function strokePts(line, w) {
+  const h = w / 2, L = [], R = [];
+  for (let i = 0; i < line.length; i++) {
+    const a = line[Math.max(0, i - 1)], b = line[Math.min(line.length - 1, i + 1)];
+    let dx = b[0] - a[0], dy = b[1] - a[1]; const m = Math.hypot(dx, dy); dx /= m; dy /= m;
+    L.push([line[i][0] - dy * h, line[i][1] + dx * h]); R.push([line[i][0] + dy * h, line[i][1] - dx * h]);
+  }
+  return [[L.concat(R.reverse())], [circlePts(...line[0], h, 32)], [circlePts(...line.at(-1), h, 32)]];
+}
+const polyD = mp => mp.map(poly => poly.map(ring =>
+  'M' + ring.slice(0, -1).map(q => q.map(f).join(',')).join('L') + 'Z').join('')).join('');
+
+// 栖云 mark: three-lobe cloud, right lobe carved into a 祥云 curl, sparkles in the dome
 const C = { mx: 482, my: 470, mr: 140, lx: 356, ly: 574, lr: 84, rx: 650, ry: 558, rr: 100, base: 658 };
 const CLOUD = `<circle cx="${C.mx}" cy="${C.my}" r="${C.mr}"/>` +
   `<circle cx="${C.lx}" cy="${C.ly}" r="${C.lr}"/>` +
@@ -42,6 +73,23 @@ const CLOUD = `<circle cx="${C.mx}" cy="${C.my}" r="${C.mr}"/>` +
   `<rect x="${C.lx}" y="${C.ly}" width="${C.rx - C.lx}" height="${C.base - C.ly}"/>`;
 const SPARKLES = sparkle(C.mx - 4, C.my + 14, 56) + sparkle(C.lx + 30, C.ly - 8, 21);
 const CURL = spiral(C.rx, C.ry, 198, 198 + 360 * 1.12, t => (C.rr - 6) * (1 - t) ** 1.25 + 16 * t);
+function spiralPts(cx, cy, a0, a1, rf, n = 220) {
+  const p = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n, a = (a0 + (a1 - a0) * t) * Math.PI / 180;
+    p.push([cx + rf(t) * Math.cos(a), cy + rf(t) * Math.sin(a)]);
+  }
+  return p;
+}
+// same mark as one even-odd path, for renderers without mask support (Satori, favicons)
+const MARK_PATH = (() => {
+  const body = pc.union(
+    [circlePts(C.mx, C.my, C.mr, 180)], [circlePts(C.lx, C.ly, C.lr)], [circlePts(C.rx, C.ry, C.rr)],
+    [[[C.lx, C.ly], [C.rx, C.ly], [C.rx, C.base], [C.lx, C.base]]]);
+  const curl = spiralPts(C.rx, C.ry, 198, 198 + 360 * 1.12, t => (C.rr - 6) * (1 - t) ** 1.25 + 16 * t);
+  return polyD(pc.difference(body, ...strokePts(curl, 23),
+    [sparklePts(C.mx - 4, C.my + 14, 56)], [sparklePts(C.lx + 30, C.ly - 8, 21)]));
+})();
 // glyph bounds: x 272..750, y 330..658
 const MARK_BOX = { x: 272, y: 330, w: 478, h: 328 };
 
@@ -51,8 +99,14 @@ const cutMask = id => `<mask id="${id}" maskUnits="userSpaceOnUse" x="0" y="0" w
 
 const PALETTE = { top: '#C9D3FF', mid: '#FCDCE6', bot: '#FFC4A3', sun: '#FF8D5C', sky: '#94B1FF', rose: '#FFAFCB', ink: '#141414' };
 
-function appIcon(p = PALETTE) {
-  const SQ = squircle(100, 100, 824);
+// shape: 'squircle' (macOS app icon) | 'square' (full-bleed, for avatars cropped to a circle)
+function appIcon(p = PALETTE, shape = 'squircle') {
+  const SQ = shape === 'square' ? 'M0,0H1024V1024H0Z' : squircle(100, 100, 824);
+  const frame = shape === 'square' ? '' : `<path d="${SQ}" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width="2.5"/>`;
+  // avatars get a larger glyph: the circular crop eats the corners anyway
+  const glyph = shape === 'square'
+    ? `<g transform="translate(512 512) scale(1.32) translate(-511 -494)" fill="${p.ink}"><path fill-rule="evenodd" d="${MARK_PATH}"/></g>`
+    : `<g fill="${p.ink}" mask="url(#cut)">${CLOUD}</g>`;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
 <defs>
   <clipPath id="sq"><path d="${SQ}"/></clipPath>
@@ -73,7 +127,7 @@ function appIcon(p = PALETTE) {
   </filter>
   ${cutMask('cut')}
 </defs>
-<g filter="url(#shadow)"><path d="${SQ}" fill="url(#base)"/></g>
+<g ${shape === 'square' ? '' : 'filter="url(#shadow)"'}><path d="${SQ}" fill="url(#base)"/></g>
 <g clip-path="url(#sq)">
   <rect width="1024" height="1024" fill="url(#rose)"/>
   <rect width="1024" height="1024" fill="url(#sky)"/>
@@ -83,8 +137,8 @@ function appIcon(p = PALETTE) {
   <rect width="1024" height="1024" fill="url(#glow)"/>
   <rect width="1024" height="1024" filter="url(#grain)"/>
 </g>
-<path d="${SQ}" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width="2.5"/>
-<g fill="${p.ink}" mask="url(#cut)">${CLOUD}</g>
+${frame}
+${glyph}
 </svg>
 `;
 }
@@ -93,15 +147,16 @@ function appIcon(p = PALETTE) {
 function mark(fill = 'currentColor', pad = 24) {
   const b = MARK_BOX, vb = `${b.x - pad} ${b.y - pad} ${b.w + pad * 2} ${b.h + pad * 2}`;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}" fill="${fill}">
-<defs>${cutMask('cb-cut')}</defs>
-<g mask="url(#cb-cut)">${CLOUD}</g>
+<path fill-rule="evenodd" d="${MARK_PATH}"/>
 </svg>
 `;
 }
 
 mkdirSync(OUT, { recursive: true });
 writeFileSync(join(OUT, 'app-icon.svg'), appIcon());
+writeFileSync(join(OUT, 'avatar.svg'), appIcon(PALETTE, 'square'));
 writeFileSync(join(OUT, 'mark.svg'), mark());
 writeFileSync(join(OUT, 'mark-ink.svg'), mark(PALETTE.ink));
 writeFileSync(join(OUT, 'mark-white.svg'), mark('#FFFFFF'));
+writeFileSync(join(OUT, 'mark-path.json'), JSON.stringify({ viewBox: [MARK_BOX.x, MARK_BOX.y, MARK_BOX.w, MARK_BOX.h], d: MARK_PATH }) + '\n');
 console.log('wrote', OUT);

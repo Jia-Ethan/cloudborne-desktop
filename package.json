@@ -1,0 +1,11 @@
+{
+  "name": "cloudborne-desktop",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "brand": "node brand/build.mjs && brand/render.sh"
+  },
+  "devDependencies": {
+    "polygon-clipping": "0.15.7"
+  }
+}
