@@ -71,6 +71,16 @@ pub fn read_or_empty(path: &Path) -> Result<String> {
     }
 }
 
+/// Pretty-prints JSON the way the tools write it (two-space indent), keeping
+/// the original file's trailing-newline choice so a round trip is byte-exact.
+pub fn render_json_like(value: &serde_json::Value, original: &str) -> String {
+    let mut s = serde_json::to_string_pretty(value).unwrap_or_else(|_| "{}".into());
+    if original.is_empty() || original.ends_with('\n') {
+        s.push('\n');
+    }
+    s
+}
+
 /// Byte range of our marked block (including the trailing newline), if present.
 fn block_range(text: &str) -> Result<Option<(usize, usize)>> {
     let Some(start) = text.find(BLOCK_BEGIN) else {

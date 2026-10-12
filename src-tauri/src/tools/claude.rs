@@ -34,11 +34,13 @@ fn load(path: &Path) -> Result<Map<String, Value>> {
     }
 }
 
-fn render(m: &Map<String, Value>) -> String {
-    let mut s = serde_json::to_string_pretty(m).unwrap_or_else(|_| "{}".into());
-    s.push('\n');
-    s
+fn render(m: &Map<String, Value>, original: &str) -> String {
+    fsx::render_json_like(&Value::Object(m.clone()), original)
 }
+
+// Key under which the original order of `env` is recorded, so a key we parked
+// goes back to the same position.
+const ORDER: &str = "__env_order";
 
 fn env_of(m: &Map<String, Value>) -> Option<&Map<String, Value>> {
     m.get("env").and_then(Value::as_object)
@@ -55,6 +57,7 @@ pub fn is_connected(home: &Path) -> Result<bool> {
 
 pub fn connect(home: &Path, conn: &Connection) -> Result<Vec<PathBuf>> {
     let path = settings_path(home);
+    let raw = fsx::read_or_empty(&path)?;
     let mut m = load(&path)?;
     let mut st = state::load(home)?;
 
@@ -70,10 +73,11 @@ pub fn connect(home: &Path, conn: &Connection) -> Result<Vec<PathBuf>> {
     // Record originals only on the first connect, so reconnecting does not
     // mistake our own values for the user's.
     if !st.previous.contains_key(TOOL) {
-        let prev = MANAGED
+        let mut prev: std::collections::BTreeMap<String, Value> = MANAGED
             .iter()
             .map(|k| (k.to_string(), env.get(*k).cloned().unwrap_or(Value::Null)))
             .collect();
+        prev.insert(ORDER.into(), Value::Array(env.keys().cloned().map(Value::String).collect()));
         st.previous.insert(TOOL.into(), prev);
     }
 
@@ -83,7 +87,7 @@ pub fn connect(home: &Path, conn: &Connection) -> Result<Vec<PathBuf>> {
     env.remove(API_KEY);
 
     state::save(home, &st)?;
-    let bak = fsx::replace_verified(&path, &render(&m), |t| {
+    let bak = fsx::replace_verified(&path, &render(&m, &raw), |t| {
         let v: Value = serde_json::from_str(t).map_err(|e| Error::Config(e.to_string()))?;
         if v.pointer("/env/ANTHROPIC_AUTH_TOKEN").is_none() {
             return Err(Error::Config("写入后校验失败：缺少 ANTHROPIC_AUTH_TOKEN".into()));
@@ -99,6 +103,7 @@ pub fn disconnect(home: &Path) -> Result<Vec<PathBuf>> {
         return Ok(vec![]);
     };
     let path = settings_path(home);
+    let raw = fsx::read_or_empty(&path)?;
     let mut m = load(&path)?;
     if let Some(env) = m.get_mut("env").and_then(Value::as_object_mut) {
         for k in MANAGED {
@@ -111,15 +116,30 @@ pub fn disconnect(home: &Path) -> Result<Vec<PathBuf>> {
                 }
             }
         }
+        if let Some(order) = prev.get(ORDER).and_then(Value::as_array) {
+            *env = reorder(std::mem::take(env), order);
+        }
         if env.is_empty() {
             m.remove("env");
         }
     }
-    let bak = fsx::replace_verified(&path, &render(&m), |t| {
+    let bak = fsx::replace_verified(&path, &render(&m, &raw), |t| {
         serde_json::from_str::<Value>(t).map(|_| ()).map_err(|e| Error::Config(e.to_string()))
     })?;
     state::save(home, &st)?;
     Ok(bak.into_iter().collect())
+}
+
+/// Puts keys back in their recorded order; keys added since go after them.
+fn reorder(mut env: Map<String, Value>, order: &[Value]) -> Map<String, Value> {
+    let mut out = Map::new();
+    for k in order.iter().filter_map(Value::as_str) {
+        if let Some(v) = env.remove(k) {
+            out.insert(k.into(), v);
+        }
+    }
+    out.extend(env);
+    out
 }
 
 #[cfg(test)]
@@ -176,6 +196,8 @@ mod tests {
         disconnect(h.path()).unwrap();
         let after: Value = read(&h);
         assert_eq!(after, serde_json::from_str::<Value>(original).unwrap());
+        let env_keys: Vec<_> = after["env"].as_object().unwrap().keys().cloned().collect();
+        assert_eq!(env_keys, ["DISABLE_TELEMETRY", "ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY"]);
         let keys: Vec<_> = after.as_object().unwrap().keys().cloned().collect();
         assert_eq!(keys, ["model", "env", "permissions"]);
     }

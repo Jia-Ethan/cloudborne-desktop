@@ -42,10 +42,8 @@ fn load(path: &Path) -> Result<Map<String, Value>> {
     }
 }
 
-fn render(m: &Map<String, Value>) -> String {
-    let mut s = serde_json::to_string_pretty(m).unwrap_or_else(|_| "{}".into());
-    s.push('\n');
-    s
+fn render(m: &Map<String, Value>, original: &str) -> String {
+    fsx::render_json_like(&Value::Object(m.clone()), original)
 }
 
 fn provider(conn: &Connection) -> Value {
@@ -92,12 +90,15 @@ pub fn connect(home: &Path, conn: &Connection) -> Result<Vec<PathBuf>> {
         return Err(Error::Other("这个分组没有可用模型，无法为 ZCode 生成配置".into()));
     }
     // Parse everything first so a broken second file does not leave the first half-done.
-    let loaded: Vec<(PathBuf, Map<String, Value>)> = targets(home)
+    let loaded: Vec<(PathBuf, String, Map<String, Value>)> = targets(home)
         .into_iter()
-        .map(|p| load(&p).map(|m| (p, m)))
+        .map(|p| {
+            let raw = fsx::read_or_empty(&p)?;
+            load(&p).map(|m| (p, raw, m))
+        })
         .collect::<Result<_>>()?;
     let mut backups = vec![];
-    for (path, mut m) in loaded {
+    for (path, raw, mut m) in loaded {
         if !m.get("provider").map_or(true, Value::is_object) {
             return Err(Error::Config(format!("{}: provider 不是对象", path.display())));
         }
@@ -106,7 +107,7 @@ pub fn connect(home: &Path, conn: &Connection) -> Result<Vec<PathBuf>> {
             .as_object_mut()
             .expect("checked above")
             .insert(PROVIDER_ID.into(), provider(conn));
-        let bak = fsx::replace_verified(&path, &render(&m), |t| {
+        let bak = fsx::replace_verified(&path, &render(&m, &raw), |t| {
             let v: Value = serde_json::from_str(t).map_err(|e| Error::Config(e.to_string()))?;
             match v.pointer(&format!("/provider/{PROVIDER_ID}/options/baseURL")) {
                 Some(_) => Ok(()),
@@ -124,6 +125,7 @@ pub fn disconnect(home: &Path) -> Result<Vec<PathBuf>> {
         if !path.exists() {
             continue;
         }
+        let raw = fsx::read_or_empty(&path)?;
         let mut m = load(&path)?;
         let removed = m
             .get_mut("provider")
@@ -133,7 +135,7 @@ pub fn disconnect(home: &Path) -> Result<Vec<PathBuf>> {
         if !removed {
             continue;
         }
-        let bak = fsx::replace_verified(&path, &render(&m), |t| {
+        let bak = fsx::replace_verified(&path, &render(&m, &raw), |t| {
             serde_json::from_str::<Value>(t).map(|_| ()).map_err(|e| Error::Config(e.to_string()))
         })?;
         backups.extend(bak);
@@ -179,6 +181,19 @@ mod tests {
             assert_eq!(read(&p), serde_json::from_str::<Value>(USER).unwrap());
         }
         assert!(!is_connected(h.path()).unwrap());
+    }
+
+    #[test]
+    fn round_trip_is_byte_exact_without_trailing_newline() {
+        let h = tempfile::tempdir().unwrap();
+        let [desktop, _] = config_paths(h.path());
+        fs::create_dir_all(desktop.parent().unwrap()).unwrap();
+        let original = serde_json::to_string_pretty(&serde_json::from_str::<Value>(USER).unwrap()).unwrap();
+        assert!(!original.ends_with('\n'));
+        fs::write(&desktop, &original).unwrap();
+        connect(h.path(), &test_conn()).unwrap();
+        disconnect(h.path()).unwrap();
+        assert_eq!(fs::read_to_string(&desktop).unwrap(), original);
     }
 
     #[test]

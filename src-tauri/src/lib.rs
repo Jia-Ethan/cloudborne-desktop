@@ -27,3 +27,21 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[doc(hidden)]
+pub fn roundtrip_for_dev(connect_only: bool) {
+    let home = tools::home_dir();
+    let conn = tools::Connection {
+        origin: "https://relay.example".into(),
+        api_key: "sk-sandbox".into(),
+        models: vec!["glm-5.3".into(), "grok-4.7".into()],
+    };
+    for t in tools::ToolId::ALL {
+        let r = tools::connect(t, &home, &conn).map(|_| ());
+        println!("{:?} connect: {:?} connected={:?}", t, r, tools::is_connected(t, &home));
+        if !connect_only {
+            let r = tools::disconnect(t, &home).map(|_| ());
+            println!("{:?} disconnect: {:?} connected={:?}", t, r, tools::is_connected(t, &home));
+        }
+    }
+}
