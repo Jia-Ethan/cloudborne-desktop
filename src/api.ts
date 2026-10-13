@@ -8,6 +8,120 @@ export interface User {
   username: string;
   balance: number;
   status: string;
+  /** `admin` or `user`; empty on relays that do not send it. */
+  role?: string;
+}
+
+export const isAdmin = (u: User | null | undefined) => u?.role === 'admin';
+
+export type Rarity = 'common' | 'rare' | 'epic' | 'legendary';
+export type PrizeKind = 'balance_fixed' | 'cashback' | 'balance_percent' | 'discount' | 'credit' | 'extra_draw' | 'none';
+
+/** A prize as configured by the admin. Percent kinds store fractions (0.05 = 5%). */
+export interface Prize {
+  id: string;
+  name: string;
+  rarity: Rarity;
+  kind: Exclude<PrizeKind, 'none'>;
+  weight: number;
+  min?: number;
+  max?: number;
+  cap?: number;
+  rate?: number;
+  hours?: number;
+  amount?: number;
+}
+
+export interface LotterySettings {
+  enabled: boolean;
+  threshold: number;
+  daily_budget: number;
+  prizes: Prize[];
+}
+
+export interface Draw {
+  id: number;
+  prize_id: string;
+  name: string;
+  rarity: Rarity;
+  kind: PrizeKind;
+  /** Balance granted at draw time (0 for perks). */
+  amount: number;
+  /** What the draw charged against the daily budget. */
+  value: number;
+  detail: Record<string, number | string | undefined>;
+  created_at: string;
+  /** Admin lists only. */
+  user_id?: number;
+  email?: string;
+  username?: string;
+}
+
+export interface Perk {
+  id: number;
+  kind: 'discount' | 'credit';
+  rate?: number;
+  cap?: number;
+  refunded?: number;
+  amount?: number;
+  used?: number;
+  left?: number;
+  expires_at: string;
+}
+
+export interface LotteryStatus {
+  enabled: boolean;
+  threshold: number;
+  today_cost: number;
+  draws_allowed: number;
+  draws_used: number;
+  draws_left: number;
+  prizes: { id: string; name: string; rarity: Rarity; kind: PrizeKind }[];
+  today: Draw[];
+  perks: Perk[];
+}
+
+export interface LotterySummary {
+  date: string;
+  draws: number;
+  participants: number;
+  value: number;
+  budget: number;
+  budget_left: number;
+  by_rarity: Partial<Record<Rarity, number>>;
+  big_wins: Draw[];
+}
+
+export interface AdminUser {
+  id: number;
+  email: string;
+  username: string;
+  role: string;
+  balance: number;
+  status: string;
+  created_at?: string;
+  last_active_at?: string | null;
+  /** Added by the client from the batch usage endpoint. */
+  today_cost?: number;
+  /** Last 30 days. */
+  month_cost?: number;
+}
+
+export interface Page<T> {
+  items: T[];
+  total: number;
+}
+
+export interface AdminOverview {
+  stats: {
+    today_actual_cost: number;
+    today_requests: number;
+    today_tokens: number;
+    active_users: number;
+    total_users: number;
+  };
+  trend: TrendPoint[];
+  models: ModelUsage[];
 }
 
 export type LoginOutcome =
@@ -171,6 +285,27 @@ export const api = {
   openCcSwitch: (url: string) => invoke<void>('open_ccswitch', { url }),
   serviceStatus: () => invoke<{ items: Monitor[] }>('service_status'),
   relayOrigin: () => invoke<string>('relay_origin'),
+  lottery: () => invoke<LotteryStatus>('lottery_status'),
+  lotteryDraw: () => invoke<{ draw: Draw; status: LotteryStatus }>('lottery_draw'),
+  adminOverview: (today: string, start: string, timezone: string) =>
+    invoke<AdminOverview>('admin_overview', { today, start, timezone }),
+  adminUsers: (page: number, pageSize: number, search: string) =>
+    invoke<Page<AdminUser>>('admin_users', { page, pageSize, search }),
+  adminUser: (id: number) => invoke<AdminUser>('admin_user', { id }),
+  adminUserBalance: (id: number, amount: number, add: boolean, notes: string) =>
+    invoke<AdminUser>('admin_user_balance', { id, amount, add, notes }),
+  adminUserStatus: (id: number, active: boolean) => invoke<AdminUser>('admin_user_status', { id, active }),
+  adminLotterySettings: () => invoke<LotterySettings>('admin_lottery_settings'),
+  adminLotterySave: (settings: LotterySettings) => invoke<LotterySettings>('admin_lottery_save', { settings }),
+  adminLotterySummary: (date: string) => invoke<LotterySummary>('admin_lottery_summary', { date }),
+  adminLotteryDraws: (q: { date?: string; rarity?: string; userId?: number; page: number; pageSize: number }) =>
+    invoke<Page<Draw>>('admin_lottery_draws', {
+      date: q.date ?? '',
+      rarity: q.rarity ?? '',
+      userId: q.userId ?? null,
+      page: q.page,
+      pageSize: q.pageSize,
+    }),
   setLanguage: (code: string) => invoke<void>('set_language', { code }),
 };
 

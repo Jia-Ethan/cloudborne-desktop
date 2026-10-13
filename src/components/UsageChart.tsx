@@ -35,6 +35,8 @@ export function UsageChart({ points, metric, hourly }: { points: TrendPoint[]; m
   const bar = Math.max(2, Math.min(28, slot * 0.62));
   const y = (v: number) => PAD.top + ih - (v / top) * ih;
   const fmt = metric === 'cost' ? money : compact;
+  // Axis ticks are round numbers; whole dollars keep large ones inside the gutter.
+  const tick = (v: number) => (metric === 'cost' && v >= 100 ? `$${compact(v)}` : fmt(v));
   const label = (p: TrendPoint) => (hourly ? p.date.slice(11, 13) : p.date.slice(5).replace('-', '/'));
   const every = Math.ceil(points.length / 8);
   const h = hover === null ? null : points[hover];
@@ -46,7 +48,7 @@ export function UsageChart({ points, metric, hourly }: { points: TrendPoint[]; m
           <g key={f}>
             <line x1={PAD.left} x2={W - PAD.right} y1={y(top * f)} y2={y(top * f)} className="usage-grid" />
             <text x={PAD.left - 8} y={y(top * f)} className="usage-axis" textAnchor="end" dominantBaseline="middle">
-              {f === 0 ? '0' : fmt(top * f)}
+              {f === 0 ? '0' : tick(top * f)}
             </text>
           </g>
         ))}

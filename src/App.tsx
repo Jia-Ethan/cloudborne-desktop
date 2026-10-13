@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type CSSProperties } from 'react';
-import { api, errorText, type Rates, type ToolStatus, type User } from './api';
+import { api, errorText, isAdmin, type Rates, type ToolStatus, type User } from './api';
 import { About } from './components/About';
 import { AccountMenu } from './components/AccountMenu';
 import { DiscountBar } from './components/DiscountBar';
@@ -12,13 +12,17 @@ import { UpdateButton } from './components/UpdateButton';
 import { UsageView } from './components/UsageView';
 import { KeysView } from './components/KeysView';
 import { StatusView } from './components/StatusView';
+import { LotteryView } from './components/LotteryView';
+import { AdminOverview } from './components/AdminOverview';
+import { AdminUsers } from './components/AdminUsers';
+import { AdminLottery } from './components/AdminLottery';
 import { useI18n } from './i18n';
 import { useUpdater } from './update';
 import { useAgent } from './useAgent';
 
 const usd = (n: number) => `$${n.toFixed(2)}`;
 
-type View = 'home' | 'task' | 'usage' | 'keys' | 'status';
+type View = 'home' | 'task' | 'usage' | 'lottery' | 'keys' | 'status' | 'admin' | 'adminUsers' | 'adminLottery';
 
 export function App() {
   const { t, lang } = useI18n();
@@ -29,6 +33,9 @@ export function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [about, setAbout] = useState(false);
   const [view, setView] = useState<View>('home');
+  // Shown only once the relay says the lucky draw is on.
+  const [lotteryOn, setLotteryOn] = useState(false);
+  const [userFocus, setUserFocus] = useState<{ id: number; email: string } | null>(null);
   const updater = useUpdater();
   const agent = useAgent(lang, !!user);
 
@@ -77,6 +84,28 @@ export function App() {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const signedIn = !!user;
+  useEffect(() => {
+    if (!signedIn) return;
+    api.lottery().then(
+      (s) => setLotteryOn(s.enabled),
+      () => setLotteryOn(false),
+    );
+  }, [signedIn]);
+
+  // A draw can change the balance; the rest of the app reads it from `user`.
+  const refetchMe = useCallback(() => {
+    api.me().then((u) => u && setUser(u), () => {});
+  }, []);
+  const lotteryOff = useCallback(() => {
+    setLotteryOn(false);
+    setView((v) => (v === 'lottery' ? 'home' : v));
+  }, []);
+  const openUser = useCallback((u: { id: number; email: string }) => {
+    setUserFocus(u);
+    setView('adminUsers');
+  }, []);
+
   useEffect(() => {
     if (!toast) return;
     const id = setTimeout(() => setToast(''), 5000);
@@ -124,6 +153,12 @@ export function App() {
             <Icon name="chart" className="size-[17px]" />
             {t('nav.usage')}
           </button>
+          {lotteryOn && (
+            <button className={`nav-item ${view === 'lottery' ? 'selected' : ''}`} onClick={() => setView('lottery')}>
+              <Icon name="gift" className="size-[17px]" />
+              {t('nav.lottery')}
+            </button>
+          )}
           <button className={`nav-item ${view === 'keys' ? 'selected' : ''}`} onClick={() => setView('keys')}>
             <Icon name="key" className="size-[17px]" />
             {t('nav.keys')}
@@ -133,6 +168,29 @@ export function App() {
             {t('nav.status')}
           </button>
         </nav>
+        {isAdmin(user) && (
+          <nav className="nav-group" aria-label={t('nav.admin')}>
+            <b>{t('nav.admin')}</b>
+            <button className={`nav-item ${view === 'admin' ? 'selected' : ''}`} onClick={() => setView('admin')}>
+              <Icon name="gauge" className="size-[17px]" />
+              {t('nav.adminOverview')}
+            </button>
+            <button
+              className={`nav-item ${view === 'adminUsers' ? 'selected' : ''}`}
+              onClick={() => {
+                setUserFocus(null);
+                setView('adminUsers');
+              }}
+            >
+              <Icon name="users" className="size-[17px]" />
+              {t('nav.adminUsers')}
+            </button>
+            <button className={`nav-item ${view === 'adminLottery' ? 'selected' : ''}`} onClick={() => setView('adminLottery')}>
+              <Icon name="dice" className="size-[17px]" />
+              {t('nav.adminLottery')}
+            </button>
+          </nav>
+        )}
         {agent.summaries.length > 0 && (
           <div className="recent">
             <b>{t('nav.recent')}</b>
@@ -185,6 +243,14 @@ export function App() {
           <KeysView onToast={setToast} />
         ) : view === 'status' ? (
           <StatusView />
+        ) : view === 'lottery' ? (
+          <LotteryView onDrawn={refetchMe} onDisabled={lotteryOff} />
+        ) : view === 'admin' && isAdmin(user) ? (
+          <AdminOverview onOpenUser={openUser} onOpenLottery={() => setView('adminLottery')} />
+        ) : view === 'adminUsers' && isAdmin(user) ? (
+          <AdminUsers key={userFocus?.id ?? 'all'} focus={userFocus} onToast={setToast} />
+        ) : view === 'adminLottery' && isAdmin(user) ? (
+          <AdminLottery onOpenUser={openUser} onToast={setToast} />
         ) : (
           <div className="main-scroll">
             <div className="main-column">

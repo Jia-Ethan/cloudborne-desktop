@@ -7,7 +7,7 @@ use tauri::State;
 
 use crate::agent;
 
-use crate::api::{ApiKey, Group, LoginOutcome, UsageKind, User};
+use crate::api::{ApiKey, Group, LoginOutcome, Method, UsageKind, User};
 use crate::error::{Error, Result};
 use crate::install::{self, InstallStarted};
 use crate::lang::tr;
@@ -349,6 +349,148 @@ pub async fn service_status(s: State<'_, Session>) -> Result<serde_json::Value> 
     s.authed(|a| async move { c.monitors(&a).await }).await
 }
 
+// ---- Lucky draw ----
+
+/// Today's draw status for this account: threshold, progress, draws left,
+/// prize names, today's results and running perks.
+#[tauri::command]
+pub async fn lottery_status(s: State<'_, Session>) -> Result<serde_json::Value> {
+    let c = &s.client;
+    s.authed(|a| async move { c.lottery(&a).await }).await
+}
+
+/// Draws once. The relay picks the prize; returns `{ draw, status }`.
+#[tauri::command]
+pub async fn lottery_draw(s: State<'_, Session>) -> Result<serde_json::Value> {
+    let c = &s.client;
+    s.authed(|a| async move { c.lottery_draw(&a).await }).await
+}
+
+// ---- Admin (ops origin) ----
+
+type Query = Vec<(String, String)>;
+
+async fn admin_call(s: &Session, method: Method, path: &str, query: Query, body: Option<serde_json::Value>) -> Result<serde_json::Value> {
+    let c = &s.client;
+    let (query, body) = (&query, body.as_ref());
+    s.authed(|a| async move { c.admin(&a, method, path, query, body).await }).await
+}
+
+fn q(pairs: &[(&str, &str)]) -> Query {
+    pairs.iter().filter(|(_, v)| !v.is_empty()).map(|(k, v)| (k.to_string(), v.to_string())).collect()
+}
+
+/// Today's totals, today's per-model split and the trend over `start..=end`,
+/// all in `timezone`.
+#[tauri::command]
+pub async fn admin_overview(s: State<'_, Session>, today: String, start: String, timezone: String) -> Result<serde_json::Value> {
+    let s = s.inner();
+    let trend_q = q(&[("start_date", &start), ("end_date", &today), ("timezone", &timezone), ("granularity", "day")]);
+    let models_q = q(&[("start_date", &today), ("end_date", &today), ("timezone", &timezone)]);
+    let (stats, trend, models) = tokio::try_join!(
+        admin_call(s, Method::Get, "/dashboard/stats", vec![], None),
+        admin_call(s, Method::Get, "/dashboard/trend", trend_q, None),
+        admin_call(s, Method::Get, "/dashboard/models", models_q, None),
+    )?;
+    Ok(serde_json::json!({
+        "stats": stats,
+        "trend": trend.get("trend").cloned().unwrap_or_default(),
+        "models": models.get("models").cloned().unwrap_or_default(),
+    }))
+}
+
+/// One page of users, each with `today_cost` and `month_cost` (last 30 days)
+/// added from the batch usage endpoint.
+#[tauri::command]
+pub async fn admin_users(s: State<'_, Session>, page: u32, page_size: u32, search: String) -> Result<serde_json::Value> {
+    let s = s.inner();
+    let (page, size) = (page.max(1).to_string(), page_size.clamp(1, 100).to_string());
+    let query = q(&[("page", &page), ("page_size", &size), ("search", search.trim())]);
+    let mut list = admin_call(s, Method::Get, "/users", query, None).await?;
+    let ids: Vec<i64> = list
+        .get("items")
+        .and_then(|v| v.as_array())
+        .map(|a| a.iter().filter_map(|u| u.get("id")?.as_i64()).collect())
+        .unwrap_or_default();
+    if ids.is_empty() {
+        return Ok(list);
+    }
+    // Spend is extra; the list still shows if it fails.
+    let usage = admin_call(s, Method::Post, "/dashboard/users-usage", vec![], Some(serde_json::json!({ "user_ids": ids })))
+        .await
+        .unwrap_or_default();
+    merge_user_costs(&mut list, &usage);
+    Ok(list)
+}
+
+/// Copies `today_actual_cost` / `total_actual_cost` from the users-usage
+/// response (`{ stats: { "<id>": {...} } }`) onto each listed user.
+pub fn merge_user_costs(list: &mut serde_json::Value, usage: &serde_json::Value) {
+    let Some(items) = list.get_mut("items").and_then(|v| v.as_array_mut()) else { return };
+    for u in items {
+        let id = u.get("id").and_then(|v| v.as_i64()).unwrap_or_default();
+        let st = usage.get("stats").and_then(|m| m.get(id.to_string()));
+        let get = |k: &str| st.and_then(|x| x.get(k)).and_then(|v| v.as_f64()).unwrap_or(0.0);
+        if let Some(o) = u.as_object_mut() {
+            o.insert("today_cost".into(), get("today_actual_cost").into());
+            o.insert("month_cost".into(), get("total_actual_cost").into());
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn admin_user(s: State<'_, Session>, id: i64) -> Result<serde_json::Value> {
+    admin_call(s.inner(), Method::Get, &format!("/users/{id}"), vec![], None).await
+}
+
+/// Adds to or takes from a user's balance; `amount` must be above 0.
+#[tauri::command]
+pub async fn admin_user_balance(s: State<'_, Session>, id: i64, amount: f64, add: bool, notes: String) -> Result<serde_json::Value> {
+    if !(amount > 0.0 && amount.is_finite()) {
+        return Err(Error::Other(tr("金额需要大于 0", "The amount must be above 0").into()));
+    }
+    let body = serde_json::json!({ "balance": amount, "operation": if add { "add" } else { "subtract" }, "notes": notes.trim() });
+    admin_call(s.inner(), Method::Post, &format!("/users/{id}/balance"), vec![], Some(body)).await
+}
+
+#[tauri::command]
+pub async fn admin_user_status(s: State<'_, Session>, id: i64, active: bool) -> Result<serde_json::Value> {
+    let body = serde_json::json!({ "status": if active { "active" } else { "disabled" } });
+    admin_call(s.inner(), Method::Put, &format!("/users/{id}"), vec![], Some(body)).await
+}
+
+#[tauri::command]
+pub async fn admin_lottery_settings(s: State<'_, Session>) -> Result<serde_json::Value> {
+    admin_call(s.inner(), Method::Get, "/lottery/settings", vec![], None).await
+}
+
+#[tauri::command]
+pub async fn admin_lottery_save(s: State<'_, Session>, settings: serde_json::Value) -> Result<serde_json::Value> {
+    admin_call(s.inner(), Method::Put, "/lottery/settings", vec![], Some(settings)).await
+}
+
+/// One day's totals and big wins; `date` is `YYYY-MM-DD`, empty for today.
+#[tauri::command]
+pub async fn admin_lottery_summary(s: State<'_, Session>, date: String) -> Result<serde_json::Value> {
+    admin_call(s.inner(), Method::Get, "/lottery/summary", q(&[("date", &date)]), None).await
+}
+
+/// Draw records. Empty filters are left out; `rarity` may be a comma list.
+#[tauri::command]
+pub async fn admin_lottery_draws(
+    s: State<'_, Session>,
+    date: String,
+    rarity: String,
+    user_id: Option<i64>,
+    page: u32,
+    page_size: u32,
+) -> Result<serde_json::Value> {
+    let user = user_id.map(|u| u.to_string()).unwrap_or_default();
+    let (page, size) = (page.max(1).to_string(), page_size.clamp(1, 200).to_string());
+    let query = q(&[("date", &date), ("rarity", &rarity), ("user_id", &user), ("page", &page), ("page_size", &size)]);
+    admin_call(s.inner(), Method::Get, "/lottery/draws", query, None).await
+}
+
 #[tauri::command]
 pub async fn install_tool(tool: ToolId) -> Result<InstallStarted> {
     install::install(tool, &tools::home_dir()).await
@@ -499,6 +641,21 @@ mod agent_tests {
                 PlatformRate { platform: "anthropic".into(), rate: 1.2 },
             ]
         );
+    }
+
+    #[test]
+    fn user_costs_are_merged_by_id() {
+        let mut list = serde_json::json!({ "items": [{ "id": 3 }, { "id": 4 }], "total": 2 });
+        let usage = serde_json::json!({ "stats": { "3": { "today_actual_cost": 1.5, "total_actual_cost": 20.25 } } });
+        merge_user_costs(&mut list, &usage);
+        assert_eq!(list["items"][0]["today_cost"], 1.5);
+        assert_eq!(list["items"][0]["month_cost"], 20.25);
+        assert_eq!(list["items"][1]["today_cost"], 0.0);
+    }
+
+    #[test]
+    fn empty_query_values_are_dropped() {
+        assert_eq!(q(&[("date", ""), ("page", "2")]), vec![("page".to_string(), "2".to_string())]);
     }
 
     #[test]

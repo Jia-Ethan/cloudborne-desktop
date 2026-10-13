@@ -12,7 +12,7 @@ use std::future::Future;
 
 use tokio::sync::Mutex;
 
-use crate::api::{Client, Tokens, DEFAULT_ORIGIN};
+use crate::api::{admin_origin, Client, Tokens, DEFAULT_ORIGIN};
 use crate::error::{Error, Result};
 
 const ACCOUNT: &str = "session";
@@ -120,9 +120,11 @@ pub struct Session {
 
 impl Session {
     pub fn new() -> Result<Self> {
-        let origin = std::env::var("CLOUDBORNE_ORIGIN").unwrap_or_else(|_| DEFAULT_ORIGIN.to_string());
+        let custom = std::env::var("CLOUDBORNE_ORIGIN").ok();
+        let origin = custom.clone().unwrap_or_else(|| DEFAULT_ORIGIN.to_string());
+        let admin = admin_origin(custom.as_deref());
         Ok(Self {
-            client: Client::new(&origin, &device_id())?,
+            client: Client::new(&origin, &admin, &device_id())?,
             tokens: Mutex::new(load_tokens().unwrap_or(None)),
             pending_2fa: Mutex::new(None),
         })

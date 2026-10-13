@@ -12,6 +12,17 @@ use crate::lang::tr;
 use crate::tr_fmt;
 
 pub const DEFAULT_ORIGIN: &str = "https://api.cloudborne.cn";
+/// The public origin answers 404 for `/api/v1/admin/...`; admin calls go here.
+pub const ADMIN_ORIGIN: &str = "https://ops.cloudborne.cn";
+
+/// Where admin calls go: the override origin when one is set (a test relay
+/// serves both), otherwise the ops origin.
+pub fn admin_origin(override_origin: Option<&str>) -> String {
+    match override_origin.map(str::trim).filter(|o| !o.is_empty()) {
+        Some(o) => o.trim_end_matches('/').to_string(),
+        None => ADMIN_ORIGIN.to_string(),
+    }
+}
 
 /// `CloudborneDesktop/<ver> (<os>; device=<id>)`. The relay binds desktop
 /// sessions to the device ID rather than IP + User-Agent, so switching networks
@@ -41,6 +52,9 @@ pub struct User {
     pub balance: f64,
     #[serde(default)]
     pub status: String,
+    /// `admin` or `user`.
+    #[serde(default)]
+    pub role: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,6 +119,8 @@ fn friendly(env: &Envelope) -> String {
         Some("INVALID_CREDENTIALS") => bad_credentials().into(),
         Some("USER_NOT_ACTIVE") | Some("USER_DISABLED") => tr("这个账号已被停用", "This account has been disabled").into(),
         Some("INVALID_TOTP_CODE") | Some("TOTP_INVALID") => tr("验证码不正确", "That code is not correct").into(),
+        Some("LOTTERY_DISABLED") => tr("抽奖活动未开启", "The lucky draw is not running").into(),
+        Some("LOTTERY_NO_DRAWS") => tr("今天的抽奖次数已用完", "No draws left today").into(),
         _ => env.message.clone(),
     }
 }
@@ -132,17 +148,30 @@ fn code_any<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<i64, 
 pub struct Client {
     http: reqwest::Client,
     origin: String,
+    admin_origin: String,
+}
+
+/// HTTP verbs the admin pages use.
+#[derive(Debug, Clone, Copy)]
+pub enum Method {
+    Get,
+    Post,
+    Put,
 }
 
 impl Client {
-    pub fn new(origin: &str, device_id: &str) -> Result<Self> {
+    pub fn new(origin: &str, admin_origin: &str, device_id: &str) -> Result<Self> {
         let http = reqwest::Client::builder()
             .user_agent(user_agent(device_id))
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| Error::Network(e.to_string()))?;
-        Ok(Self { http, origin: origin.trim_end_matches('/').to_string() })
+        Ok(Self {
+            http,
+            origin: origin.trim_end_matches('/').to_string(),
+            admin_origin: admin_origin.trim_end_matches('/').to_string(),
+        })
     }
 
     pub fn origin(&self) -> &str {
@@ -208,6 +237,47 @@ impl Client {
 
     fn url(&self, path: &str) -> String {
         format!("{}{}", self.origin, path)
+    }
+
+    fn admin_url(&self, path: &str) -> String {
+        format!("{}/api/v1/admin{}", self.admin_origin, path)
+    }
+
+    /// An admin API call on the ops origin with the same bearer token and
+    /// device-bound User-Agent. `path` is relative to `/api/v1/admin`.
+    /// Writes carry an `Idempotency-Key`, which some admin routes require.
+    pub async fn admin(
+        &self,
+        access: &str,
+        method: Method,
+        path: &str,
+        query: &[(String, String)],
+        body: Option<&Value>,
+    ) -> Result<Value> {
+        let url = self.admin_url(path);
+        let req = match method {
+            Method::Get => self.http.get(url),
+            Method::Post => self.http.post(url),
+            Method::Put => self.http.put(url),
+        };
+        let mut req = req.query(query).bearer_auth(access);
+        if !matches!(method, Method::Get) {
+            req = req.header("Idempotency-Key", uuid::Uuid::new_v4().to_string());
+        }
+        if let Some(b) = body {
+            req = req.json(b);
+        }
+        self.send(req).await
+    }
+
+    /// The lucky draw as this account sees it today.
+    pub async fn lottery(&self, access: &str) -> Result<Value> {
+        self.send(self.http.get(self.url("/api/v1/lottery")).bearer_auth(access)).await
+    }
+
+    /// Draws once; the relay picks the prize.
+    pub async fn lottery_draw(&self, access: &str) -> Result<Value> {
+        self.send(self.http.post(self.url("/api/v1/lottery/draw")).bearer_auth(access).json(&json!({}))).await
     }
 
     pub async fn login(&self, email: &str, password: &str) -> Result<(LoginOutcome, Option<Tokens>)> {
@@ -433,6 +503,30 @@ mod tests {
             serde_json::from_str(r#"{"code":401,"message":"invalid email or password","reason":"INVALID_CREDENTIALS"}"#)
                 .unwrap();
         assert_eq!(friendly(&e), "邮箱或密码不正确");
+    }
+
+    #[test]
+    fn admin_calls_go_to_ops_unless_overridden() {
+        assert_eq!(admin_origin(None), "https://ops.cloudborne.cn");
+        assert_eq!(admin_origin(Some("  ")), "https://ops.cloudborne.cn");
+        assert_eq!(admin_origin(Some("http://127.0.0.1:8080/")), "http://127.0.0.1:8080");
+        let c = Client::new("https://api.cloudborne.cn", "https://ops.cloudborne.cn", "d").unwrap();
+        assert_eq!(c.admin_url("/users/3/balance"), "https://ops.cloudborne.cn/api/v1/admin/users/3/balance");
+    }
+
+    #[test]
+    fn lottery_errors_are_worded() {
+        let e: Envelope =
+            serde_json::from_str(r#"{"code":409,"message":"x","reason":"LOTTERY_NO_DRAWS"}"#).unwrap();
+        assert_eq!(friendly(&e), "今天的抽奖次数已用完");
+    }
+
+    #[test]
+    fn profile_role_defaults_to_empty() {
+        let u: User = serde_json::from_value(json!({ "id": 1, "email": "a@b.c" })).unwrap();
+        assert_eq!(u.role, "");
+        let u: User = serde_json::from_value(json!({ "id": 1, "email": "a@b.c", "role": "admin" })).unwrap();
+        assert_eq!(u.role, "admin");
     }
 
     #[test]
