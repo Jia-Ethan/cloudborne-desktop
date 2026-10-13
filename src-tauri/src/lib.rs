@@ -1,3 +1,4 @@
+mod accounts;
 mod agent;
 mod api;
 mod commands;
@@ -28,6 +29,10 @@ pub fn run() {
             commands::login_2fa,
             commands::logout,
             commands::me,
+            commands::accounts_list,
+            commands::account_switch,
+            commands::account_add_begin,
+            commands::account_remove,
             commands::tools_status,
             commands::groups_for,
             commands::connect_tool,
@@ -45,7 +50,8 @@ pub fn run() {
             commands::open_ccswitch,
             commands::service_status,
             commands::lottery_status,
-            commands::lottery_draw,
+            commands::lottery_open,
+            commands::lottery_buy,
             commands::admin_overview,
             commands::admin_users,
             commands::admin_user,
@@ -53,6 +59,7 @@ pub fn run() {
             commands::admin_user_status,
             commands::admin_lottery_settings,
             commands::admin_lottery_save,
+            commands::admin_lottery_defaults,
             commands::admin_lottery_summary,
             commands::admin_lottery_draws,
             commands::relay_origin,

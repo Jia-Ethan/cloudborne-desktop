@@ -119,8 +119,18 @@ fn friendly(env: &Envelope) -> String {
         Some("INVALID_CREDENTIALS") => bad_credentials().into(),
         Some("USER_NOT_ACTIVE") | Some("USER_DISABLED") => tr("这个账号已被停用", "This account has been disabled").into(),
         Some("INVALID_TOTP_CODE") | Some("TOTP_INVALID") => tr("验证码不正确", "That code is not correct").into(),
-        Some("LOTTERY_DISABLED") => tr("抽奖活动未开启", "The lucky draw is not running").into(),
-        Some("LOTTERY_NO_DRAWS") => tr("今天的抽奖次数已用完", "No draws left today").into(),
+        Some("LOTTERY_DISABLED") => tr("宝箱活动未开启", "The chest event is off").into(),
+        Some("LOTTERY_NOT_ACTIVE") => tr("不在活动时间内", "The chest event is not running right now").into(),
+        Some("LOTTERY_NO_CHESTS") | Some("LOTTERY_NO_DRAWS") => tr("没有可开启的宝箱", "You have no chests to open").into(),
+        Some("LOTTERY_BUY_DISABLED") => tr("现在不能购买宝箱", "Chests cannot be bought right now").into(),
+        Some("LOTTERY_BUY_LIMIT") => tr("已达到今日购买上限", "You have reached today's purchase limit").into(),
+        Some("LOTTERY_INSUFFICIENT_BALANCE") => tr("余额不足，无法购买", "Not enough balance to buy").into(),
+        Some("LOTTERY_BUY_SOLD_OUT") => match env.message.chars().filter(char::is_ascii_digit).collect::<String>() {
+            n if n.is_empty() || n == "0" => tr("今日宝箱已售罄", "Chests are sold out for today").into(),
+            n => tr_fmt!("今日仅剩 {n} 个可购买", "Only {n} left to buy today"),
+        },
+        Some("LOTTERY_CHEST_FULL") => tr("宝箱已满，先开启一些再购买", "Your chests are full. Open some before buying more.").into(),
+        Some("LOTTERY_INVALID_COUNT") => tr("宝箱数量不正确", "That number of chests is not allowed").into(),
         _ => env.message.clone(),
     }
 }
@@ -275,9 +285,14 @@ impl Client {
         self.send(self.http.get(self.url("/api/v1/lottery")).bearer_auth(access)).await
     }
 
-    /// Draws once; the relay picks the prize.
-    pub async fn lottery_draw(&self, access: &str) -> Result<Value> {
-        self.send(self.http.post(self.url("/api/v1/lottery/draw")).bearer_auth(access).json(&json!({}))).await
+    /// Opens up to `count` chests (1..10), today's low-spend ones first; the relay picks the prizes.
+    pub async fn lottery_open(&self, access: &str, count: u32) -> Result<Value> {
+        self.send(self.http.post(self.url("/api/v1/lottery/open")).bearer_auth(access).json(&json!({ "count": count }))).await
+    }
+
+    /// Buys chests with balance.
+    pub async fn lottery_buy(&self, access: &str, count: u32) -> Result<Value> {
+        self.send(self.http.post(self.url("/api/v1/lottery/buy")).bearer_auth(access).json(&json!({ "count": count }))).await
     }
 
     pub async fn login(&self, email: &str, password: &str) -> Result<(LoginOutcome, Option<Tokens>)> {
@@ -517,8 +532,17 @@ mod tests {
     #[test]
     fn lottery_errors_are_worded() {
         let e: Envelope =
-            serde_json::from_str(r#"{"code":409,"message":"x","reason":"LOTTERY_NO_DRAWS"}"#).unwrap();
-        assert_eq!(friendly(&e), "今天的抽奖次数已用完");
+            serde_json::from_str(r#"{"code":409,"message":"x","reason":"LOTTERY_NO_CHESTS"}"#).unwrap();
+        assert_eq!(friendly(&e), "没有可开启的宝箱");
+        let e: Envelope =
+            serde_json::from_str(r#"{"code":409,"message":"x","reason":"LOTTERY_INSUFFICIENT_BALANCE"}"#).unwrap();
+        assert_eq!(friendly(&e), "余额不足，无法购买");
+        let e: Envelope =
+            serde_json::from_str(r#"{"code":409,"message":"今日仅剩 3 个可购买","reason":"LOTTERY_BUY_SOLD_OUT"}"#).unwrap();
+        assert_eq!(friendly(&e), "今日仅剩 3 个可购买");
+        let e: Envelope =
+            serde_json::from_str(r#"{"code":409,"message":"今日宝箱已售罄","reason":"LOTTERY_BUY_SOLD_OUT"}"#).unwrap();
+        assert_eq!(friendly(&e), "今日宝箱已售罄");
     }
 
     #[test]

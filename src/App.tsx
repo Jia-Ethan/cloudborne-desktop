@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState, type CSSProperties } from 'react';
-import { api, errorText, isAdmin, type Rates, type ToolStatus, type User } from './api';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { api, errorText, isAdmin, type LotteryStatus, type Rates, type SavedAccount, type ToolStatus, type User } from './api';
 import { About } from './components/About';
 import { AccountMenu } from './components/AccountMenu';
 import { DiscountBar } from './components/DiscountBar';
@@ -33,11 +33,16 @@ export function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [about, setAbout] = useState(false);
   const [view, setView] = useState<View>('home');
-  // Shown only once the relay says the lucky draw is on.
+  // Shown only once the relay says the chest event is on.
   const [lotteryOn, setLotteryOn] = useState(false);
+  const [chests, setChests] = useState(0);
   const [userFocus, setUserFocus] = useState<{ id: number; email: string } | null>(null);
+  const [accounts, setAccounts] = useState<SavedAccount[]>([]);
+  // The login page over a signed-in account (adding one, or one that needs its password again).
+  const [adding, setAdding] = useState(false);
+  const [prefill, setPrefill] = useState('');
   const updater = useUpdater();
-  const agent = useAgent(lang, !!user);
+  const agent = useAgent(lang, user?.id ?? null);
 
   const loadTools = useCallback(async () => {
     setTools(await api.toolsStatus());
@@ -47,18 +52,107 @@ export function App() {
     api.rates().then(setRates, () => {});
   }, []);
 
+  const loadAccounts = useCallback(() => {
+    api.accounts().then(setAccounts, () => {});
+  }, []);
+
+  const lotteryStatus = useCallback((s: LotteryStatus) => {
+    setLotteryOn(s.enabled);
+    setChests(s.enabled ? s.chests : 0);
+    if (!s.enabled) setView((v) => (v === 'lottery' ? 'home' : v));
+  }, []);
+  // Bumped on every account change, so a reply for the previous account is dropped.
+  const gen = useRef(0);
+  const checkLottery = useCallback(() => {
+    const g = gen.current;
+    api.lottery().then(
+      (s) => g === gen.current && lotteryStatus(s),
+      () => g === gen.current && setLotteryOn(false),
+    );
+  }, [lotteryStatus]);
+
+  /** Shows `u` (or the login page) with nothing left over from the previous account. */
+  const enter = useCallback(
+    (u: User | null) => {
+      gen.current++;
+      setUser(u);
+      setView('home');
+      setUserFocus(null);
+      setLotteryOn(false);
+      setChests(0);
+      setRates(null);
+      setAdding(false);
+      setPrefill('');
+      if (u) {
+        loadTools().catch(() => {});
+        loadRates();
+        checkLottery();
+      }
+      loadAccounts();
+    },
+    [loadTools, loadRates, loadAccounts, checkLottery],
+  );
+
+  /** Rejects on network and relay errors; the caller shows them where the user is looking. */
+  const switchTo = useCallback(
+    async (a: SavedAccount) => {
+      if (!a.signed_in) {
+        setPrefill(a.email);
+        setAdding(true);
+        return;
+      }
+      const r = await api.switchAccount(a.user_id);
+      if (r.kind === 'done') enter(r.user);
+      else {
+        // Its session ended; sign in again with the email filled in.
+        setPrefill(r.email);
+        setAdding(true);
+        loadAccounts();
+      }
+    },
+    [enter, loadAccounts],
+  );
+
+  const removeAccount = useCallback(
+    async (a: SavedAccount) => {
+      try {
+        const next = await api.removeAccount(a.user_id);
+        // Removing someone else leaves the current account as it is.
+        if (a.active) enter(next);
+        else loadAccounts();
+      } catch (e) {
+        setToast(errorText(e, t('common.genericError')));
+      }
+    },
+    [enter, loadAccounts, t],
+  );
+
+  const addAccount = useCallback(() => {
+    api.addAccountBegin().then(setAccounts, () => {});
+    setPrefill('');
+    setAdding(true);
+  }, []);
+
   const refresh = useCallback(async () => {
     setRefreshing(true);
     try {
       const [u] = await Promise.all([api.me(), loadTools()]);
+      if (u?.id !== user?.id) {
+        // The session ended (or changed) underneath us.
+        enter(u);
+        return;
+      }
       setUser(u);
-      if (u) loadRates();
+      if (u) {
+        loadRates();
+        checkLottery();
+      }
     } catch (e) {
       setToast(errorText(e, t('common.genericError')));
     } finally {
       setRefreshing(false);
     }
-  }, [loadTools, loadRates, t]);
+  }, [loadTools, loadRates, checkLottery, enter, user?.id, t]);
 
   useEffect(() => {
     // Once on launch; switching language must not refetch. Right after an
@@ -71,7 +165,17 @@ export function App() {
           const u = await api.me();
           if (stop) return;
           setUser(u);
-          if (u) loadRates();
+          if (u) {
+            loadRates();
+            checkLottery();
+          }
+          // After me(): a v0.8 session is named by then. An active account
+          // that was signed out gets its email filled in on the login page.
+          api.accounts().then((list) => {
+            setAccounts(list);
+            const lapsed = !u && list.find((a) => a.active && !a.signed_in);
+            if (lapsed) setPrefill(lapsed.email);
+          }, () => {});
           return;
         } catch {
           await new Promise((r) => setTimeout(r, wait));
@@ -84,23 +188,12 @@ export function App() {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const signedIn = !!user;
-  useEffect(() => {
-    if (!signedIn) return;
-    api.lottery().then(
-      (s) => setLotteryOn(s.enabled),
-      () => setLotteryOn(false),
-    );
-  }, [signedIn]);
+  const uid = user?.id;
 
-  // A draw can change the balance; the rest of the app reads it from `user`.
+  // Opening or buying chests changes the balance; the rest of the app reads it from `user`.
   const refetchMe = useCallback(() => {
-    api.me().then((u) => u && setUser(u), () => {});
-  }, []);
-  const lotteryOff = useCallback(() => {
-    setLotteryOn(false);
-    setView((v) => (v === 'lottery' ? 'home' : v));
-  }, []);
+    api.me().then((u) => u && u.id === uid && setUser(u), () => {});
+  }, [uid]);
   const openUser = useCallback((u: { id: number; email: string }) => {
     setUserFocus(u);
     setView('adminUsers');
@@ -113,15 +206,25 @@ export function App() {
   }, [toast]);
 
   if (user === undefined) return <div className="h-full" data-tauri-drag-region />;
-  if (user === null)
+  if (user === null || adding)
     return (
       <Login
+        key={prefill}
         update={<UpdateButton updater={updater} />}
-        onDone={(u) => {
-          setUser(u);
-          loadTools();
-          loadRates();
-        }}
+        // While adding, the current account is not offered; it is what 返回 goes back to.
+        accounts={accounts.filter((a) => !(user && a.user_id === user.id))}
+        prefill={prefill}
+        onSwitch={switchTo}
+        onRemove={removeAccount}
+        onBack={
+          user
+            ? () => {
+                setAdding(false);
+                setPrefill('');
+              }
+            : undefined
+        }
+        onDone={enter}
       />
     );
 
@@ -157,6 +260,11 @@ export function App() {
             <button className={`nav-item ${view === 'lottery' ? 'selected' : ''}`} onClick={() => setView('lottery')}>
               <Icon name="gift" className="size-[17px]" />
               {t('nav.lottery')}
+              {chests > 0 && (
+                <span className="nav-badge" aria-label={t('lottery.myChests', { n: chests })}>
+                  {chests > 99 ? '99+' : chests}
+                </span>
+              )}
             </button>
           )}
           <button className={`nav-item ${view === 'keys' ? 'selected' : ''}`} onClick={() => setView('keys')}>
@@ -216,25 +324,31 @@ export function App() {
         <div className="sidebar-footer">
           <AccountMenu
             user={user}
+            accounts={accounts}
             updater={updater}
             onAbout={() => setAbout(true)}
+            onSwitch={(a) => switchTo(a).catch((e) => setToast(errorText(e, t('common.genericError'))))}
+            onRemove={removeAccount}
+            onAdd={addAccount}
             onLogout={async () => {
-              await api.logout();
-              setUser(null);
+              // The next signed-in account takes over; none left means the login page.
+              enter(await api.logout().catch(() => null));
             }}
           />
         </div>
       </aside>
 
-      <main className={`main-pane ${view === 'task' && agent.current?.turns.length ? 'in-session' : ''}`}>
+      {/* Keyed by account so every page's state and caches start fresh after a switch. */}
+      <main key={user.id} className={`main-pane ${view === 'task' && agent.current?.turns.length ? 'in-session' : ''}`}>
         <div className="aurora-header" aria-hidden />
         {view === 'task' ? (
           <TaskView
             key={agent.currentId ?? 'new'}
             agent={agent}
-            onSignIn={async () => {
-              await api.logout();
-              setUser(null);
+            onSignIn={() => {
+              // Sign this account in again; it stays in the list.
+              setPrefill(user.email);
+              setAdding(true);
             }}
           />
         ) : view === 'usage' ? (
@@ -244,7 +358,7 @@ export function App() {
         ) : view === 'status' ? (
           <StatusView />
         ) : view === 'lottery' ? (
-          <LotteryView onDrawn={refetchMe} onDisabled={lotteryOff} />
+          <LotteryView balance={user.balance} onBalance={refetchMe} onStatus={lotteryStatus} />
         ) : view === 'admin' && isAdmin(user) ? (
           <AdminOverview onOpenUser={openUser} onOpenLottery={() => setView('adminLottery')} />
         ) : view === 'adminUsers' && isAdmin(user) ? (

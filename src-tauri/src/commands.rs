@@ -11,7 +11,8 @@ use crate::api::{ApiKey, Group, LoginOutcome, Method, UsageKind, User};
 use crate::error::{Error, Result};
 use crate::install::{self, InstallStarted};
 use crate::lang::tr;
-use crate::session::Session;
+use crate::accounts::AccountInfo;
+use crate::session::{Session, SwitchOutcome};
 use crate::tools::{self, detect, Connection, ToolId};
 
 fn key_name(tool: ToolId) -> String {
@@ -25,7 +26,7 @@ pub async fn login(s: State<'_, Session>, email: String, password: String) -> Re
         (LoginOutcome::TwoFactor { temp_token, .. }, _) => {
             *s.pending_2fa.lock().await = Some(temp_token.clone());
         }
-        (LoginOutcome::Done { .. }, Some(t)) => s.set_tokens(t).await?,
+        (LoginOutcome::Done { user }, Some(t)) => s.add(user, t).await?,
         (LoginOutcome::Done { .. }, None) => return Err(Error::Api(tr("登录响应缺少令牌", "The sign-in response had no token").into())),
     }
     Ok(outcome)
@@ -40,29 +41,59 @@ pub async fn login_2fa(s: State<'_, Session>, code: String) -> Result<LoginOutco
         .clone()
         .ok_or_else(|| Error::Other(tr("两步验证已过期，请重新登录", "Two-step verification expired. Please sign in again.").into()))?;
     let (outcome, tokens) = s.client.login_2fa(&temp, code.trim()).await?;
-    if let Some(t) = tokens {
-        s.set_tokens(t).await?;
+    if let (LoginOutcome::Done { user }, Some(t)) = (&outcome, tokens) {
+        s.add(user, t).await?;
         *s.pending_2fa.lock().await = None;
     }
     Ok(outcome)
 }
 
+/// Signs the current account out and forgets it. Returns the account that
+/// took over, or null when none is signed in (the UI shows the login page).
 #[tauri::command]
-pub async fn logout(s: State<'_, Session>) -> Result<()> {
-    s.logout().await
+pub async fn logout(s: State<'_, Session>) -> Result<Option<User>> {
+    s.logout().await?;
+    me(s).await
 }
 
 #[tauri::command]
 pub async fn me(s: State<'_, Session>) -> Result<Option<User>> {
-    if !s.is_logged_in().await {
-        return Ok(None);
-    }
-    let c = &s.client;
-    match s.authed(|a| async move { c.profile(&a).await }).await {
+    let Some(id) = s.active().await else { return Ok(None) };
+    match s.profile(id).await {
         Ok(u) => Ok(Some(u)),
         Err(Error::Unauthorized) => Ok(None),
         Err(e) => Err(e),
     }
+}
+
+// ---- Accounts ----
+
+#[tauri::command]
+pub async fn accounts_list(s: State<'_, Session>) -> Result<Vec<AccountInfo>> {
+    Ok(s.list().await)
+}
+
+/// Makes a saved account active: `{ kind: "done", user }`, or
+/// `{ kind: "signed_out", email }` when it needs its password again.
+#[tauri::command]
+pub async fn account_switch(s: State<'_, Session>, user_id: i64) -> Result<SwitchOutcome> {
+    s.switch(user_id).await
+}
+
+/// The UI is about to show the login page to add an account; the current one
+/// stays active until a login finishes. Drops a half-done 2FA step.
+#[tauri::command]
+pub async fn account_add_begin(s: State<'_, Session>) -> Result<Vec<AccountInfo>> {
+    *s.pending_2fa.lock().await = None;
+    Ok(s.list().await)
+}
+
+/// Signs a saved account out on the relay and forgets it. Returns the active
+/// account afterwards, null when none is signed in.
+#[tauri::command]
+pub async fn account_remove(s: State<'_, Session>, user_id: i64) -> Result<Option<User>> {
+    s.remove(user_id).await?;
+    me(s).await
 }
 
 #[derive(Serialize)]
@@ -351,19 +382,28 @@ pub async fn service_status(s: State<'_, Session>) -> Result<serde_json::Value> 
 
 // ---- Lucky draw ----
 
-/// Today's draw status for this account: threshold, progress, draws left,
-/// prize names, today's results and running perks.
+/// The chest activity as this account sees it: window, chests owned, earn
+/// progress, buying, prize names, today's results and running perks.
 #[tauri::command]
 pub async fn lottery_status(s: State<'_, Session>) -> Result<serde_json::Value> {
     let c = &s.client;
     s.authed(|a| async move { c.lottery(&a).await }).await
 }
 
-/// Draws once. The relay picks the prize; returns `{ draw, status }`.
+/// Opens `count` chests (1..10, default 1). The relay picks the prizes;
+/// returns `{ draws, draw, status }`.
 #[tauri::command]
-pub async fn lottery_draw(s: State<'_, Session>) -> Result<serde_json::Value> {
+pub async fn lottery_open(s: State<'_, Session>, count: Option<u32>) -> Result<serde_json::Value> {
+    let count = count.unwrap_or(1).clamp(1, 10);
     let c = &s.client;
-    s.authed(|a| async move { c.lottery_draw(&a).await }).await
+    s.authed(|a| async move { c.lottery_open(&a, count).await }).await
+}
+
+/// Buys `count` chests with balance; returns `{ bought, status }`.
+#[tauri::command]
+pub async fn lottery_buy(s: State<'_, Session>, count: u32) -> Result<serde_json::Value> {
+    let c = &s.client;
+    s.authed(|a| async move { c.lottery_buy(&a, count).await }).await
 }
 
 // ---- Admin (ops origin) ----
@@ -467,6 +507,12 @@ pub async fn admin_lottery_settings(s: State<'_, Session>) -> Result<serde_json:
 #[tauri::command]
 pub async fn admin_lottery_save(s: State<'_, Session>, settings: serde_json::Value) -> Result<serde_json::Value> {
     admin_call(s.inner(), Method::Put, "/lottery/settings", vec![], Some(settings)).await
+}
+
+/// The recommended settings, for the form only; nothing is saved.
+#[tauri::command]
+pub async fn admin_lottery_defaults(s: State<'_, Session>) -> Result<serde_json::Value> {
+    admin_call(s.inner(), Method::Get, "/lottery/settings/defaults", vec![], None).await
 }
 
 /// One day's totals and big wins; `date` is `YYYY-MM-DD`, empty for today.

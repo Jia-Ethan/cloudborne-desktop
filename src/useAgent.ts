@@ -13,9 +13,12 @@ export function titleOf(prompt: string): string {
 
 /**
  * Task sessions and the turn in flight. Lives above the views so a running
- * task keeps streaming while the user is on another page.
+ * task keeps streaming while the user is on another page. Task history is kept
+ * per install; the model list depends on the account's groups, so it reloads
+ * when `account` (the signed-in user id) changes. A running turn keeps the key
+ * it started with.
  */
-export function useAgent(lang: string, enabled: boolean) {
+export function useAgent(lang: string, account: number | null) {
   const [summaries, setSummaries] = useState<SessionSummary[]>([]);
   const [open, setOpen] = useState<Record<string, Session>>({});
   const [currentId, setCurrentId] = useState<string | null>(null);
@@ -27,7 +30,9 @@ export function useAgent(lang: string, enabled: boolean) {
   const [, bump] = useState(0);
 
   useEffect(() => {
-    if (!enabled) return;
+    setModels(null);
+    setModelsError('');
+    if (account === null) return;
     agentApi.sessions().then(setSummaries).catch(() => {});
     agentApi
       .models()
@@ -36,7 +41,7 @@ export function useAgent(lang: string, enabled: boolean) {
         setModelState((cur) => (m.models.includes(cur) ? cur : (m.default ?? '')));
       })
       .catch((e) => setModelsError(errorText(e, '')));
-  }, [enabled]);
+  }, [account]);
 
   const setModel = useCallback((m: string) => {
     localStorage.setItem(MODEL_KEY, m);

@@ -1,12 +1,30 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent, type RefObject } from 'react';
-import { api, errorText, type Draw, type LotteryStatus, type Perk, type Rarity } from '../api';
-import { useI18n } from '../i18n';
-import { RARITIES, countdown, headline, progress, revealLadder, dollars, zhe, zheVars } from '../lottery';
+import { api, errorText, type ChestSource, type Draw, type LotteryStatus, type Perk, type Rarity } from '../api';
+import { useI18n, type T } from '../i18n';
+import {
+  RARITIES,
+  balanceGained,
+  batchSize,
+  byRarity,
+  countdown,
+  dailyState,
+  earnProgress,
+  quotaLeft,
+  headline,
+  revealLadder,
+  dollars,
+  shanghaiShort,
+  zhe,
+  zheVars,
+  type Phase as ActivityPhase,
+} from '../lottery';
+import { Dialog } from './Dialog';
+import { Icon } from './Icon';
 import { burst, coinRain, confetti, lightning, motes, type Motes } from './fx';
 import { PrizeText, RarityTag } from './Prize';
 
 type Phase = 'idle' | 'charge' | 'reveal' | 'burst' | 'result';
-/** What the chest looks like at rest: ready to open, below the threshold, or opened for today. */
+/** What the chest looks like at rest: one to open, none yet, or none and the activity is over. */
 type ChestState = 'ready' | 'locked' | 'empty';
 
 const CHARGE_MS = 1200;
@@ -39,13 +57,30 @@ const SPARKS: Record<Rarity, string[]> = {
 const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export function LotteryView({ onDrawn, onDisabled }: { onDrawn: () => void; onDisabled: () => void }) {
+/**
+ * The chest page: the one place to open chests, whether earned by spending or
+ * bought with balance. `onStatus` keeps the sidebar's badge and visibility in
+ * step; `onBalance` refetches the balance after an open or a purchase.
+ */
+export function LotteryView({
+  balance,
+  onBalance,
+  onStatus,
+}: {
+  balance: number;
+  onBalance: () => void;
+  onStatus: (s: LotteryStatus) => void;
+}) {
   const { t } = useI18n();
-  const [status, setStatus] = useState<LotteryStatus | null>(null);
+  const [status, setStatusState] = useState<LotteryStatus | null>(null);
+  // Server clock minus ours, so countdowns follow the relay.
+  const [skew, setSkew] = useState(0);
   const [error, setError] = useState('');
   const [phase, setPhase] = useState<Phase>('idle');
   const [step, setStep] = useState(0);
   const [draw, setDraw] = useState<Draw | null>(null);
+  // Every draw of a batch open, for the summary sheet; null for a single open.
+  const [batch, setBatch] = useState<Draw[] | null>(null);
   const [flash, setFlash] = useState(false);
   const [nudge, setNudge] = useState(0);
   const stage = useRef<HTMLElement>(null);
@@ -60,17 +95,26 @@ export function LotteryView({ onDrawn, onDisabled }: { onDrawn: () => void; onDi
   const alive = useRef(true);
   const parallax = useRef(0);
 
+  const setStatus = useCallback(
+    (s: LotteryStatus) => {
+      setStatusState(s);
+      const at = Date.parse(s.now);
+      if (Number.isFinite(at)) setSkew(at - Date.now());
+      onStatus(s);
+    },
+    [onStatus],
+  );
+
   const load = useCallback(async () => {
     try {
       const s = await api.lottery();
       if (!alive.current) return;
       setStatus(s);
       setError('');
-      if (!s.enabled) onDisabled();
     } catch (e) {
       if (alive.current) setError(errorText(e, t('common.genericError')));
     }
-  }, [onDisabled, t]);
+  }, [setStatus, t]);
 
   useEffect(() => {
     alive.current = true;
@@ -99,10 +143,24 @@ export function LotteryView({ onDrawn, onDisabled }: { onDrawn: () => void; onDi
   }
 
   const s = status;
-  const busy = phase === 'charge' || phase === 'reveal' || phase === 'burst';
-  const chest: ChestState = !s || s.draws_left > 0 ? 'ready' : s.draws_used > 0 ? 'empty' : 'locked';
+  // The relay decides whether it is on; the clock only says which side of the window we are.
+  const win: ActivityPhase = !s || s.active ? 'running' : s.starts_at && Date.now() + skew < Date.parse(s.starts_at) ? 'upcoming' : 'ended';
+  // Reload when the window opens or closes or the day turns: that changes what can be earned, bought and opened.
+  useEffect(() => {
+    if (!s?.enabled) return;
+    const at = Date.now() + skew;
+    // Today's low-spend chests lapse at midnight, and a new day resets the counts.
+    const next = [s.starts_at, s.ends_at, s.daily?.expires_at ?? null].map((x) => (x ? Date.parse(x) - at : NaN)).filter((d) => d > 0);
+    if (next.length === 0) return;
+    const id = setTimeout(load, Math.min(...next, 2 ** 31 - 1) + 1000);
+    return () => clearTimeout(id);
+  }, [s, skew, load]);
 
-  async function open() {
+  const busy = phase === 'charge' || phase === 'reveal' || phase === 'burst';
+  const chest: ChestState = !s || s.chests > 0 ? 'ready' : win === 'running' ? 'locked' : 'empty';
+
+  /** Opens `count` chests. One plays the full reveal; a batch plays the best one's burst, then lists them all. */
+  async function open(count = 1) {
     if (busy || phase === 'result' || !s) return;
     if (chest !== 'ready' || !s.enabled) {
       setNudge((n) => n + 1);
@@ -110,15 +168,16 @@ export function LotteryView({ onDrawn, onDisabled }: { onDrawn: () => void; onDi
     }
     setError('');
     setDraw(null);
+    setBatch(null);
     const quick = reducedMotion();
     if (!quick) {
       setPhase('charge');
       const p = mouthPoint();
       if (p) field.current?.set({ mode: 'gather', cx: p.mx, cy: p.my, color: '255,236,200' });
     }
-    let res: Awaited<ReturnType<typeof api.lotteryDraw>>;
+    let res: Awaited<ReturnType<typeof api.lotteryOpen>>;
     try {
-      [res] = await Promise.all([api.lotteryDraw(), quick ? null : wait(CHARGE_MS)]);
+      [res] = await Promise.all([api.lotteryOpen(count), quick ? null : wait(CHARGE_MS)]);
     } catch (e) {
       if (!alive.current) return;
       field.current?.set({ mode: 'drift', color: IDLE_MOTE });
@@ -128,12 +187,29 @@ export function LotteryView({ onDrawn, onDisabled }: { onDrawn: () => void; onDi
       return;
     }
     if (!alive.current) return;
-    const won = res.draw;
+    // Relays without batch open send only `draw`.
+    const all = res.draws?.length ? res.draws : [res.draw];
+    const won = count > 1 ? byRarity(all)[0] : res.draw;
     setDraw(won);
+    if (count > 1) {
+      if (!quick) {
+        setPhase('burst');
+        await wait(140);
+        if (!alive.current) return;
+        fire(won);
+        await wait(OPEN_MS);
+        if (!alive.current) return;
+      }
+      setStatus(res.status);
+      setBatch(all);
+      setPhase('result');
+      onBalance();
+      return;
+    }
     if (quick) {
       setStatus(res.status);
       setPhase('result');
-      onDrawn();
+      onBalance();
       return;
     }
     // Light leaks from the seam in each rarity's colour, stopping at the one won.
@@ -154,7 +230,7 @@ export function LotteryView({ onDrawn, onDisabled }: { onDrawn: () => void; onDi
     if (!alive.current) return;
     setStatus(res.status);
     setPhase('result');
-    onDrawn();
+    onBalance();
   }
 
   function fire(d: Draw) {
@@ -183,6 +259,7 @@ export function LotteryView({ onDrawn, onDisabled }: { onDrawn: () => void; onDi
   }
 
   function collect() {
+    setBatch(null);
     setPhase('idle');
     field.current?.set({ mode: 'drift', color: IDLE_MOTE });
   }
@@ -205,15 +282,41 @@ export function LotteryView({ onDrawn, onDisabled }: { onDrawn: () => void; onDi
     stage.current?.style.setProperty('--py', '0');
   }
 
-  const ratio = s ? progress(s.today_cost, s.threshold) : 0;
+  const earn = s ? earnProgress(s.earn) : null;
+  const ratio = earn && win === 'running' ? earn.ratio : 0;
   const shown: Rarity | null =
     phase === 'reveal' && draw ? revealLadder(draw.rarity)[step] : (phase === 'burst' || phase === 'result') && draw ? draw.rarity : null;
   const glow = shown ? (draw?.kind === 'none' && phase !== 'reveal' ? '#c9ced6' : GLOW[shown]) : phase === 'charge' ? CHARGE_GLOW : IDLE_GLOW;
-  const label = chest === 'ready' ? t('lottery.open') : chest === 'locked' ? t('lottery.locked') : t('lottery.doneToday');
+  const label = chest === 'ready' ? t('lottery.open') : t('lottery.noChests');
+  const canOpen = !!s && s.enabled && s.chests > 0 && phase === 'idle';
+  const many = s ? batchSize(s.chests) : null;
+  const cap = s?.hold_cap ?? 0;
 
   return (
     <div className="main-scroll">
       <div className="main-column">
+        <section className="card lot-head rise" style={{ '--i': 0 } as CSSProperties}>
+          <div className="lot-head-text">
+            <h1>
+              {t('lottery.myChests', { n: s ? s.chests : '—' })}
+              {cap > 0 && <em className={s?.full ? 'full' : ''}>{t('lottery.held', { n: s?.chests ?? 0, cap })}</em>}
+            </h1>
+            {s && <ActivityLine status={s} phase={win} skew={skew} />}
+            {s?.full && <p className="lot-full">{t('lottery.full')}</p>}
+          </div>
+          <div className="lot-open">
+            <button className="btn btn-primary" disabled={!canOpen} onClick={() => open(1)}>
+              <Icon name="gift" className="size-4" />
+              {t('lottery.openN', { n: 1 })}
+            </button>
+            {many !== null && (
+              <button className="btn btn-quiet" disabled={!canOpen} onClick={() => open(many)}>
+                {t('lottery.openN', { n: many })}
+              </button>
+            )}
+          </div>
+        </section>
+
         {error && <div className="usage-error rise">{error}</div>}
 
         <section
@@ -244,24 +347,24 @@ export function LotteryView({ onDrawn, onDisabled }: { onDrawn: () => void; onDi
                 label={label}
                 interactive={phase === 'idle' && chest === 'ready' && !!s}
                 mouthRef={mouth}
-                onOpen={open}
+                onOpen={() => open(1)}
               />
             </div>
           </div>
 
-          {phase === 'result' && draw && <ResultCard draw={draw} onDone={collect} />}
+          {phase === 'result' && draw && !batch && <ResultCard draw={draw} onDone={collect} />}
 
           <div className="lot-foot">
             <div className="lot-meter">
               <span>{t('lottery.todayCost')}</span>
               <b>
-                {s ? dollars(s.today_cost) : '—'}
-                <em> / {s ? dollars(s.threshold) : '—'}</em>
+                {s ? dollars(s.earn.today_spend) : '—'}
+                {s && win === 'running' && earn && !earn.capped && <em> · {t('lottery.toNext', { amount: dollars(earn.toNext) })}</em>}
               </b>
             </div>
             <div className="lot-meter right">
-              <span>{t('lottery.drawsLeft')}</span>
-              <b>{s ? s.draws_left : '—'}</b>
+              <span>{t('lottery.chests')}</span>
+              <b>{s ? s.chests : '—'}</b>
             </div>
           </div>
 
@@ -269,6 +372,23 @@ export function LotteryView({ onDrawn, onDisabled }: { onDrawn: () => void; onDi
           <canvas ref={bolts} className="lot-sparks" aria-hidden />
           <canvas ref={sparks} className="lot-sparks" aria-hidden />
         </section>
+
+        {s && (
+          <div className="lot-ways">
+            {s.daily && <DailyCard status={s} phase={win} skew={skew} index={1} />}
+            <EarnCard status={s} phase={win} index={2} />
+            <BuyCard
+              status={s}
+              phase={win}
+              balance={balance}
+              index={3}
+              onBought={(next) => {
+                setStatus(next);
+                onBalance();
+              }}
+            />
+          </div>
+        )}
 
         {s && s.perks.length > 0 && (
           <div className="lot-perks">
@@ -307,6 +427,7 @@ export function LotteryView({ onDrawn, onDisabled }: { onDrawn: () => void; onDi
                   <div key={d.id} className={`lot-result r-${d.rarity}`}>
                     <i />
                     <span className="truncate">{d.name}</span>
+                    <SourceTag source={d.source} />
                     <b>
                       <PrizeText draw={d} />
                     </b>
@@ -319,13 +440,14 @@ export function LotteryView({ onDrawn, onDisabled }: { onDrawn: () => void; onDi
         </div>
       </div>
 
+      {batch && <BatchSheet draws={batch} onClose={collect} />}
       {flash && <div className="lot-flash" aria-hidden />}
       <canvas ref={rain} className="lot-rain" aria-hidden />
     </div>
   );
 }
 
-/** Today's spend toward the threshold, drawn round the chest. */
+/** Today's spend toward the next earned chest, drawn round the chest. */
 function Ring({ ratio }: { ratio: number }) {
   const r = 150;
   const c = 2 * Math.PI * r;
@@ -557,13 +679,17 @@ function Padlock() {
 function ResultCard({ draw, onDone }: { draw: Draw; onDone: () => void }) {
   const { t } = useI18n();
   const h = headline(draw);
-  const words = h.kind === 'again' || h.kind === 'none';
   return (
     <div className={`lot-card r-${draw.rarity} ${draw.kind === 'none' ? 'k-none' : ''}`} role="dialog" aria-label={draw.name}>
       <div className="lot-card-inner">
         {draw.kind !== 'none' && <RarityTag rarity={draw.rarity} />}
-        {words ? (
-          <div className="lot-amount words">{draw.name || (h.kind === 'again' ? t('lottery.again') : t('lottery.thanks'))}</div>
+        {h.kind === 'none' ? (
+          <div className="lot-amount words">{draw.name || t('lottery.thanks')}</div>
+        ) : h.kind === 'again' ? (
+          <>
+            <h3>{draw.name}</h3>
+            <div className="lot-amount words">{t('lottery.again')}</div>
+          </>
         ) : (
           <>
             <h3>{draw.name}</h3>
@@ -676,4 +802,311 @@ function PerkCard({ perk, index }: { perk: Perk; index: number }) {
       </div>
     </div>
   );
+}
+
+/** 活动时间 10/1 00:00 – 10/7 24:00 and a countdown to the start or the end. */
+function ActivityLine({ status: s, phase, skew }: { status: LotteryStatus; phase: ActivityPhase; skew: number }) {
+  const { t } = useI18n();
+  const now = useNow() + skew;
+  const start = s.starts_at ? shanghaiShort(s.starts_at) : null;
+  const end = s.ends_at ? shanghaiShort(s.ends_at) : null;
+  const range = !start && !end ? t('lottery.forever') : `${start ?? t('lottery.fromNow')} – ${end ?? t('lottery.forever')}`;
+  const target = phase === 'upcoming' && s.starts_at ? s.starts_at : phase === 'running' && s.ends_at ? s.ends_at : null;
+  let clock = '';
+  if (target) {
+    const left = countdown(Date.parse(target) - now);
+    clock = left.days > 0 ? t('lottery.daysClock', { d: left.days, clock: left.clock }) : left.clock;
+  }
+  return (
+    <p className="lot-window">
+      <span>
+        {t('lottery.window')} {range}
+      </span>
+      {phase === 'upcoming' && <em>{t('lottery.startsIn', { clock })}</em>}
+      {phase === 'running' && target && <em>{t('lottery.endsIn', { clock })}</em>}
+      {phase === 'ended' && <em className="off">{t('lottery.ended')}</em>}
+    </p>
+  );
+}
+
+/** What a section shows instead of its controls outside the activity window. */
+const closedText = (phase: ActivityPhase, t: T) => (phase === 'upcoming' ? t('lottery.notStarted') : t('lottery.ended'));
+
+function EarnCard({ status: s, phase, index }: { status: LotteryStatus; phase: ActivityPhase; index: number }) {
+  const { t } = useI18n();
+  const e = s.earn;
+  const p = earnProgress(e);
+  const quota = quotaLeft(e.left_today);
+  return (
+    <section className="card usage-card lot-way rise" style={{ '--i': index } as CSSProperties}>
+      <div className="usage-card-head">
+        <h2>{t('lottery.earnTitle')}</h2>
+      </div>
+      {phase !== 'running' ? (
+        <p className="usage-empty">{closedText(phase, t)}</p>
+      ) : (
+        <>
+          <p className="lot-way-line">
+            {t('lottery.earnLine', { spent: dollars(e.today_spend), per: dollars(e.spend_per_chest) })}
+          </p>
+          <div className="key-meter lot-way-meter">
+            <i style={{ width: `${Math.round(p.ratio * 100)}%` }} />
+          </div>
+          <div className="lot-way-foot">
+            <span>
+              {quota === 'out' ? t('lottery.earnSoldOut') : p.capped ? t('lottery.earnCapped') : t('lottery.toNextLong', { amount: dollars(p.toNext) })}
+            </span>
+            <b>
+              {t('lottery.earnedToday', { n: e.earned_today })}
+              {e.daily_cap > 0 && <em> / {e.daily_cap}</em>}
+            </b>
+          </div>
+          {quota !== null && (
+            <p className={`lot-quota ${quota === 'out' ? 'out' : ''}`}>
+              {quota === 'out' ? t('lottery.earnQuotaOut') : t('lottery.earnQuotaLeft', { n: quota })}
+            </p>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function BuyCard({
+  status: s,
+  phase,
+  balance,
+  index,
+  onBought,
+}: {
+  status: LotteryStatus;
+  phase: ActivityPhase;
+  balance: number;
+  index: number;
+  onBought: (s: LotteryStatus) => void;
+}) {
+  const { t } = useI18n();
+  const b = s.buy;
+  const [count, setCount] = useState(1);
+  const [asking, setAsking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState('');
+  const max = Math.max(1, b.left_today);
+  const n = Math.min(Math.max(1, count), max);
+  const total = Math.round(b.price * n * 100) / 100;
+  const sold = quotaLeft(b.sold_left);
+  const short = balance < b.price;
+  const over = total > balance + 1e-9;
+  const can = b.enabled && b.left_today > 0 && !short;
+
+  async function buy() {
+    setBusy(true);
+    setError('');
+    try {
+      const r = await api.lotteryBuy(n);
+      setAsking(false);
+      setCount(1);
+      setDone(t('lottery.bought', { n: r.bought }));
+      onBought(r.status);
+    } catch (e) {
+      setError(errorText(e, t('common.genericError')));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="card usage-card lot-way rise" style={{ '--i': index } as CSSProperties}>
+      <div className="usage-card-head">
+        <h2>{t('lottery.buyTitle')}</h2>
+        {phase === 'running' && b.enabled && <span className="lot-price">{t('lottery.price', { price: dollars(b.price) })}</span>}
+      </div>
+      {phase !== 'running' ? (
+        <p className="usage-empty">{closedText(phase, t)}</p>
+      ) : !b.enabled ? (
+        <p className="usage-empty">{t('lottery.buyOff')}</p>
+      ) : (
+        <>
+          <div className="lot-buy">
+            <div className="stepper" aria-label={t('lottery.count')}>
+              <button aria-label="−" disabled={!can || n <= 1} onClick={() => setCount(n - 1)}>
+                <Icon name="minus" className="size-3.5" />
+              </button>
+              <b>{n}</b>
+              <button aria-label="+" disabled={!can || n >= max} onClick={() => setCount(n + 1)}>
+                <Icon name="plus" className="size-3.5" />
+              </button>
+            </div>
+            <button
+              className="btn btn-primary"
+              disabled={!can || over}
+              onClick={() => {
+                setDone('');
+                setError('');
+                setAsking(true);
+              }}
+            >
+              {t('lottery.buy')} · {dollars(total)}
+            </button>
+          </div>
+          <div className="lot-way-foot">
+            <span className={short || over ? 'warn' : ''}>
+              {sold === 'out'
+                ? t('lottery.soldOut')
+                : s.full
+                  ? t('lottery.full')
+                  : b.left_today === 0
+                    ? t('lottery.buyLimit')
+                    : short || over
+                      ? t('lottery.buyShort')
+                      : done || t('lottery.balance', { amount: dollars(balance) })}
+            </span>
+            <b>{t('lottery.leftToday', { n: b.left_today })}</b>
+          </div>
+          {sold !== null && (
+            <p className={`lot-quota ${sold === 'out' ? 'out' : ''}`}>
+              {sold === 'out' ? t('lottery.soldOut') : t('lottery.soldLeft', { n: sold })}
+            </p>
+          )}
+          {error && !asking && <p className="form-error">{error}</p>}
+        </>
+      )}
+      {asking && (
+        <Dialog
+          title={t('lottery.buyTitle')}
+          onClose={() => !busy && setAsking(false)}
+          footer={
+            <>
+              {error && <p className="mr-auto text-[13px] text-[var(--danger)]">{error}</p>}
+              <button className="btn btn-quiet" disabled={busy} onClick={() => setAsking(false)}>
+                {t('common.cancel')}
+              </button>
+              <button className="btn btn-primary" disabled={busy} onClick={buy}>
+                {busy ? t('common.wait') : t('lottery.buyConfirm', { amount: dollars(total) })}
+              </button>
+            </>
+          }
+        >
+          <p className="confirm-text">
+            {t('lottery.buyAsk', { n, price: dollars(b.price), amount: dollars(total), balance: dollars(Math.max(0, balance - total)) })}
+          </p>
+        </Dialog>
+      )}
+    </section>
+  );
+}
+
+/** Everything a batch open gave: best first, big wins lit up, and the balance it added. */
+function BatchSheet({ draws, onClose }: { draws: Draw[]; onClose: () => void }) {
+  const { t } = useI18n();
+  const list = byRarity(draws);
+  const gained = balanceGained(draws);
+  const big = draws.filter((d) => d.kind !== 'none' && (d.rarity === 'epic' || d.rarity === 'legendary')).length;
+  return (
+    <Dialog
+      title={t('lottery.batchTitle', { n: draws.length })}
+      onClose={onClose}
+      footer={
+        <button className="btn btn-primary" autoFocus onClick={onClose}>
+          {t('lottery.collect')}
+        </button>
+      }
+    >
+      <div className="batch-total">
+        <span>{t('lottery.batchGained')}</span>
+        <b>{dollars(gained)}</b>
+        {big > 0 && <em>{t('lottery.batchBig', { n: big })}</em>}
+      </div>
+      <div className="batch-list">
+        {list.map((d, i) => {
+          const hot = d.kind !== 'none' && (d.rarity === 'epic' || d.rarity === 'legendary');
+          return (
+            <div
+              key={d.id}
+              className={`batch-row r-${d.rarity} ${hot ? 'hot' : ''} ${d.kind === 'none' ? 'k-none' : ''}`}
+              style={{ '--i': i } as CSSProperties}
+            >
+              <i />
+              {d.kind !== 'none' ? <RarityTag rarity={d.rarity} /> : <span />}
+              <span className="truncate">{d.name}</span>
+              <SourceTag source={d.source} />
+              <b>
+                <PrizeText draw={d} />
+              </b>
+            </div>
+          );
+        })}
+      </div>
+    </Dialog>
+  );
+}
+
+/** The low-spend chest: a small spend gets one, the site has a few a day, and it lapses at midnight. */
+function DailyCard({ status: s, phase, skew, index }: { status: LotteryStatus; phase: ActivityPhase; skew: number; index: number }) {
+  const { t } = useI18n();
+  const d = s.daily!;
+  const st = dailyState(d, s.earn.today_spend);
+  const quota = quotaLeft(d.left_today);
+  return (
+    <section className="card usage-card lot-way lot-daily rise" style={{ '--i': index } as CSSProperties}>
+      <div className="usage-card-head">
+        <h2>{t('lottery.dailyTitle')}</h2>
+        {phase === 'running' && d.enabled && (
+          <span className={`lot-quota-tag ${quota === 'out' ? 'out' : ''}`}>
+            {quota === 'out' ? t('lottery.dailySoldOut') : quota !== null ? t('lottery.dailyLeft', { n: quota }) : null}
+          </span>
+        )}
+      </div>
+      {phase !== 'running' ? (
+        <p className="usage-empty">{closedText(phase, t)}</p>
+      ) : st.kind === 'off' ? (
+        <p className="usage-empty">{t('lottery.dailyOff')}</p>
+      ) : (
+        <>
+          <p className="lot-way-line">
+            {t('lottery.dailyLine', { amount: dollars(d.threshold), n: d.per_user })}
+          </p>
+          <div className="key-meter lot-way-meter">
+            <i style={{ width: `${st.kind === 'progress' ? Math.round(st.ratio * 100) : st.kind === 'done' ? 100 : 0}%` }} />
+          </div>
+          <div className="lot-way-foot">
+            <span className={st.kind === 'soldOut' ? 'warn' : ''}>
+              {st.kind === 'progress'
+                ? t('lottery.toNextLong', { amount: dollars(st.toNext) })
+                : st.kind === 'done'
+                  ? t('lottery.dailyGot')
+                  : t('lottery.dailySoldOut')}
+            </span>
+            <b>
+              {t('lottery.earnedToday', { n: d.mine_today })}
+              <em> / {d.per_user}</em>
+            </b>
+          </div>
+        </>
+      )}
+      {d.unopened > 0 && <DailyExpiry n={d.unopened} at={d.expires_at} skew={skew} />}
+    </section>
+  );
+}
+
+/** "1 个低消宝箱待开启 · 当天有效，24:00 过期 · 03:12:45". */
+function DailyExpiry({ n, at, skew }: { n: number; at: string; skew: number }) {
+  const { t } = useI18n();
+  const now = useNow() + skew;
+  const left = countdown(Date.parse(at) - now);
+  return (
+    <p className="lot-expiry">
+      <Icon name="alert" className="size-3.5" />
+      <span>{t('lottery.dailyUnopened', { n })}</span>
+      <time>{left.clock}</time>
+    </p>
+  );
+}
+
+/** Where a chest came from: spending, buying, or another chest. */
+function SourceTag({ source }: { source?: ChestSource }) {
+  const { t } = useI18n();
+  if (!source) return <span />;
+  return <em className={`lot-source s-${source}`}>{t(`lottery.source.${source}`)}</em>;
 }

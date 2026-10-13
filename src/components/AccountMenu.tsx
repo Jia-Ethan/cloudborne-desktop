@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { api, type User } from '../api';
+import { api, type SavedAccount, type User } from '../api';
 import { LANGS, useI18n } from '../i18n';
 import type { Updater } from '../update';
 import { Icon } from './Icon';
@@ -9,7 +9,7 @@ import { updateLabel } from './UpdateButton';
 // The relay's own home is a landing page; the account pages start at /keys.
 const CONSOLE_PATH = '/keys';
 
-function Avatar({ email }: { email: string }) {
+export function Avatar({ email }: { email: string }) {
   return (
     <span className="avatar" aria-hidden>
       {(email.trim()[0] ?? '?').toUpperCase()}
@@ -19,17 +19,25 @@ function Avatar({ email }: { email: string }) {
 
 /**
  * Sidebar footer: avatar and email; clicking opens a glass menu upward with
- * console, language, updates, about and sign out.
+ * the other saved accounts, console, language, updates, about and sign out.
  */
 export function AccountMenu({
   user,
+  accounts,
   updater,
   onAbout,
+  onSwitch,
+  onRemove,
+  onAdd,
   onLogout,
 }: {
   user: User;
+  accounts: SavedAccount[];
   updater: Updater;
   onAbout: () => void;
+  onSwitch: (a: SavedAccount) => void;
+  onRemove: (a: SavedAccount) => void;
+  onAdd: () => void;
   onLogout: () => void;
 }) {
   const { t, lang, setLang } = useI18n();
@@ -59,6 +67,8 @@ export function AccountMenu({
     return () => clearTimeout(id);
   }, [copied]);
 
+  const others = accounts.filter((a) => a.user_id !== user.id);
+
   const checkLabel =
     state.kind === 'checking'
       ? t('update.checking')
@@ -86,6 +96,44 @@ export function AccountMenu({
               {copied && t('common.copied')}
             </span>
           </button>
+
+          {others.map((a) => (
+            <div key={a.user_id} className="menu-account">
+              <button
+                className="menu-item"
+                role="menuitem"
+                title={a.signed_in ? t('menu.switchTo', { email: a.email }) : t('menu.signInAs', { email: a.email })}
+                onClick={() => {
+                  setOpen(false);
+                  onSwitch(a);
+                }}
+              >
+                <Avatar email={a.email} />
+                <span className="min-w-0 flex-1 truncate">{a.email}</span>
+                {!a.signed_in && <span className="menu-meta">{t('login.needsPassword')}</span>}
+              </button>
+              <button
+                className="menu-account-remove"
+                aria-label={t('menu.removeAccount', { email: a.email })}
+                title={t('menu.removeAccount', { email: a.email })}
+                onClick={() => onRemove(a)}
+              >
+                <Icon name="close" className="size-3" />
+              </button>
+            </div>
+          ))}
+          <button
+            className="menu-item"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onAdd();
+            }}
+          >
+            <Icon name="plus" />
+            <span className="flex-1">{t('menu.addAccount')}</span>
+          </button>
+          <div className="menu-sep" />
 
           <button
             className="menu-item"

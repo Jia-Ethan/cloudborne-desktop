@@ -6,6 +6,10 @@ import {
   RARITIES,
   costCeiling,
   fromPercent,
+  fromShanghaiInput,
+  payoutRatio,
+  sellsAtLoss,
+  toShanghaiInput,
   probabilities,
   settingsProblem,
   toPercent,
@@ -14,6 +18,7 @@ import {
   dollars,
 } from '../lottery';
 import { Pager } from './AdminUsers';
+import { Dialog } from './Dialog';
 import { Icon } from './Icon';
 import { PrizeText, RarityTag } from './Prize';
 import { BigWins, WinnerSheet, when } from './WinnerSheet';
@@ -95,9 +100,43 @@ export function AdminLottery({ onOpenUser, onToast }: { onOpenUser: (u: { id: nu
           <Stat label={t('admin.lottery.draws')} value={summary ? String(summary.draws) : '—'} />
           <Stat label={t('admin.lottery.participants')} value={summary ? String(summary.participants) : '—'} />
           <Stat
+            label={t('admin.lottery.chestsIn')}
+            value={summary ? String((summary.earned_chests ?? 0) + (summary.bought_chests ?? 0) + (summary.daily_chests ?? 0)) : '—'}
+            sub={
+              summary
+                ? t('admin.lottery.chestsSplit', { daily: summary.daily_chests ?? 0, earned: summary.earned_chests ?? 0, bought: summary.bought_chests ?? 0 })
+                : undefined
+            }
+          />
+          <Stat
+            label={t('admin.lottery.dailyExpired')}
+            value={summary ? String(summary.daily_expired ?? 0) : '—'}
+            sub={summary ? `/ ${summary.daily_chests ?? 0}` : undefined}
+          />
+          <Stat label={t('admin.lottery.forfeited')} value={summary ? String(summary.forfeited_chests ?? 0) : '—'} title={t('admin.lottery.forfeitedHint')} />
+          <Stat
             label={t('admin.lottery.spent')}
-            value={summary ? dollars(summary.value) : '—'}
+            value={summary ? dollars(summary.value_earn ?? summary.value) : '—'}
             sub={summary ? `/ ${summary.budget > 0 ? dollars(summary.budget) : t('admin.lottery.noCap')}` : undefined}
+          />
+          <Stat
+            label={t('admin.lottery.revenue')}
+            value={summary ? dollars(summary.buy_revenue ?? 0) : '—'}
+            sub={summary ? t('admin.lottery.paidOut', { amount: dollars(summary.value_buy ?? 0) }) : undefined}
+          />
+          <Stat
+            label={t('admin.lottery.poolBalance')}
+            value={summary?.pool ? dollars(summary.pool.balance) : '—'}
+            tone={summary?.pool && summary.pool.balance < 0 ? 'bad' : undefined}
+            title={
+              summary?.pool
+                ? t('admin.lottery.poolDetail', {
+                    reserve: dollars(summary.pool.reserve),
+                    revenue: dollars(summary.pool.revenue),
+                    payout: dollars(summary.pool.payout),
+                  })
+                : undefined
+            }
           />
           <div className="usage-stat">
             <span>{t('admin.lottery.byRarity')}</span>
@@ -189,9 +228,9 @@ export function AdminLottery({ onOpenUser, onToast }: { onOpenUser: (u: { id: nu
   );
 }
 
-function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function Stat({ label, value, sub, tone, title }: { label: string; value: string; sub?: string; tone?: 'bad'; title?: string }) {
   return (
-    <div className="usage-stat">
+    <div className={`usage-stat ${tone ?? ''}`} title={title}>
       <span>{label}</span>
       <b>
         {value}
@@ -203,18 +242,44 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
 
 // ---- Settings ----
 
+/** Fills fields an older relay leaves out, so the form always has every key. */
+function complete(x: LotterySettings): LotterySettings {
+  // Typed as what the relay may send: an older one leaves the new keys out.
+  const { threshold: old, ...rest } = x as Partial<LotterySettings> & Pick<LotterySettings, 'enabled' | 'daily_budget' | 'prizes'> & { threshold?: number };
+  return {
+    starts_at: null,
+    ends_at: null,
+    earn_spend: 50,
+    earn_daily_cap: 0,
+    earn_quota: 100,
+    buy_enabled: false,
+    buy_price: 5,
+    buy_daily_cap: 5,
+    buy_quota: 100,
+    pool_reserve: 0,
+    hold_cap: 100,
+    daily_enabled: true,
+    // v1's threshold becomes the low-spend chest's, as the relay does.
+    daily_threshold: old && old > 0 ? old : 20,
+    daily_per_user: 1,
+    daily_quota: 50,
+    ...rest,
+  };
+}
+
 function SettingsEditor({ onToast }: { onToast: (m: string) => void }) {
   const { t } = useI18n();
   const [saved, setSaved] = useState<LotterySettings | null>(null);
   const [s, setS] = useState<LotterySettings | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [askDefaults, setAskDefaults] = useState(false);
 
   useEffect(() => {
     api.adminLotterySettings().then(
       (x) => {
-        setSaved(x);
-        setS(x);
+        setSaved(complete(x));
+        setS(complete(x));
       },
       (e) => setError(errorText(e, t('common.genericError'))),
     );
@@ -222,6 +287,8 @@ function SettingsEditor({ onToast }: { onToast: (m: string) => void }) {
 
   const probs = useMemo(() => probabilities(s?.prizes ?? []), [s]);
   const ceiling = useMemo(() => costCeiling(s?.prizes ?? []), [s]);
+  const ratio = s ? payoutRatio(ceiling, s.buy_price) : Infinity;
+  const loss = !!s && s.buy_enabled && sellsAtLoss(ceiling, s.buy_price);
   const problem = s ? settingsProblem(s) : null;
   const dirty = JSON.stringify(s) !== JSON.stringify(saved);
 
@@ -234,7 +301,7 @@ function SettingsEditor({ onToast }: { onToast: (m: string) => void }) {
     setBusy(true);
     setError('');
     try {
-      const x = await api.adminLotterySave(s);
+      const x = complete(await api.adminLotterySave(s));
       setSaved(x);
       setS(x);
       onToast(t('admin.lottery.saved'));
@@ -242,6 +309,19 @@ function SettingsEditor({ onToast }: { onToast: (m: string) => void }) {
       setError(errorText(e, t('common.genericError')));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function loadDefaults() {
+    setAskDefaults(false);
+    setError('');
+    try {
+      const d = complete(await api.adminLotteryDefaults());
+      // Only the table and the money knobs; the switch and window stay as edited.
+      setS((cur) => (cur ? { ...d, enabled: cur.enabled, starts_at: cur.starts_at, ends_at: cur.ends_at } : d));
+      onToast(t('admin.lottery.defaultsLoaded'));
+    } catch (e) {
+      setError(errorText(e, t('common.genericError')));
     }
   }
 
@@ -261,12 +341,86 @@ function SettingsEditor({ onToast }: { onToast: (m: string) => void }) {
         </button>
       </div>
 
-      <div className="lot-settings-top">
-        <NumField label={t('admin.lottery.threshold')} prefix="$" value={s.threshold} onChange={(v) => setS({ ...s, threshold: v })} />
-        <NumField label={t('admin.lottery.budget')} prefix="$" value={s.daily_budget} onChange={(v) => setS({ ...s, daily_budget: v })} />
-        <div className="ceiling">
+      <div className="lot-settings">
+        <div className="lot-settings-group">
+          <h3>{t('admin.lottery.activity')}</h3>
+          <div className="lot-settings-row">
+            <TimeField label={t('admin.lottery.startsAt')} value={s.starts_at} onChange={(v) => setS({ ...s, starts_at: v })} />
+            <TimeField label={t('admin.lottery.endsAt')} value={s.ends_at} onChange={(v) => setS({ ...s, ends_at: v })} />
+            <NumField label={t('admin.lottery.holdCap')} value={s.hold_cap} onChange={(v) => setS({ ...s, hold_cap: v })} />
+          </div>
+          <p className="lot-settings-hint">{t('admin.lottery.windowHint')}</p>
+        </div>
+
+        <div className="lot-settings-group">
+          <div className="lot-settings-head">
+            <h3>{t('admin.lottery.dailyGroup')}</h3>
+            <button
+              role="switch"
+              aria-checked={s.daily_enabled}
+              className={`switch ${s.daily_enabled ? 'on' : ''}`}
+              onClick={() => setS({ ...s, daily_enabled: !s.daily_enabled })}
+              aria-label={t('admin.lottery.dailyEnabled')}
+            >
+              <span>{s.daily_enabled ? t('admin.lottery.on') : t('admin.lottery.off')}</span>
+              <i />
+            </button>
+          </div>
+          <div className="lot-settings-row">
+            <NumField label={t('admin.lottery.dailyThreshold')} prefix="$" value={s.daily_threshold} onChange={(v) => setS({ ...s, daily_threshold: v })} />
+            <NumField label={t('admin.lottery.dailyPerUser')} value={s.daily_per_user} onChange={(v) => setS({ ...s, daily_per_user: v })} />
+            <NumField label={t('admin.lottery.dailyQuota')} value={s.daily_quota} onChange={(v) => setS({ ...s, daily_quota: v })} />
+          </div>
+          <p className="lot-settings-hint">{t('admin.lottery.dailyHint')}</p>
+        </div>
+
+        <div className="lot-settings-group">
+          <h3>{t('admin.lottery.earnGroup')}</h3>
+          <div className="lot-settings-row">
+            <NumField label={t('admin.lottery.earnSpend')} prefix="$" value={s.earn_spend} onChange={(v) => setS({ ...s, earn_spend: v })} />
+            <NumField label={t('admin.lottery.earnCap')} value={s.earn_daily_cap} onChange={(v) => setS({ ...s, earn_daily_cap: v })} />
+            <NumField label={t('admin.lottery.earnQuota')} value={s.earn_quota} onChange={(v) => setS({ ...s, earn_quota: v })} />
+            <NumField label={t('admin.lottery.budget')} prefix="$" value={s.daily_budget} onChange={(v) => setS({ ...s, daily_budget: v })} />
+          </div>
+          <p className="lot-settings-hint">{t('admin.lottery.zeroUnlimited')}</p>
+        </div>
+
+        <div className="lot-settings-group">
+          <div className="lot-settings-head">
+            <h3>{t('admin.lottery.buyGroup')}</h3>
+            <button
+              role="switch"
+              aria-checked={s.buy_enabled}
+              className={`switch ${s.buy_enabled ? 'on' : ''}`}
+              onClick={() => setS({ ...s, buy_enabled: !s.buy_enabled })}
+              aria-label={t('admin.lottery.buyEnabled')}
+            >
+              <span>{s.buy_enabled ? t('admin.lottery.on') : t('admin.lottery.off')}</span>
+              <i />
+            </button>
+          </div>
+          <div className="lot-settings-row">
+            <NumField label={t('admin.lottery.buyPrice')} prefix="$" value={s.buy_price} onChange={(v) => setS({ ...s, buy_price: v })} />
+            <NumField label={t('admin.lottery.buyCap')} value={s.buy_daily_cap} onChange={(v) => setS({ ...s, buy_daily_cap: v })} />
+            <NumField label={t('admin.lottery.buyQuota')} value={s.buy_quota} onChange={(v) => setS({ ...s, buy_quota: v })} />
+            <NumField label={t('admin.lottery.reserve')} prefix="$" value={s.pool_reserve} onChange={(v) => setS({ ...s, pool_reserve: v })} />
+          </div>
+          <p className="lot-settings-hint">{t('admin.lottery.quotaHint')}</p>
+        </div>
+
+        <div className={`ceiling ${loss ? 'bad' : ''}`}>
           <span>{t('admin.lottery.ceiling')}</span>
           <b>{Number.isFinite(ceiling) ? dollars(ceiling) : t('admin.lottery.noCap')}</b>
+          {s.buy_enabled && (
+            <em>
+              {t('admin.lottery.payout', { pct: Number.isFinite(ratio) ? `${(Math.round(ratio * 1000) / 10).toFixed(1)}%` : '∞' })}
+            </em>
+          )}
+          {loss && (
+            <p className="ceiling-warn">
+              {t('admin.lottery.lossWarn', { ceiling: Number.isFinite(ceiling) ? dollars(ceiling) : '∞', price: dollars(s.buy_price) })}
+            </p>
+          )}
         </div>
       </div>
 
@@ -329,7 +483,11 @@ function SettingsEditor({ onToast }: { onToast: (m: string) => void }) {
           <Icon name="plus" className="size-4" />
           {t('admin.lottery.addPrize')}
         </button>
-        {problem && <p className="form-error mr-auto">{t(`admin.lottery.problem.${problem.problem}`, { n: (problem.index ?? 0) + 1 })}</p>}
+        <button className="btn btn-quiet" disabled={busy} onClick={() => setAskDefaults(true)}>
+          <Icon name="sparkle" className="size-4" />
+          {t('admin.lottery.useDefaults')}
+        </button>
+        {problem && <p className="form-error mr-auto">{t(`admin.lottery.problem.${problem.problem}`, { n: (problem.index ?? 0) + 1, ceiling: Number.isFinite(ceiling) ? dollars(ceiling) : '∞', price: dollars(s.buy_price) })}</p>}
         {!problem && <span className="mr-auto" />}
         <button className="btn btn-quiet" disabled={!dirty || busy} onClick={() => setS(saved)}>
           {t('admin.lottery.reset')}
@@ -339,7 +497,43 @@ function SettingsEditor({ onToast }: { onToast: (m: string) => void }) {
         </button>
       </div>
       {error && <div className="usage-error mt-3">{error}</div>}
+      {askDefaults && (
+        <Dialog
+          title={t('admin.lottery.useDefaults')}
+          onClose={() => setAskDefaults(false)}
+          footer={
+            <>
+              <button className="btn btn-quiet" onClick={() => setAskDefaults(false)}>
+                {t('common.cancel')}
+              </button>
+              <button className="btn btn-primary" onClick={loadDefaults}>
+                {t('admin.lottery.useDefaults')}
+              </button>
+            </>
+          }
+        >
+          <p className="confirm-text">{t('admin.lottery.defaultsAsk')}</p>
+        </Dialog>
+      )}
     </section>
+  );
+}
+
+/** A datetime-local in Shanghai time; empty means no bound. */
+function TimeField({ label, value, onChange }: { label: string; value: string | null; onChange: (v: string | null) => void }) {
+  const { t } = useI18n();
+  return (
+    <label className="form-row">
+      <span>{label}</span>
+      <span className="time-field">
+        <input type="datetime-local" className="field" value={toShanghaiInput(value)} onChange={(e) => onChange(fromShanghaiInput(e.target.value))} />
+        {value && (
+          <button type="button" className="icon-button" aria-label={t('common.clear')} title={t('common.clear')} onClick={() => onChange(null)}>
+            <Icon name="close" className="size-3.5" />
+          </button>
+        )}
+      </span>
+    </label>
   );
 }
 

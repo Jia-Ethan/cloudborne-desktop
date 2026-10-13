@@ -34,10 +34,38 @@ export interface Prize {
 
 export interface LotterySettings {
   enabled: boolean;
-  threshold: number;
+  /** RFC3339; null = no bound. */
+  starts_at: string | null;
+  ends_at: string | null;
+  /** Every this much spend in a day earns 1 chest. */
+  earn_spend: number;
+  /** Earned chests per user per day; 0 = unlimited. */
+  earn_daily_cap: number;
+  /** Earned chests site-wide per day; 0 = unlimited. */
+  earn_quota: number;
+  /** Earn-pool payout per day; 0 = unlimited. */
   daily_budget: number;
+  buy_enabled: boolean;
+  buy_price: number;
+  /** 1..100 per user per day. */
+  buy_daily_cap: number;
+  /** Chests sold site-wide per day; 0 = unlimited. */
+  buy_quota: number;
+  /** Admin-funded seed for the buy pool. */
+  pool_reserve: number;
+  /** Most unopened chests one user may hold, 1..1000. */
+  hold_cap: number;
+  /** Low-spend chest: expires at 24:00 on its day. */
+  daily_enabled: boolean;
+  daily_threshold: number;
+  /** 1..10 per user per day. */
+  daily_per_user: number;
+  /** Site-wide per day; 0 = unlimited. */
+  daily_quota: number;
   prizes: Prize[];
 }
+
+export type ChestSource = 'earn' | 'buy' | 'bonus' | 'daily';
 
 export interface Draw {
   id: number;
@@ -51,6 +79,9 @@ export interface Draw {
   value: number;
   detail: Record<string, number | string | undefined>;
   created_at: string;
+  /** Older relays leave these out. */
+  source?: ChestSource;
+  pool?: 'earn' | 'buy';
   /** Admin lists only. */
   user_id?: number;
   email?: string;
@@ -71,14 +102,63 @@ export interface Perk {
 
 export interface LotteryStatus {
   enabled: boolean;
-  threshold: number;
-  today_cost: number;
-  draws_allowed: number;
-  draws_used: number;
-  draws_left: number;
+  /** Enabled and inside the activity window: chests can be earned and bought. */
+  active: boolean;
+  starts_at: string | null;
+  ends_at: string | null;
+  now: string;
+  /** Unopened, unexpired chests held. */
+  chests: number;
+  /** Most a user may hold; older relays leave it out. */
+  hold_cap?: number;
+  /** chests ≥ hold_cap: nothing more is earned until some are opened. */
+  full?: boolean;
+  /** `quota` is site-wide per day (0 = unlimited); `left_today` is null when unlimited. */
+  earn: {
+    spend_per_chest: number;
+    daily_cap: number;
+    today_spend: number;
+    earned_today: number;
+    quota?: number;
+    left_today?: number | null;
+  };
+  /**
+   * `enabled` is buy_enabled && active. `left_today` is what this user can
+   * still buy: min(own allowance, sold_left). `sold_left` is null when the
+   * site-wide quota is unlimited.
+   */
+  buy: {
+    enabled: boolean;
+    price: number;
+    daily_cap: number;
+    bought_today: number;
+    left_today: number;
+    quota?: number;
+    sold_today?: number;
+    sold_left?: number | null;
+  };
+  /** Low-spend chest. Older relays leave it out. */
+  daily?: DailyChest;
   prizes: { id: string; name: string; rarity: Rarity; kind: PrizeKind }[];
   today: Draw[];
   perks: Perk[];
+}
+
+export interface DailyChest {
+  /** daily_enabled && active. */
+  enabled: boolean;
+  threshold: number;
+  per_user: number;
+  /** Site-wide; 0 = unlimited. */
+  quota: number;
+  given_today: number;
+  /** null when the quota is unlimited. */
+  left_today: number | null;
+  mine_today: number;
+  /** My unopened ones that have not expired. */
+  unopened: number;
+  /** End of today, RFC3339. */
+  expires_at: string;
 }
 
 export interface LotterySummary {
@@ -86,8 +166,21 @@ export interface LotterySummary {
   draws: number;
   participants: number;
   value: number;
+  /** Earn pool. */
   budget: number;
   budget_left: number;
+  earned_chests?: number;
+  bought_chests?: number;
+  buy_revenue?: number;
+  value_earn?: number;
+  value_buy?: number;
+  daily_chests?: number;
+  /** Granted that day, never opened, expired. */
+  daily_expired?: number;
+  /** Owed that day but not granted because the user was full. */
+  forfeited_chests?: number;
+  /** Buy pool, all time; balance = reserve + revenue − payout. */
+  pool?: { reserve: number; revenue: number; payout: number; balance: number };
   by_rarity: Partial<Record<Rarity, number>>;
   big_wins: Draw[];
 }
@@ -127,6 +220,16 @@ export interface AdminOverview {
 export type LoginOutcome =
   | { kind: 'done'; user: User }
   | { kind: 'two_factor'; temp_token: string; email_masked: string };
+
+export interface SavedAccount {
+  user_id: number;
+  email: string;
+  active: boolean;
+  /** False once the relay turned its token down; the email stays for the login page. */
+  signed_in: boolean;
+}
+
+export type SwitchOutcome = { kind: 'done'; user: User } | { kind: 'signed_out'; email: string };
 
 export interface ToolStatus {
   id: ToolId;
@@ -264,8 +367,13 @@ export type InstallStarted =
 export const api = {
   login: (email: string, password: string) => invoke<LoginOutcome>('login', { email, password }),
   login2fa: (code: string) => invoke<LoginOutcome>('login_2fa', { code }),
-  logout: () => invoke<void>('logout'),
+  /** Signs the current account out; resolves to the account that took over, if any. */
+  logout: () => invoke<User | null>('logout'),
   me: () => invoke<User | null>('me'),
+  accounts: () => invoke<SavedAccount[]>('accounts_list'),
+  switchAccount: (userId: number) => invoke<SwitchOutcome>('account_switch', { userId }),
+  addAccountBegin: () => invoke<SavedAccount[]>('account_add_begin'),
+  removeAccount: (userId: number) => invoke<User | null>('account_remove', { userId }),
   toolsStatus: () => invoke<ToolStatus[]>('tools_status'),
   groupsFor: (tool: ToolId) => invoke<Group[]>('groups_for', { tool }),
   connect: (tool: ToolId, groupId: number) =>
@@ -286,7 +394,9 @@ export const api = {
   serviceStatus: () => invoke<{ items: Monitor[] }>('service_status'),
   relayOrigin: () => invoke<string>('relay_origin'),
   lottery: () => invoke<LotteryStatus>('lottery_status'),
-  lotteryDraw: () => invoke<{ draw: Draw; status: LotteryStatus }>('lottery_draw'),
+  /** `draws` is missing on relays without batch open; `draw` is always there. */
+  lotteryOpen: (count = 1) => invoke<{ draws?: Draw[]; draw: Draw; status: LotteryStatus }>('lottery_open', { count }),
+  lotteryBuy: (count: number) => invoke<{ bought: number; status: LotteryStatus }>('lottery_buy', { count }),
   adminOverview: (today: string, start: string, timezone: string) =>
     invoke<AdminOverview>('admin_overview', { today, start, timezone }),
   adminUsers: (page: number, pageSize: number, search: string) =>
@@ -297,6 +407,7 @@ export const api = {
   adminUserStatus: (id: number, active: boolean) => invoke<AdminUser>('admin_user_status', { id, active }),
   adminLotterySettings: () => invoke<LotterySettings>('admin_lottery_settings'),
   adminLotterySave: (settings: LotterySettings) => invoke<LotterySettings>('admin_lottery_save', { settings }),
+  adminLotteryDefaults: () => invoke<LotterySettings>('admin_lottery_defaults'),
   adminLotterySummary: (date: string) => invoke<LotterySummary>('admin_lottery_summary', { date }),
   adminLotteryDraws: (q: { date?: string; rarity?: string; userId?: number; page: number; pageSize: number }) =>
     invoke<Page<Draw>>('admin_lottery_draws', {
