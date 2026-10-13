@@ -37,7 +37,9 @@ Teamo 还做了这些，我们不跟：改 Codex 的 `auth.json` 和桌面版 `a
 | 退出 | `POST /api/v1/auth/logout` |
 | 用户信息、余额 | `GET /api/v1/user/profile` |
 | 可用分组及其平台 | `GET /api/v1/groups/available` |
-| API 密钥 | `GET / POST /api/v1/keys`，`DELETE /api/v1/keys/:id` |
+| API 密钥 | `GET / POST /api/v1/keys`，`PUT / DELETE /api/v1/keys/:id` |
+| 每把密钥的花费 | `POST /api/v1/usage/dashboard/api-keys-usage` |
+| 服务状态 | `GET /api/v1/channel-monitors` |
 
 令牌在 Windows 上存进系统凭据管理器；在 macOS 上存应用数据目录里只有本人能读的文件（v0.6.1 起，原因见 README）。
 

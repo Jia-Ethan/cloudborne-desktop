@@ -261,6 +261,94 @@ fn tool_of_key(name: &str) -> Option<ToolId> {
     ToolId::ALL.into_iter().find(|t| key_name(*t) == name)
 }
 
+// ---- API keys ----
+
+/// Every key on the account as the relay sends it, plus `today_cost`,
+/// `month_cost` (last 30 days) and `tool` when this client made it for a tool.
+#[tauri::command]
+pub async fn keys_list(s: State<'_, Session>) -> Result<Vec<serde_json::Value>> {
+    let c = &s.client;
+    let keys = s.authed(|a| async move { c.keys_full(&a).await }).await?;
+    let ids: Vec<i64> = keys.iter().filter_map(|k| k.get("id")?.as_i64()).collect();
+    let ids = &ids;
+    // Spend is extra; the list still shows if it fails.
+    let costs = s.authed(|a| async move { c.key_costs(&a, ids).await }).await.unwrap_or_default();
+    Ok(keys
+        .into_iter()
+        .map(|mut k| {
+            let cost = k.get("id").and_then(|v| v.as_i64()).and_then(|id| costs.get(&id)).copied().unwrap_or_default();
+            let tool = k.get("name").and_then(|v| v.as_str()).and_then(tool_of_key);
+            k.insert("today_cost".into(), cost.today_actual_cost.into());
+            k.insert("month_cost".into(), cost.total_actual_cost.into());
+            k.insert("tool".into(), serde_json::to_value(tool).unwrap_or_default());
+            serde_json::Value::Object(k)
+        })
+        .collect())
+}
+
+/// Groups a new key can use, each with this account's own rate where it has one.
+#[tauri::command]
+pub async fn key_groups(s: State<'_, Session>) -> Result<Vec<Group>> {
+    let c = &s.client;
+    let groups = s.authed(|a| async move { c.groups(&a).await }).await?;
+    let own = s.authed(|a| async move { c.group_rates(&a).await }).await.unwrap_or_default();
+    Ok(groups
+        .into_iter()
+        .filter(|g| g.status.is_empty() || g.status == "active")
+        .map(|mut g| {
+            if let Some(r) = own.get(&g.id) {
+                g.rate_multiplier = *r;
+            }
+            g
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub async fn key_create(s: State<'_, Session>, body: serde_json::Value) -> Result<serde_json::Value> {
+    let c = &s.client;
+    let body = &body;
+    s.authed(|a| async move { c.create_key_with(&a, body).await }).await
+}
+
+#[tauri::command]
+pub async fn key_update(s: State<'_, Session>, id: i64, body: serde_json::Value) -> Result<serde_json::Value> {
+    let c = &s.client;
+    let body = &body;
+    s.authed(|a| async move { c.update_key(&a, id, body).await }).await
+}
+
+#[tauri::command]
+pub async fn key_delete(s: State<'_, Session>, id: i64) -> Result<()> {
+    let c = &s.client;
+    s.authed(|a| async move { c.delete_key(&a, id).await }).await
+}
+
+/// Model ids a key can call, for the usage examples.
+#[tauri::command]
+pub async fn key_models(s: State<'_, Session>, key: String) -> Result<Vec<String>> {
+    s.client.models(&key).await
+}
+
+/// Hands a key to CC Switch through its import link.
+#[tauri::command]
+pub fn open_ccswitch(url: String) -> Result<()> {
+    if !url.starts_with("ccswitch://v1/import?") {
+        return Err(Error::Other("not a CC Switch import link".into()));
+    }
+    tauri_plugin_opener::open_url(&url, None::<&str>)
+        .map_err(|_| Error::Other(tr("没有找到 CC Switch，请先安装", "CC Switch was not found. Install it first.").into()))
+}
+
+// ---- Service status ----
+
+/// The relay's status probes as it sends them: `{ items: [...] }`.
+#[tauri::command]
+pub async fn service_status(s: State<'_, Session>) -> Result<serde_json::Value> {
+    let c = &s.client;
+    s.authed(|a| async move { c.monitors(&a).await }).await
+}
+
 #[tauri::command]
 pub async fn install_tool(tool: ToolId) -> Result<InstallStarted> {
     install::install(tool, &tools::home_dir()).await

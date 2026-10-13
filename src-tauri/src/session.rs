@@ -83,16 +83,18 @@ mod store {
     }
 }
 
-/// Random per-install ID, stored next to the session. If it cannot be stored
-/// a fresh ID is used, which only costs a re-login.
+/// Random per-install ID, stored next to the session. The relay binds the
+/// session to it, so a changed ID signs the user out. If it cannot be read, a
+/// one-off ID is used for this run and the stored one is left alone.
 fn device_id() -> String {
     match store::get(DEVICE) {
         Ok(Some(id)) if uuid::Uuid::parse_str(&id).is_ok() => id,
-        _ => {
+        Ok(_) => {
             let id = uuid::Uuid::new_v4().to_string();
             let _ = store::set(DEVICE, &id);
             id
         }
+        Err(_) => uuid::Uuid::new_v4().to_string(),
     }
 }
 
@@ -153,8 +155,14 @@ impl Session {
             .ok_or(Error::Unauthorized)
     }
 
-    async fn refresh(&self) -> Result<String> {
+    /// Exchanges the refresh token for a new pair. `stale` is the access
+    /// token that just got a 401: if another request has already replaced it,
+    /// that one's result is used rather than rotating again.
+    async fn refresh(&self, stale: &str) -> Result<String> {
         let mut guard = self.tokens.lock().await;
+        if let Some(t) = guard.as_ref().filter(|t| t.access_token != stale) {
+            return Ok(t.access_token.clone());
+        }
         let rt = guard
             .as_ref()
             .and_then(|t| t.refresh_token.clone())
@@ -164,13 +172,24 @@ impl Session {
                 if t.refresh_token.is_none() {
                     t.refresh_token = Some(rt);
                 }
-                store_tokens(&t)?;
+                // The relay has already retired the old token, so the new pair
+                // is kept in memory even if saving it fails.
                 let a = t.access_token.clone();
+                let saved = store_tokens(&t);
                 *guard = Some(t);
-                Ok(a)
+                saved.map(|()| a)
             }
             // A rejected refresh token ends the session; a network error does not.
             Err(Error::Unauthorized) => {
+                // Another copy of the app may have rotated the token and saved
+                // the new pair; pick that up instead of signing out.
+                if let Ok(Some(t)) = load_tokens() {
+                    if t.refresh_token.as_deref() != Some(rt.as_str()) {
+                        let a = t.access_token.clone();
+                        *guard = Some(t);
+                        return Ok(a);
+                    }
+                }
                 *guard = None;
                 let _ = clear_tokens();
                 Err(Error::Unauthorized)
@@ -186,9 +205,9 @@ impl Session {
         Fut: Future<Output = Result<T>>,
     {
         let a = self.access().await?;
-        match f(a).await {
+        match f(a.clone()).await {
             Err(Error::Unauthorized) => {
-                let a = self.refresh().await?;
+                let a = self.refresh(&a).await?;
                 f(a).await
             }
             other => other,

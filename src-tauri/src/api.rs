@@ -65,6 +65,15 @@ pub struct ApiKey {
     pub status: String,
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct KeyCost {
+    #[serde(default)]
+    pub today_actual_cost: f64,
+    /// Last 30 days.
+    #[serde(default)]
+    pub total_actual_cost: f64,
+}
+
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UsageKind {
@@ -271,11 +280,20 @@ impl Client {
     }
 
     pub async fn keys(&self, access: &str) -> Result<Vec<ApiKey>> {
+        self.key_page(access).await
+    }
+
+    /// Every key with all the fields the relay sends, for the keys page.
+    pub async fn keys_full(&self, access: &str) -> Result<Vec<serde_json::Map<String, Value>>> {
+        self.key_page(access).await
+    }
+
+    async fn key_page<T: DeserializeOwned>(&self, access: &str) -> Result<Vec<T>> {
         #[derive(Deserialize)]
-        struct Page {
-            items: Vec<ApiKey>,
+        struct Page<T> {
+            items: Vec<T>,
         }
-        let p: Page = self
+        let p: Page<T> = self
             .send(
                 self.http
                     .get(self.url("/api/v1/keys"))
@@ -284,6 +302,44 @@ impl Client {
             )
             .await?;
         Ok(p.items)
+    }
+
+    /// Creates a key from the relay's create body (name, group_id, quota, ...).
+    pub async fn create_key_with(&self, access: &str, body: &Value) -> Result<Value> {
+        self.send(self.http.post(self.url("/api/v1/keys")).bearer_auth(access).json(body)).await
+    }
+
+    /// Changes only the fields present in `body`.
+    pub async fn update_key(&self, access: &str, id: i64, body: &Value) -> Result<Value> {
+        self.send(self.http.put(self.url(&format!("/api/v1/keys/{id}"))).bearer_auth(access).json(body)).await
+    }
+
+    /// Today's and the last 30 days' spend per key id. The relay takes at most
+    /// 100 ids per call.
+    pub async fn key_costs(&self, access: &str, ids: &[i64]) -> Result<std::collections::HashMap<i64, KeyCost>> {
+        #[derive(Deserialize)]
+        struct Out {
+            #[serde(default)]
+            stats: std::collections::HashMap<String, KeyCost>,
+        }
+        let mut all = std::collections::HashMap::new();
+        for chunk in ids.chunks(100) {
+            let o: Out = self
+                .send(
+                    self.http
+                        .post(self.url("/api/v1/usage/dashboard/api-keys-usage"))
+                        .bearer_auth(access)
+                        .json(&json!({ "api_key_ids": chunk })),
+                )
+                .await?;
+            all.extend(o.stats.into_iter().filter_map(|(k, v)| Some((k.parse().ok()?, v))));
+        }
+        Ok(all)
+    }
+
+    /// The service status probes, one per monitored provider route.
+    pub async fn monitors(&self, access: &str) -> Result<Value> {
+        self.send(self.http.get(self.url("/api/v1/channel-monitors")).bearer_auth(access)).await
     }
 
     pub async fn create_key(&self, access: &str, name: &str, group_id: i64) -> Result<ApiKey> {

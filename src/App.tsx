@@ -10,13 +10,15 @@ import { TaskView } from './components/TaskView';
 import { ToolCard } from './components/ToolCard';
 import { UpdateButton } from './components/UpdateButton';
 import { UsageView } from './components/UsageView';
+import { KeysView } from './components/KeysView';
+import { StatusView } from './components/StatusView';
 import { useI18n } from './i18n';
 import { useUpdater } from './update';
 import { useAgent } from './useAgent';
 
 const usd = (n: number) => `$${n.toFixed(2)}`;
 
-type View = 'home' | 'task' | 'usage';
+type View = 'home' | 'task' | 'usage' | 'keys' | 'status';
 
 export function App() {
   const { t, lang } = useI18n();
@@ -52,8 +54,27 @@ export function App() {
   }, [loadTools, loadRates, t]);
 
   useEffect(() => {
-    // Once on launch; switching language must not refetch.
-    refresh();
+    // Once on launch; switching language must not refetch. Right after an
+    // update restarts the app the network can be briefly down; a failed check
+    // is retried rather than shown as signed out.
+    let stop = false;
+    (async () => {
+      for (let wait = 1000; !stop; wait = Math.min(wait * 2, 15000)) {
+        try {
+          const u = await api.me();
+          if (stop) return;
+          setUser(u);
+          if (u) loadRates();
+          return;
+        } catch {
+          await new Promise((r) => setTimeout(r, wait));
+        }
+      }
+    })();
+    loadTools().catch(() => {});
+    return () => {
+      stop = true;
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -102,6 +123,14 @@ export function App() {
           <button className={`nav-item ${view === 'usage' ? 'selected' : ''}`} onClick={() => setView('usage')}>
             <Icon name="chart" className="size-[17px]" />
             {t('nav.usage')}
+          </button>
+          <button className={`nav-item ${view === 'keys' ? 'selected' : ''}`} onClick={() => setView('keys')}>
+            <Icon name="key" className="size-[17px]" />
+            {t('nav.keys')}
+          </button>
+          <button className={`nav-item ${view === 'status' ? 'selected' : ''}`} onClick={() => setView('status')}>
+            <Icon name="pulse" className="size-[17px]" />
+            {t('nav.status')}
           </button>
         </nav>
         {agent.summaries.length > 0 && (
@@ -152,6 +181,10 @@ export function App() {
           />
         ) : view === 'usage' ? (
           <UsageView />
+        ) : view === 'keys' ? (
+          <KeysView onToast={setToast} />
+        ) : view === 'status' ? (
+          <StatusView />
         ) : (
           <div className="main-scroll">
             <div className="main-column">

@@ -96,6 +96,52 @@ function usage<T>(kind: 'stats' | 'snapshot', q: UsageQuery) {
   return invoke<T>('usage', { kind, query: Object.entries(q).map(([k, v]) => [k, String(v)]) });
 }
 
+export interface ApiKey {
+  id: number;
+  key: string;
+  name: string;
+  group_id: number | null;
+  group?: Group | null;
+  status: 'active' | 'inactive' | 'quota_exhausted' | 'expired' | string;
+  ip_whitelist: string[] | null;
+  ip_blacklist: string[] | null;
+  last_used_at: string | null;
+  /** Dollars; 0 is unlimited. */
+  quota: number;
+  quota_used: number;
+  expires_at: string | null;
+  created_at: string;
+  rate_limit_5h: number;
+  rate_limit_1d: number;
+  rate_limit_7d: number;
+  usage_5h: number;
+  usage_1d: number;
+  usage_7d: number;
+  /** Added by the client from the usage endpoint. */
+  today_cost: number;
+  /** Last 30 days. */
+  month_cost: number;
+  /** Set when this client created the key for one of its tools. */
+  tool: ToolId | null;
+}
+
+export interface MonitorPoint {
+  status: string;
+  latency_ms: number | null;
+  checked_at: string;
+}
+
+export interface Monitor {
+  id: number;
+  provider: string;
+  primary_status: string;
+  primary_latency_ms: number | null;
+  /** Percent. */
+  availability_7d: number;
+  /** Newest first. */
+  timeline: MonitorPoint[] | null;
+}
+
 export type InstallStarted =
   | { kind: 'terminal' }
   | { kind: 'package'; path: string }
@@ -116,6 +162,14 @@ export const api = {
   usageStats: (q: UsageQuery) => usage<UsageStats>('stats', q),
   usageSnapshot: (q: UsageQuery) => usage<UsageSnapshot>('snapshot', q),
   usageKeys: () => invoke<UsageKey[]>('usage_keys'),
+  keys: () => invoke<ApiKey[]>('keys_list'),
+  keyGroups: () => invoke<Group[]>('key_groups'),
+  createKey: (body: Record<string, unknown>) => invoke<ApiKey>('key_create', { body }),
+  updateKey: (id: number, body: Record<string, unknown>) => invoke<ApiKey>('key_update', { id, body }),
+  deleteKey: (id: number) => invoke<void>('key_delete', { id }),
+  keyModels: (key: string) => invoke<string[]>('key_models', { key }),
+  openCcSwitch: (url: string) => invoke<void>('open_ccswitch', { url }),
+  serviceStatus: () => invoke<{ items: Monitor[] }>('service_status'),
   relayOrigin: () => invoke<string>('relay_origin'),
   setLanguage: (code: string) => invoke<void>('set_language', { code }),
 };
