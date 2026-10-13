@@ -114,6 +114,9 @@ jobs:
                "windows-x86_64":{url:$win, signature:$winsig}}}' > latest.json
           cat latest.json
           sha256sum *.dmg *.exe *.app.tar.gz > SHA256SUMS.txt
+          # Fixed names so download pages can link releases/latest/download/<name>.
+          cp *.dmg Cloudborne-macOS.dmg
+          cp *-setup.exe Cloudborne-Windows-setup.exe
       - uses: softprops/action-gh-release@v2
         with:
           draft: true
