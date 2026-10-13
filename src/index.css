@@ -109,6 +109,13 @@ html[data-glass='mica'] {
   input {
     user-select: text;
   }
+  /* Everything still scrolls, but no bar is drawn anywhere. */
+  * {
+    scrollbar-width: none;
+  }
+  ::-webkit-scrollbar {
+    display: none;
+  }
   :focus-visible {
     outline: 2px solid #ff8d5c;
     outline-offset: 2px;
@@ -1245,7 +1252,6 @@ html[data-glass='mica'] {
     margin-top: 4px;
     overflow-y: auto;
     overscroll-behavior: contain;
-    scrollbar-width: thin;
   }
   .recent > b {
     padding: 0 12px 4px;
@@ -1578,7 +1584,6 @@ html[data-glass='mica'] {
     overflow-y: auto;
     overscroll-behavior: contain;
     padding: 40px 32px 24px;
-    scrollbar-gutter: stable;
     /* Text fades out just above the composer instead of being cut off. */
     mask-image: linear-gradient(180deg, #000 calc(100% - 28px), transparent);
     -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 28px), transparent);
@@ -2169,6 +2174,7 @@ html[data-glass='mica'] {
   }
   .sheet-body {
     min-height: 0;
+    overflow-x: hidden;
     overflow-y: auto;
     padding: 4px 22px 20px;
   }
@@ -2186,6 +2192,7 @@ html[data-glass='mica'] {
 
   .form-grid {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 16px;
   }
   .form-row {
@@ -2296,10 +2303,13 @@ html[data-glass='mica'] {
     min-width: 0;
     overflow-wrap: anywhere;
   }
+  .key-code {
+    min-width: 0;
+  }
   .key-code pre {
-    max-height: 300px;
-    white-space: pre;
-    overflow-wrap: normal;
+    max-height: none;
+    overflow: hidden;
+    padding-right: 40px;
   }
   .key-code .md-copy {
     opacity: 1;
