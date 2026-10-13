@@ -20,6 +20,8 @@ pub enum Error {
     Unauthorized,
     #[error("{}", tr_fmt!("网络错误：{}", "Network error: {}", .0))]
     Network(String),
+    /// The OS credential store failed (Windows and Linux; macOS uses a file).
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     #[error("{}", tr_fmt!("钥匙串错误：{}", "Keychain error: {}", .0))]
     Keychain(String),
     #[error("{0}")]

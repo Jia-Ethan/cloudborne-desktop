@@ -4,20 +4,18 @@ import {
   errorText,
   type ToolId,
   type UsageKey,
-  type UsageLog,
   type UsageQuery,
   type UsageSnapshot,
   type UsageStats,
 } from '../api';
 import { useI18n } from '../i18n';
-import { byVendor, compact, fillTrend, hitRate, money, percent, rangeDates, vendorOf, type Range, type Vendor } from '../usage';
+import { byVendor, compact, fillTrend, hitRate, money, percent, rangeDates, type Range, type Vendor } from '../usage';
 import { Logo } from './Logo';
 import { Icon } from './Icon';
 import { ToolGlyph } from './ToolGlyph';
 import { UsageChart, type Metric } from './UsageChart';
 
 const RANGES: Range[] = ['today', 'week', 'month'];
-const PAGE = 30;
 
 export function UsageView() {
   const { t } = useI18n();
@@ -27,9 +25,6 @@ export function UsageView() {
   const [keys, setKeys] = useState<UsageKey[]>([]);
   const [stats, setStats] = useState<UsageStats | null>(null);
   const [snap, setSnap] = useState<UsageSnapshot | null>(null);
-  const [logs, setLogs] = useState<UsageLog[]>([]);
-  const [page, setPage] = useState(1);
-  const [pages, setPages] = useState(1);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   // Drops responses from a filter the user has already moved away from.
@@ -58,22 +53,17 @@ export function UsageView() {
     if (!query) {
       setStats(null);
       setSnap(null);
-      setLogs([]);
       setBusy(false);
       return;
     }
     try {
-      const [s, sn, l] = await Promise.all([
+      const [s, sn] = await Promise.all([
         api.usageStats(query),
         api.usageSnapshot({ ...query, granularity: range === 'today' ? 'hour' : 'day' }),
-        api.usageLogs({ ...query, page: 1, page_size: PAGE }),
       ]);
       if (g !== generation.current) return;
       setStats(s);
       setSnap(sn);
-      setLogs(l.items);
-      setPage(1);
-      setPages(l.pages);
     } catch (e) {
       if (g === generation.current) setError(errorText(e, t('common.genericError')));
     } finally {
@@ -84,16 +74,6 @@ export function UsageView() {
   useEffect(() => {
     load();
   }, [load]);
-
-  async function more() {
-    if (!query || page >= pages) return;
-    const g = generation.current;
-    const l = await api.usageLogs({ ...query, page: page + 1, page_size: PAGE });
-    if (g !== generation.current) return;
-    setLogs((prev) => [...prev, ...l.items]);
-    setPage(page + 1);
-    setPages(l.pages);
-  }
 
   const trend = useMemo(() => fillTrend(snap?.trend ?? [], range), [snap, range]);
   const vendors = useMemo(() => byVendor(snap?.models ?? []), [snap]);
@@ -205,56 +185,6 @@ export function UsageView() {
           )}
         </section>
 
-        <section className="card usage-card rise" style={{ '--i': 4 } as CSSProperties}>
-          <div className="usage-card-head">
-            <h2>{t('usage.recent')}</h2>
-          </div>
-          {logs.length === 0 ? (
-            <p className="usage-empty">{busy ? t('common.wait') : t('usage.none')}</p>
-          ) : (
-            <>
-              <table className="usage-table">
-                <thead>
-                  <tr>
-                    <th>{t('usage.time')}</th>
-                    <th className="usage-left">{t('usage.model')}</th>
-                    <th>{t('usage.input')}</th>
-                    <th>{t('usage.output')}</th>
-                    <th>{t('usage.cached')}</th>
-                    <th>{t('usage.cost')}</th>
-                    <th>{t('usage.duration')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {logs.map((l) => {
-                    const v = vendorOf(l.model);
-                    return (
-                      <tr key={l.id}>
-                        <td className="whitespace-nowrap">{time(l.created_at, range)}</td>
-                        <td className="usage-model usage-left">
-                          <span className="inline-flex items-center gap-2">
-                            <VendorMark vendor={v} />
-                            {l.model}
-                          </span>
-                        </td>
-                        <td>{compact(l.input_tokens + l.cache_read_tokens + l.cache_creation_tokens)}</td>
-                        <td>{compact(l.output_tokens)}</td>
-                        <td>{l.cache_read_tokens > 0 ? compact(l.cache_read_tokens) : '—'}</td>
-                        <td>{money(l.actual_cost)}</td>
-                        <td>{l.duration_ms === null ? '—' : `${(l.duration_ms / 1000).toFixed(1)}s`}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {page < pages && (
-                <button className="usage-more" onClick={more}>
-                  {t('usage.more')}
-                </button>
-              )}
-            </>
-          )}
-        </section>
       </div>
     </div>
   );
@@ -284,10 +214,4 @@ function Stat({ label, value }: { label: string; value: string }) {
       <b>{value}</b>
     </div>
   );
-}
-
-function time(iso: string, range: Range): string {
-  const d = new Date(iso);
-  const hm = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-  return range === 'today' ? hm : `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
 }

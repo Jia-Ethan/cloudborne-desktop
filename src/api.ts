@@ -83,22 +83,6 @@ export interface UsageSnapshot {
   models: ModelUsage[];
 }
 
-export interface UsageLog extends TokenCounts {
-  id: number;
-  api_key_id: number;
-  model: string;
-  actual_cost: number;
-  duration_ms: number | null;
-  created_at: string;
-}
-
-export interface UsagePage {
-  items: UsageLog[];
-  total: number;
-  page: number;
-  pages: number;
-}
-
 export interface UsageKey {
   id: number;
   name: string;
@@ -108,7 +92,7 @@ export interface UsageKey {
 
 export type UsageQuery = Record<string, string | number>;
 
-function usage<T>(kind: 'stats' | 'snapshot' | 'logs', q: UsageQuery) {
+function usage<T>(kind: 'stats' | 'snapshot', q: UsageQuery) {
   return invoke<T>('usage', { kind, query: Object.entries(q).map(([k, v]) => [k, String(v)]) });
 }
 
@@ -131,7 +115,6 @@ export const api = {
   rates: () => invoke<Rates>('rates'),
   usageStats: (q: UsageQuery) => usage<UsageStats>('stats', q),
   usageSnapshot: (q: UsageQuery) => usage<UsageSnapshot>('snapshot', q),
-  usageLogs: (q: UsageQuery) => usage<UsagePage>('logs', q),
   usageKeys: () => invoke<UsageKey[]>('usage_keys'),
   relayOrigin: () => invoke<string>('relay_origin'),
   setLanguage: (code: string) => invoke<void>('set_language', { code }),

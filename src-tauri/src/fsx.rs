@@ -53,6 +53,13 @@ pub fn write_atomic(path: &Path, contents: &str) -> Result<()> {
     })
 }
 
+/// Writes a file only the current user can read, whatever it was before.
+pub fn write_private(path: &Path, contents: &str) -> Result<()> {
+    write_atomic(path, contents)?;
+    restrict_new_file(path);
+    Ok(())
+}
+
 // Newly created configs hold an API key, so keep them owner-only.
 #[cfg(unix)]
 fn restrict_new_file(path: &Path) {
@@ -248,6 +255,19 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("c.json");
         write_atomic(&p, "{}").unwrap();
+        assert_eq!(fs::metadata(&p).unwrap().permissions().mode() & 0o777, 0o600);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn private_files_lose_wider_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("session.secret");
+        fs::write(&p, "old").unwrap();
+        fs::set_permissions(&p, fs::Permissions::from_mode(0o644)).unwrap();
+        write_private(&p, "new").unwrap();
+        assert_eq!(fs::read_to_string(&p).unwrap(), "new");
         assert_eq!(fs::metadata(&p).unwrap().permissions().mode() & 0o777, 0o600);
     }
 }

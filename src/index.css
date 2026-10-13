@@ -1112,8 +1112,7 @@ html[data-glass='mica'] {
     border-top: 1px solid var(--line);
   }
   .usage-table th:first-child,
-  .usage-table td:first-child,
-  .usage-table .usage-left {
+  .usage-table td:first-child {
     text-align: left;
   }
   .usage-table th:first-child,
@@ -1148,18 +1147,6 @@ html[data-glass='mica'] {
     color: var(--ink-3);
     font-size: 13px;
     text-align: center;
-  }
-  .usage-more {
-    display: block;
-    margin: 12px auto 0;
-    padding: 6px 14px;
-    color: var(--ink-2);
-    font-size: 13px;
-    border-radius: 9px;
-  }
-  .usage-more:hover {
-    color: var(--ink);
-    background: var(--quiet);
   }
 
   .tool-card {

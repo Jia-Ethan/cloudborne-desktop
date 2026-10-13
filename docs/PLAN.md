@@ -39,7 +39,7 @@ Teamo 还做了这些，我们不跟：改 Codex 的 `auth.json` 和桌面版 `a
 | 可用分组及其平台 | `GET /api/v1/groups/available` |
 | API 密钥 | `GET / POST /api/v1/keys`，`DELETE /api/v1/keys/:id` |
 
-令牌存进系统钥匙串（macOS Keychain、Windows Credential Manager），不写明文文件。
+令牌在 Windows 上存进系统凭据管理器；在 macOS 上存应用数据目录里只有本人能读的文件（v0.6.1 起，原因见 README）。
 
 ## 四个工具怎么接
 

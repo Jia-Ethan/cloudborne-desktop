@@ -1,6 +1,6 @@
 [package]
 name = "cloudborne-desktop"
-version = "0.6.0"
+version = "0.6.1"
 description = "Cloudborne relay desktop client"
 edition = "2021"
 license = "MIT"
@@ -20,7 +20,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 toml_edit = "0.25"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
-keyring = { version = "3", features = ["apple-native", "windows-native"] }
 thiserror = "2"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 dirs = "6"
@@ -33,6 +32,9 @@ tar = "0.4"
 futures-util = "0.3"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-version = "0.1"

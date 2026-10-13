@@ -1,6 +1,12 @@
-//! Login session. Tokens and the device ID live in the OS keychain (macOS
-//! Keychain, Windows Credential Manager); nothing secret is written to plain
-//! files. Requests that come back 401 refresh the access token once and retry.
+//! Login session. Requests that come back 401 refresh the access token once
+//! and retry.
+//!
+//! Where the tokens and the device ID are kept:
+//! - macOS: an owner-only file in the app's data folder. The app is signed
+//!   ad hoc, so every update has a new code hash, and Keychain asks for the
+//!   login password before it lets the new build read items the old build
+//!   wrote. Users saw that prompt after every update.
+//! - Windows and Linux: the OS credential store, which never prompts.
 
 use std::future::Future;
 
@@ -9,49 +15,98 @@ use tokio::sync::Mutex;
 use crate::api::{Client, Tokens, DEFAULT_ORIGIN};
 use crate::error::{Error, Result};
 
-// Debug builds keep their own entries so they never touch (or prompt for)
-// the installed app's session.
-const SERVICE: &str = if cfg!(debug_assertions) { "cn.cloudborne.desktop.dev" } else { "cn.cloudborne.desktop" };
 const ACCOUNT: &str = "session";
 const DEVICE: &str = "device";
 
-fn entry() -> Result<keyring::Entry> {
-    keyring::Entry::new(SERVICE, ACCOUNT).map_err(|e| Error::Keychain(e.to_string()))
+#[cfg(target_os = "macos")]
+mod store {
+    use std::path::PathBuf;
+
+    use crate::error::{Error, Result};
+    use crate::fsx;
+
+    fn path(name: &str) -> PathBuf {
+        let base = dirs::data_dir().unwrap_or_else(|| crate::tools::home_dir().join(".cloudborne-desktop"));
+        // Debug builds keep their own files so they never sign the installed app out.
+        let app = if cfg!(debug_assertions) { "cn.cloudborne.desktop.dev" } else { "cn.cloudborne.desktop" };
+        base.join(app).join(format!("{name}.secret"))
+    }
+
+    pub fn get(name: &str) -> Result<Option<String>> {
+        let p = path(name);
+        let s = fsx::read_or_empty(&p)?;
+        Ok((!s.is_empty()).then_some(s))
+    }
+
+    pub fn set(name: &str, value: &str) -> Result<()> {
+        fsx::write_private(&path(name), value)
+    }
+
+    pub fn delete(name: &str) -> Result<()> {
+        let p = path(name);
+        match std::fs::remove_file(&p) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(Error::io(&p, e)),
+        }
+    }
 }
 
-/// Random per-install ID, kept in the keychain next to the session. If the
-/// keychain is unavailable a fresh ID is used, which only costs a re-login.
+#[cfg(not(target_os = "macos"))]
+mod store {
+    use crate::error::{Error, Result};
+
+    // Debug builds keep their own entries so they never touch the installed app's session.
+    const SERVICE: &str = if cfg!(debug_assertions) { "cn.cloudborne.desktop.dev" } else { "cn.cloudborne.desktop" };
+
+    fn entry(name: &str) -> Result<keyring::Entry> {
+        keyring::Entry::new(SERVICE, name).map_err(|e| Error::Keychain(e.to_string()))
+    }
+
+    pub fn get(name: &str) -> Result<Option<String>> {
+        match entry(name)?.get_password() {
+            Ok(s) => Ok(Some(s)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(e) => Err(Error::Keychain(e.to_string())),
+        }
+    }
+
+    pub fn set(name: &str, value: &str) -> Result<()> {
+        entry(name)?.set_password(value).map_err(|e| Error::Keychain(e.to_string()))
+    }
+
+    pub fn delete(name: &str) -> Result<()> {
+        match entry(name)?.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(e) => Err(Error::Keychain(e.to_string())),
+        }
+    }
+}
+
+/// Random per-install ID, stored next to the session. If it cannot be stored
+/// a fresh ID is used, which only costs a re-login.
 fn device_id() -> String {
-    let fresh = || uuid::Uuid::new_v4().to_string();
-    let Ok(e) = keyring::Entry::new(SERVICE, DEVICE) else { return fresh() };
-    match e.get_password() {
-        Ok(id) if uuid::Uuid::parse_str(&id).is_ok() => id,
+    match store::get(DEVICE) {
+        Ok(Some(id)) if uuid::Uuid::parse_str(&id).is_ok() => id,
         _ => {
-            let id = fresh();
-            let _ = e.set_password(&id);
+            let id = uuid::Uuid::new_v4().to_string();
+            let _ = store::set(DEVICE, &id);
             id
         }
     }
 }
 
 fn load_tokens() -> Result<Option<Tokens>> {
-    match entry()?.get_password() {
-        Ok(s) => Ok(serde_json::from_str(&s).ok()),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => Err(Error::Keychain(e.to_string())),
-    }
+    Ok(store::get(ACCOUNT)?.and_then(|s| serde_json::from_str(&s).ok()))
 }
 
 fn store_tokens(t: &Tokens) -> Result<()> {
     let s = serde_json::to_string(t).map_err(|e| Error::Other(e.to_string()))?;
-    entry()?.set_password(&s).map_err(|e| Error::Keychain(e.to_string()))
+    store::set(ACCOUNT, &s)
 }
 
 fn clear_tokens() -> Result<()> {
-    match entry()?.delete_credential() {
-        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(Error::Keychain(e.to_string())),
-    }
+    store::delete(ACCOUNT)
 }
 
 pub struct Session {

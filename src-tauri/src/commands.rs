@@ -228,8 +228,8 @@ pub async fn rates(s: State<'_, Session>) -> Result<Rates> {
     })
 }
 
-/// Reads the account's usage from the relay. The page asks for totals,
-/// trend and logs separately so a slow log page never holds up the charts.
+/// Reads the account's usage from the relay: totals, or the trend and
+/// per-model breakdown.
 #[tauri::command]
 pub async fn usage(s: State<'_, Session>, kind: UsageKind, query: Vec<(String, String)>) -> Result<serde_json::Value> {
     let c = &s.client;
