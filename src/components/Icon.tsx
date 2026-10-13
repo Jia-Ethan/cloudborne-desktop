@@ -23,6 +23,7 @@ const PATHS = {
   alert: 'M12 4 2.8 19.5h18.4zM12 10v4.5M12 17.2v.2',
   tool: 'M14.5 6.5a4 4 0 0 0 5 5L13 18a2.1 2.1 0 0 1-3-3zM14.5 6.5 17 4l3 3-2.5 2.5M10 15l-5 5',
   refresh: 'M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v3.7h-3.7',
+  chart: 'M4 20h16M7 16.5V11M12 16.5V6M17 16.5v-8',
 } as const;
 
 export type IconName = keyof typeof PATHS;

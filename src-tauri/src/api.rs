@@ -65,6 +65,14 @@ pub struct ApiKey {
     pub status: String,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UsageKind {
+    Stats,
+    Snapshot,
+    Logs,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum LoginOutcome {
@@ -294,6 +302,19 @@ impl Client {
             .send(self.http.delete(self.url(&format!("/api/v1/keys/{id}"))).bearer_auth(access))
             .await?;
         Ok(())
+    }
+
+    /// Usage dashboard data passed through as the relay returns it: `stats`
+    /// for the totals, `snapshot` for the trend and per-model breakdown.
+    /// `query` holds `start_date`, `end_date`, `timezone` and, optionally,
+    /// `api_key_id` and `granularity`.
+    pub async fn usage(&self, access: &str, kind: UsageKind, query: &[(String, String)]) -> Result<Value> {
+        let path = match kind {
+            UsageKind::Stats => "/api/v1/usage/stats",
+            UsageKind::Snapshot => "/api/v1/usage/dashboard/snapshot-v2",
+            UsageKind::Logs => "/api/v1/usage",
+        };
+        self.send(self.http.get(self.url(path)).query(query).bearer_auth(access)).await
     }
 
     /// Model ids the key's group serves. All relay platforms answer with a

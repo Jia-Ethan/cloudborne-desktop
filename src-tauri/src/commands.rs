@@ -7,7 +7,7 @@ use tauri::State;
 
 use crate::agent;
 
-use crate::api::{ApiKey, Group, LoginOutcome, User};
+use crate::api::{ApiKey, Group, LoginOutcome, UsageKind, User};
 use crate::error::{Error, Result};
 use crate::install::{self, InstallStarted};
 use crate::lang::tr;
@@ -226,6 +226,39 @@ pub async fn rates(s: State<'_, Session>) -> Result<Rates> {
         cny_per_usd: if cny > 0.0 { cny } else { DEFAULT_CNY_PER_USD },
         rates: best_rates(&groups, &own),
     })
+}
+
+/// Reads the account's usage from the relay. The page asks for totals,
+/// trend and logs separately so a slow log page never holds up the charts.
+#[tauri::command]
+pub async fn usage(s: State<'_, Session>, kind: UsageKind, query: Vec<(String, String)>) -> Result<serde_json::Value> {
+    let c = &s.client;
+    s.authed(|a| {
+        let q = query.clone();
+        async move { c.usage(&a, kind, &q).await }
+    })
+    .await
+}
+
+/// The account's API keys as id → name, so the usage page can name the tool
+/// behind each request.
+#[tauri::command]
+pub async fn usage_keys(s: State<'_, Session>) -> Result<Vec<UsageKey>> {
+    let c = &s.client;
+    let keys = s.authed(|a| async move { c.keys(&a).await }).await?;
+    Ok(keys.into_iter().map(|k| UsageKey { tool: tool_of_key(&k.name), id: k.id, name: k.name }).collect())
+}
+
+#[derive(Serialize)]
+pub struct UsageKey {
+    id: i64,
+    name: String,
+    /// Set when the desktop client created this key for one of its tools.
+    tool: Option<ToolId>,
+}
+
+fn tool_of_key(name: &str) -> Option<ToolId> {
+    ToolId::ALL.into_iter().find(|t| key_name(*t) == name)
 }
 
 #[tauri::command]

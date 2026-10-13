@@ -9,13 +9,14 @@ import { Mark } from './components/Mark';
 import { TaskView } from './components/TaskView';
 import { ToolCard } from './components/ToolCard';
 import { UpdateButton } from './components/UpdateButton';
+import { UsageView } from './components/UsageView';
 import { useI18n } from './i18n';
 import { useUpdater } from './update';
 import { useAgent } from './useAgent';
 
 const usd = (n: number) => `$${n.toFixed(2)}`;
 
-type View = 'home' | 'task';
+type View = 'home' | 'task' | 'usage';
 
 export function App() {
   const { t, lang } = useI18n();
@@ -98,6 +99,10 @@ export function App() {
             <Icon name="home" className="size-[17px]" />
             {t('nav.home')}
           </button>
+          <button className={`nav-item ${view === 'usage' ? 'selected' : ''}`} onClick={() => setView('usage')}>
+            <Icon name="chart" className="size-[17px]" />
+            {t('nav.usage')}
+          </button>
         </nav>
         {agent.summaries.length > 0 && (
           <div className="recent">
@@ -145,6 +150,8 @@ export function App() {
               setUser(null);
             }}
           />
+        ) : view === 'usage' ? (
+          <UsageView />
         ) : (
           <div className="main-scroll">
             <div className="main-column">

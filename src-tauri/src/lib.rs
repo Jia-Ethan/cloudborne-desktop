@@ -34,6 +34,8 @@ pub fn run() {
             commands::disconnect_tool,
             commands::install_tool,
             commands::rates,
+            commands::usage,
+            commands::usage_keys,
             commands::relay_origin,
             commands::set_language,
             commands::agent_models,

@@ -42,6 +42,76 @@ export interface Rates {
   rates: PlatformRate[];
 }
 
+/** Input, output and the two cache counts, as the relay reports them. */
+export interface TokenCounts {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_tokens: number;
+  cache_read_tokens: number;
+}
+
+export interface UsageStats {
+  total_requests: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cache_creation_tokens: number;
+  total_cache_read_tokens: number;
+  total_tokens: number;
+  /** What the account was charged. */
+  total_actual_cost: number;
+  average_duration_ms: number;
+}
+
+export interface TrendPoint extends TokenCounts {
+  /** `YYYY-MM-DD`, or `YYYY-MM-DD HH:00` for hourly points. */
+  date: string;
+  requests: number;
+  total_tokens: number;
+  actual_cost: number;
+}
+
+export interface ModelUsage extends TokenCounts {
+  model: string;
+  requests: number;
+  total_tokens: number;
+  actual_cost: number;
+}
+
+export interface UsageSnapshot {
+  granularity: 'hour' | 'day';
+  trend: TrendPoint[];
+  models: ModelUsage[];
+}
+
+export interface UsageLog extends TokenCounts {
+  id: number;
+  api_key_id: number;
+  model: string;
+  actual_cost: number;
+  duration_ms: number | null;
+  created_at: string;
+}
+
+export interface UsagePage {
+  items: UsageLog[];
+  total: number;
+  page: number;
+  pages: number;
+}
+
+export interface UsageKey {
+  id: number;
+  name: string;
+  /** Set when this client created the key for one of its tools. */
+  tool: ToolId | null;
+}
+
+export type UsageQuery = Record<string, string | number>;
+
+function usage<T>(kind: 'stats' | 'snapshot' | 'logs', q: UsageQuery) {
+  return invoke<T>('usage', { kind, query: Object.entries(q).map(([k, v]) => [k, String(v)]) });
+}
+
 export type InstallStarted =
   | { kind: 'terminal' }
   | { kind: 'package'; path: string }
@@ -59,6 +129,10 @@ export const api = {
   disconnect: (tool: ToolId, deleteKey: boolean) => invoke<string[]>('disconnect_tool', { tool, deleteKey }),
   install: (tool: ToolId) => invoke<InstallStarted>('install_tool', { tool }),
   rates: () => invoke<Rates>('rates'),
+  usageStats: (q: UsageQuery) => usage<UsageStats>('stats', q),
+  usageSnapshot: (q: UsageQuery) => usage<UsageSnapshot>('snapshot', q),
+  usageLogs: (q: UsageQuery) => usage<UsagePage>('logs', q),
+  usageKeys: () => invoke<UsageKey[]>('usage_keys'),
   relayOrigin: () => invoke<string>('relay_origin'),
   setLanguage: (code: string) => invoke<void>('set_language', { code }),
 };
