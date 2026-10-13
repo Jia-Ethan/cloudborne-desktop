@@ -197,6 +197,9 @@ html[data-glass='mica'] {
     flex-direction: column;
     border-radius: 20px;
     overflow: hidden;
+    /* WebKit drops the overflow clip's rounding once the animated gradient
+       gets its own layer; clip-path keeps the corners round. */
+    clip-path: inset(0 round 20px);
     isolation: isolate;
     color: #141414;
     animation: soft-in 0.72s ease-out backwards;
