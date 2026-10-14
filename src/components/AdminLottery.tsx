@@ -249,6 +249,7 @@ function complete(x: LotterySettings): LotterySettings {
   return {
     starts_at: null,
     ends_at: null,
+    earn_enabled: true,
     earn_spend: 50,
     earn_daily_cap: 0,
     earn_quota: 100,
@@ -317,8 +318,20 @@ function SettingsEditor({ onToast }: { onToast: (m: string) => void }) {
     setError('');
     try {
       const d = complete(await api.adminLotteryDefaults());
-      // Only the table and the money knobs; the switch and window stay as edited.
-      setS((cur) => (cur ? { ...d, enabled: cur.enabled, starts_at: cur.starts_at, ends_at: cur.ends_at } : d));
+      // Only the table and the money knobs; the switches and window stay as edited.
+      setS((cur) =>
+        cur
+          ? {
+              ...d,
+              enabled: cur.enabled,
+              starts_at: cur.starts_at,
+              ends_at: cur.ends_at,
+              earn_enabled: cur.earn_enabled,
+              daily_enabled: cur.daily_enabled,
+              buy_enabled: cur.buy_enabled,
+            }
+          : d,
+      );
       onToast(t('admin.lottery.defaultsLoaded'));
     } catch (e) {
       setError(errorText(e, t('common.genericError')));
@@ -375,7 +388,19 @@ function SettingsEditor({ onToast }: { onToast: (m: string) => void }) {
         </div>
 
         <div className="lot-settings-group">
-          <h3>{t('admin.lottery.earnGroup')}</h3>
+          <div className="lot-settings-head">
+            <h3>{t('admin.lottery.earnGroup')}</h3>
+            <button
+              role="switch"
+              aria-checked={s.earn_enabled}
+              className={`switch ${s.earn_enabled ? 'on' : ''}`}
+              onClick={() => setS({ ...s, earn_enabled: !s.earn_enabled })}
+              aria-label={t('admin.lottery.earnEnabled')}
+            >
+              <span>{s.earn_enabled ? t('admin.lottery.on') : t('admin.lottery.off')}</span>
+              <i />
+            </button>
+          </div>
           <div className="lot-settings-row">
             <NumField label={t('admin.lottery.earnSpend')} prefix="$" value={s.earn_spend} onChange={(v) => setS({ ...s, earn_spend: v })} />
             <NumField label={t('admin.lottery.earnCap')} value={s.earn_daily_cap} onChange={(v) => setS({ ...s, earn_daily_cap: v })} />

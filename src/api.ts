@@ -42,6 +42,8 @@ export interface LotterySettings {
   /** RFC3339; null = no bound. */
   starts_at: string | null;
   ends_at: string | null;
+  /** Spending (满额) chests on/off. */
+  earn_enabled: boolean;
   /** Every this much spend in a day earns 1 chest. */
   earn_spend: number;
   /** Earned chests per user per day; 0 = unlimited. */
@@ -120,6 +122,8 @@ export interface LotteryStatus {
   full?: boolean;
   /** `quota` is site-wide per day (0 = unlimited); `left_today` is null when unlimited. */
   earn: {
+    /** earn_enabled && active. Older relays leave it out (always on). */
+    enabled?: boolean;
     spend_per_chest: number;
     daily_cap: number;
     today_spend: number;

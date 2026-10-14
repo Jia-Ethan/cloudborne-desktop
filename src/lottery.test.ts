@@ -53,6 +53,7 @@ const settings = (prizes: Prize[] = DEFAULT, more: Partial<LotterySettings> = {}
   enabled: true,
   starts_at: null,
   ends_at: null,
+  earn_enabled: true,
   earn_spend: 50,
   earn_daily_cap: 0,
   earn_quota: 100,

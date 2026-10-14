@@ -282,7 +282,7 @@ export function LotteryView({
     stage.current?.style.setProperty('--py', '0');
   }
 
-  const earn = s ? earnProgress(s.earn) : null;
+  const earn = s && s.earn.enabled !== false ? earnProgress(s.earn) : null;
   const ratio = earn && win === 'running' ? earn.ratio : 0;
   const shown: Rarity | null =
     phase === 'reveal' && draw ? revealLadder(draw.rarity)[step] : (phase === 'burst' || phase === 'result') && draw ? draw.rarity : null;
@@ -844,6 +844,8 @@ function EarnCard({ status: s, phase, index }: { status: LotteryStatus; phase: A
       </div>
       {phase !== 'running' ? (
         <p className="usage-empty">{closedText(phase, t)}</p>
+      ) : e.enabled === false ? (
+        <p className="usage-empty">{t('lottery.earnOff')}</p>
       ) : (
         <>
           <p className="lot-way-line">
