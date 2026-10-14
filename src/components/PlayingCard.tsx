@@ -6,7 +6,7 @@ export type CardSize = 'lg' | 'md' | 'sm' | 'xs';
 /**
  * One playing card drawn in CSS: the corner index (rank over suit) is what
  * shows when cards overlap in a hand; the big pip fills the face when it
- * does not. Jokers read JOKER down the side with a star in the middle.
+ * does not. Jokers read JOKER down the side with a crown in the corner.
  */
 export function PlayingCard({
   card,
@@ -44,11 +44,12 @@ export function PlayingCard({
     .join(' ');
   return (
     <div className={cls} style={style} onPointerDown={onPointerDown} onPointerEnter={onPointerEnter} data-card={card}>
+      <span className="pc-frame" aria-hidden />
       {joker ? (
         <>
           <span className="pc-joker">JOKER</span>
           <span className="pc-star" aria-hidden>
-            ★
+            ♛
           </span>
         </>
       ) : (
@@ -66,7 +67,7 @@ export function PlayingCard({
   );
 }
 
-/** The back of a card, in the app's dawn colours. */
+/** The back of a card: a gold lattice with a lozenge in the middle. */
 export function CardBack({ size = 'sm', className = '', style }: { size?: CardSize; className?: string; style?: CSSProperties }) {
   return (
     <div className={`pc pc-${size} pc-back ${className}`} style={style} aria-hidden>

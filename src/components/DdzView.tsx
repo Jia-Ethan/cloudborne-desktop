@@ -143,8 +143,9 @@ function Lobby({ balance, onEnter, onRules }: { balance: number; onEnter: (a: Ac
 
   return (
     <div className="main-scroll">
-      <div className="main-column ddz-lobby">
-        <section className="ddz-hero rise" style={{ '--i': 0 } as CSSProperties}>
+      <div className="main-column ddz-lobby ddz-salon rise" style={{ '--i': 0 } as CSSProperties}>
+        <Ornaments />
+        <section className="ddz-hero">
           <div className="ddz-hero-text">
             <h1>{t('ddz.title')}</h1>
             <p>{t('ddz.tagline')}</p>
@@ -160,7 +161,11 @@ function Lobby({ balance, onEnter, onRules }: { balance: number; onEnter: (a: Ac
           </div>
         </section>
 
-        <section className="ddz-stake-row rise" style={{ '--i': 1 } as CSSProperties} role="radiogroup" aria-label={t('ddz.base')}>
+        <div className="ddz-rule-line" aria-hidden>
+          <i />
+        </div>
+
+        <section className="ddz-stake-row" role="radiogroup" aria-label={t('ddz.base')}>
           {STAKES.map((b) => (
             <button
               key={b}
@@ -177,7 +182,7 @@ function Lobby({ balance, onEnter, onRules }: { balance: number; onEnter: (a: Ac
           ))}
         </section>
 
-        <div className="ddz-entries rise" style={{ '--i': 2 } as CSSProperties}>
+        <div className="ddz-entries">
           <button className="ddz-go" disabled={!canPlay} onClick={() => onEnter({ type: 'match', base })}>
             <Icon name="bolt" className="size-5" />
             {t('ddz.quick')}
@@ -202,7 +207,7 @@ function Lobby({ balance, onEnter, onRules }: { balance: number; onEnter: (a: Ac
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
             />
-            <button className="btn btn-primary" disabled={code.length !== 6}>
+            <button className="btn ddz-glass-btn" disabled={code.length !== 6}>
               {t('ddz.join')}
             </button>
           </form>
@@ -220,18 +225,19 @@ function RulesDialog({ agree, onClose, onAgree }: { agree: boolean; onClose: () 
       title={t('ddz.rulesTitle')}
       onClose={onClose}
       wide={tab !== 'rules'}
+      className="ddz-sheet"
       footer={
         agree ? (
           <>
-            <button className="btn btn-quiet" onClick={onClose}>
+            <button className="btn ddz-glass-btn" onClick={onClose}>
               {t('common.cancel')}
             </button>
-            <button className="btn btn-primary" autoFocus onClick={onAgree}>
+            <button className="btn btn-gold" autoFocus onClick={onAgree}>
               {t('ddz.rulesAgree')}
             </button>
           </>
         ) : (
-          <button className="btn btn-primary" autoFocus onClick={onClose}>
+          <button className="btn btn-gold" autoFocus onClick={onClose}>
             {t('common.close')}
           </button>
         )
@@ -303,6 +309,7 @@ function Matching({ send }: { send: (a: Action) => void }) {
   const { t } = useI18n();
   return (
     <div className="ddz-felt ddz-matching">
+      <Ornaments />
       <div className="ddz-shuffle" aria-hidden>
         {[0, 1, 2].map((i) => (
           <CardBack key={i} size="md" style={{ '--i': i } as CSSProperties} />
@@ -318,10 +325,25 @@ function Matching({ send }: { send: (a: Action) => void }) {
 
 // ---------------------------------------------------------------- pieces
 
+/** The table's dress: a double gold rule, fans in the corners, a sunburst behind the play. */
+function Ornaments() {
+  return (
+    <div className="ddz-orn" aria-hidden>
+      <span className="ddz-orn-sun" />
+      <i className="tl" />
+      <i className="tr" />
+      <i className="bl" />
+      <i className="br" />
+    </div>
+  );
+}
+
 function HeroBadge({ hero, size = 'md', style }: { hero: Hero; size?: 'sm' | 'md' | 'lg'; style?: CSSProperties }) {
   return (
     <span className={`ddz-herob ${size} h-${hero}`} style={{ '--tint': TINT[hero], ...style } as CSSProperties} title={NAME[hero]}>
-      <Logo id={LOGO[hero]} className="ddz-herob-logo" />
+      <span className="ddz-herob-face">
+        <Logo id={LOGO[hero]} className="ddz-herob-logo" />
+      </span>
     </span>
   );
 }
@@ -331,9 +353,7 @@ function JokerCard({ joker, size = 'md', onClick, picked }: { joker: Joker; size
   const { t } = useI18n();
   const body = (
     <>
-      <span className="ddz-joker-glyph" aria-hidden>
-        ★
-      </span>
+      <span className="ddz-joker-glyph" aria-hidden />
       <b>{t(`ddz.joker.${joker}` as MessageKey)}</b>
       <span>{t(`ddz.joker.${joker}.desc` as MessageKey)}</span>
     </>
@@ -365,6 +385,7 @@ function TableScene({ table, send }: { table: Table; send: (a: Action) => void }
 
   return (
     <div className={`ddz-felt ddz-table phase-${table.phase} ${fx.shake ? 'shake' : ''}`}>
+      <Ornaments />
       <canvas ref={fx.canvas} className="ddz-sparks" aria-hidden />
       <TopBar table={table} onLeave={leave} send={send} />
 
@@ -437,11 +458,6 @@ function TopBar({ table, onLeave, send }: { table: Table; onLeave: () => void; s
       <span className="ddz-chip">
         {t('ddz.base')} <b>{dollars(table.base)}</b>
       </span>
-      {table.phase !== 'waiting' && (
-        <span className={`ddz-chip ddz-mult ${table.mult >= 8 ? 'hot' : ''}`}>
-          <b key={table.mult}>×{fmtX(table.mult)}</b>
-        </span>
-      )}
       {table.field && <FieldCard field={table.field} />}
 
       <div className="ddz-top-mid">
@@ -451,6 +467,11 @@ function TopBar({ table, onLeave, send }: { table: Table; onLeave: () => void; s
               c === null ? <CardBack key={i} size="sm" /> : <PlayingCard key={c} card={c} size="sm" fresh style={{ '--i': i } as CSSProperties} />,
             )}
           </div>
+        )}
+        {table.phase !== 'waiting' && (
+          <span className={`ddz-mult ${table.mult >= 8 ? 'hot' : ''}`} aria-label={`×${fmtX(table.mult)}`}>
+            <b key={table.mult}>×{fmtX(table.mult)}</b>
+          </span>
         )}
       </div>
 
@@ -593,7 +614,11 @@ function TimerRing({ deadline, total }: { deadline: number; total: number }) {
   const left = Math.min(total, Math.max(0, deadline - Date.now()));
   return (
     <svg className="ddz-ring" viewBox="0 0 44 44" aria-hidden>
-      <circle cx="22" cy="22" r="20.5" pathLength="100" style={{ animationDuration: `${total}ms`, animationDelay: `${left - total}ms` }} />
+      <polygon
+        points="13.8,1.5 30.2,1.5 42.5,13.8 42.5,30.2 30.2,42.5 13.8,42.5 1.5,30.2 1.5,13.8"
+        pathLength="100"
+        style={{ animationDuration: `${total}ms`, animationDelay: `${left - total}ms` }}
+      />
     </svg>
   );
 }
@@ -761,7 +786,7 @@ function MyHand({ table, myTurn, send }: { table: Table; myTurn: boolean; send: 
     const el = row.current;
     if (!el) return;
     const fit = () => {
-      const w = el.clientWidth - 24;
+      const w = el.clientWidth - 56;
       const card = 74;
       setStep(Math.max(18, Math.min(44, (w - card) / Math.max(1, hand.length - 1))));
     };

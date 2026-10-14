@@ -14,12 +14,14 @@ export function Dialog({
   children,
   footer,
   wide,
+  className = '',
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
+  className?: string;
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -29,7 +31,7 @@ export function Dialog({
 
   return createPortal(
     <div className="modal-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`sheet ${wide ? 'sheet-wide' : ''}`} role="dialog" aria-modal aria-label={title}>
+      <div className={`sheet ${wide ? 'sheet-wide' : ''} ${className}`} role="dialog" aria-modal aria-label={title}>
         <div className="sheet-head">
           <h2>{title}</h2>
           <button className="sheet-close" aria-label="Close" onClick={onClose}>
