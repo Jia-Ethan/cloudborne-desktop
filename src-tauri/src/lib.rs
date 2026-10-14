@@ -10,6 +10,7 @@ mod window;
 mod session;
 mod state;
 mod tools;
+mod update;
 
 pub fn run() {
     let session = session::Session::new().expect("failed to start session");
@@ -25,6 +26,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            update::update_install,
             commands::login,
             commands::login_2fa,
             commands::logout,

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getVersion } from '@tauri-apps/api/app';
+import { Channel, invoke } from '@tauri-apps/api/core';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { check, type Update } from '@tauri-apps/plugin-updater';
 
@@ -13,10 +14,17 @@ export type UpdateState =
 
 const RECHECK_MS = 6 * 60 * 60 * 1000;
 
+type Progress =
+  | { event: 'Started'; data: { content_length: number | null } }
+  | { event: 'Progress'; data: { chunk_length: number } }
+  | { event: 'Finished' };
+
 /**
  * In-app updates from the GitHub release feed (latest.json, minisign-signed).
  * Checks quietly a few seconds after launch and every six hours; a manual
- * check also reports "already latest" and errors.
+ * check also reports "already latest" and errors. The install runs in Rust
+ * (`update_install`), which on macOS replaces the app's contents in place so
+ * the Dock keeps one icon for it.
  */
 export function useUpdater() {
   const [state, setState] = useState<UpdateState>({ kind: 'idle' });
@@ -42,13 +50,15 @@ export function useUpdater() {
     let done = 0;
     setState({ kind: 'installing', percent: null });
     try {
-      await u.downloadAndInstall((ev) => {
-        if (ev.event === 'Started') total = ev.data.contentLength ?? 0;
+      const onEvent = new Channel<Progress>();
+      onEvent.onmessage = (ev) => {
+        if (ev.event === 'Started') total = ev.data.content_length ?? 0;
         else if (ev.event === 'Progress') {
-          done += ev.data.chunkLength;
+          done += ev.data.chunk_length;
           if (total > 0) setState({ kind: 'installing', percent: Math.min(100, Math.round((done / total) * 100)) });
         } else setState({ kind: 'installing', percent: 100 });
-      });
+      };
+      await invoke('update_install', { onEvent });
       await relaunch();
     } catch (e) {
       setState({ kind: 'error', phase: 'install', message: String(e) });
