@@ -14,6 +14,11 @@ export interface User {
 
 export const isAdmin = (u: User | null | undefined) => u?.role === 'admin';
 
+/** The name to show for an account: its username, or the part of the email before the @. */
+export function displayName(u: { username?: string; email: string }): string {
+  return u.username?.trim() || u.email.split('@')[0] || u.email;
+}
+
 export type Rarity = 'common' | 'rare' | 'epic' | 'legendary';
 export type PrizeKind = 'balance_fixed' | 'cashback' | 'balance_percent' | 'discount' | 'credit' | 'extra_draw' | 'none';
 
@@ -224,12 +229,34 @@ export type LoginOutcome =
 export interface SavedAccount {
   user_id: number;
   email: string;
+  username: string;
   active: boolean;
-  /** False once the relay turned its token down; the email stays for the login page. */
+  /** False once signed out or the relay turned its token down; the account stays listed. */
   signed_in: boolean;
+  /** A password is remembered, so a signed-out account still signs in with one click. */
+  has_password: boolean;
 }
 
-export type SwitchOutcome = { kind: 'done'; user: User } | { kind: 'signed_out'; email: string };
+export type SwitchOutcome =
+  | { kind: 'done'; user: User }
+  /** Signed in with the remembered password; a 2FA code is needed next. */
+  | { kind: 'two_factor'; email_masked: string }
+  | { kind: 'signed_out'; email: string };
+
+/** A redeemed code or another balance change, as the relay lists them. */
+export interface RedeemItem {
+  id: number;
+  code: string;
+  /** balance, concurrency, subscription, admin_balance, admin_concurrency, affiliate_balance, lottery, ... */
+  type: string;
+  value: number;
+  status: string;
+  used_at: string | null;
+  created_at: string;
+  notes?: string;
+  validity_days?: number;
+  group?: { id: number; name: string } | null;
+}
 
 export interface ToolStatus {
   id: ToolId;
@@ -365,9 +392,9 @@ export type InstallStarted =
   | { kind: 'needs_node' };
 
 export const api = {
-  login: (email: string, password: string) => invoke<LoginOutcome>('login', { email, password }),
+  login: (email: string, password: string, remember: boolean) => invoke<LoginOutcome>('login', { email, password, remember }),
   login2fa: (code: string) => invoke<LoginOutcome>('login_2fa', { code }),
-  /** Signs the current account out; resolves to the account that took over, if any. */
+  /** Signs the current account out (it stays saved); resolves to the account that took over, if any. */
   logout: () => invoke<User | null>('logout'),
   me: () => invoke<User | null>('me'),
   accounts: () => invoke<SavedAccount[]>('accounts_list'),
@@ -397,6 +424,8 @@ export const api = {
   /** `draws` is missing on relays without batch open; `draw` is always there. */
   lotteryOpen: (count = 1) => invoke<{ draws?: Draw[]; draw: Draw; status: LotteryStatus }>('lottery_open', { count }),
   lotteryBuy: (count: number) => invoke<{ bought: number; status: LotteryStatus }>('lottery_buy', { count }),
+  redeem: (code: string) => invoke<RedeemItem>('redeem', { code }),
+  redeemHistory: (page: number, pageSize: number) => invoke<Page<RedeemItem>>('redeem_history', { page, pageSize }),
   adminOverview: (today: string, start: string, timezone: string) =>
     invoke<AdminOverview>('admin_overview', { today, start, timezone }),
   adminUsers: (page: number, pageSize: number, search: string) =>

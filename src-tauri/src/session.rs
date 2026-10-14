@@ -137,16 +137,24 @@ fn device_id(store: &dyn Store) -> String {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SwitchOutcome {
     Done { user: User },
+    /// Signed in again with the remembered password, which needs a 2FA code next.
+    TwoFactor { email_masked: String },
     /// The account needs its password again; the previous one stays active.
     SignedOut { email: String },
+}
+
+/// A login waiting for its 2FA code, and the password to remember once it is done.
+pub struct Pending2fa {
+    pub temp_token: String,
+    pub remember: Option<String>,
 }
 
 pub struct Session {
     pub client: Client,
     store: Box<dyn Store>,
     accounts: Mutex<Accounts>,
-    /// Pending 2FA login token between the two login steps.
-    pub pending_2fa: Mutex<Option<String>>,
+    /// Pending 2FA login between the two login steps.
+    pub pending_2fa: Mutex<Option<Pending2fa>>,
 }
 
 impl Session {
@@ -181,20 +189,44 @@ impl Session {
         self.accounts.lock().await.list()
     }
 
-    /// A finished login: saves the account and makes it active.
-    pub async fn add(&self, user: &User, t: Tokens) -> Result<()> {
+    /// A finished login: saves the account and makes it active. With
+    /// `remember` the password is kept for one-click sign-in later; without it
+    /// any remembered one is forgotten.
+    pub async fn add(&self, user: &User, t: Tokens, remember: Option<&str>) -> Result<()> {
         accounts::save_tokens(self.store.as_ref(), user.id, &t)?;
+        let has = match remember {
+            // Signing in worked either way; a password that failed to save is just not offered later.
+            Some(pw) => accounts::save_password(self.store.as_ref(), user.id, pw).is_ok(),
+            None => {
+                let _ = accounts::delete_password(self.store.as_ref(), user.id);
+                false
+            }
+        };
         let mut a = self.accounts.lock().await;
-        a.upsert(user.id, &user.email, t);
+        a.upsert(user.id, &user.email, &user.username, t);
+        a.set_has_password(user.id, has);
         self.save_index(&a);
         Ok(())
+    }
+
+    /// The remembered password and email of a saved account, if it has one.
+    pub async fn saved_login(&self, user_id: i64) -> Option<(String, String)> {
+        let email = self.accounts.lock().await.get(user_id)?.email.clone();
+        let pw = accounts::load_password(self.store.as_ref(), user_id).ok()??;
+        Some((email, pw))
+    }
+
+    /// The relay turned a remembered password down (it was changed); stop offering it.
+    pub async fn forget_password(&self, user_id: i64) {
+        let _ = accounts::delete_password(self.store.as_ref(), user_id);
+        self.accounts.lock().await.set_has_password(user_id, false);
     }
 
     /// Fills in who account `id` is from its profile. A v0.8 session moves
     /// to its own entry here.
     async fn identify(&self, id: i64, user: &User) {
         let mut a = self.accounts.lock().await;
-        if !a.identify(id, user.id, &user.email) {
+        if !a.identify(id, user.id, &user.email, &user.username) {
             return;
         }
         if id != user.id {
@@ -261,16 +293,27 @@ impl Session {
             self.client.logout(t.refresh_token.as_deref()).await;
         }
         accounts::delete_tokens(self.store.as_ref(), user_id)?;
+        let _ = accounts::delete_password(self.store.as_ref(), user_id);
         Ok(self.accounts.lock().await.active_signed_in())
     }
 
-    /// Signs the active account out and forgets it.
+    /// Signs the active account out on the relay. It stays in the list (with
+    /// its remembered password, if any) so it is one click to come back; the
+    /// next signed-in account takes over. Returns the new active id.
     pub async fn logout(&self) -> Result<Option<i64>> {
-        let id = self.accounts.lock().await.active;
-        match id {
-            Some(id) => self.remove(id).await,
-            None => Ok(None),
+        let (id, tokens) = {
+            let mut a = self.accounts.lock().await;
+            let Some(id) = a.active else { return Ok(None) };
+            let tokens = a.get(id).and_then(|x| x.tokens.clone());
+            a.log_out(id);
+            self.save_index(&a);
+            (id, tokens)
+        };
+        if let Some(t) = tokens {
+            self.client.logout(t.refresh_token.as_deref()).await;
         }
+        accounts::delete_tokens(self.store.as_ref(), id)?;
+        Ok(self.accounts.lock().await.active_signed_in())
     }
 
     async fn access(&self, id: i64) -> Result<String> {

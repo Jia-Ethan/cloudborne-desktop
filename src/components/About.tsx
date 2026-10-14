@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useI18n } from '../i18n';
 import { Mark } from './Mark';
 
@@ -11,7 +12,7 @@ export function About({ version, onClose }: { version: string; onClose: () => vo
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  return (
+  return createPortal(
     <div className="modal-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal" role="dialog" aria-modal aria-label={t('menu.about')}>
         <div className="about-mark">
@@ -24,6 +25,7 @@ export function About({ version, onClose }: { version: string; onClose: () => vo
           {t('common.close')}
         </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -13,6 +13,7 @@ import { UsageView } from './components/UsageView';
 import { KeysView } from './components/KeysView';
 import { StatusView } from './components/StatusView';
 import { LotteryView } from './components/LotteryView';
+import { RedeemView } from './components/RedeemView';
 import { AdminOverview } from './components/AdminOverview';
 import { AdminUsers } from './components/AdminUsers';
 import { AdminLottery } from './components/AdminLottery';
@@ -22,7 +23,7 @@ import { useAgent } from './useAgent';
 
 const usd = (n: number) => `$${n.toFixed(2)}`;
 
-type View = 'home' | 'task' | 'usage' | 'lottery' | 'keys' | 'status' | 'admin' | 'adminUsers' | 'adminLottery';
+type View = 'home' | 'task' | 'usage' | 'lottery' | 'redeem' | 'keys' | 'status' | 'admin' | 'adminUsers' | 'adminLottery';
 
 export function App() {
   const { t, lang } = useI18n();
@@ -41,6 +42,8 @@ export function App() {
   // The login page over a signed-in account (adding one, or one that needs its password again).
   const [adding, setAdding] = useState(false);
   const [prefill, setPrefill] = useState('');
+  // How the login page opens: straight on the form, on a 2FA code, with a message.
+  const [loginOpts, setLoginOpts] = useState<{ form?: boolean; twoFactor?: string; notice?: string }>({});
   const updater = useUpdater();
   const agent = useAgent(lang, user?.id ?? null);
 
@@ -83,6 +86,7 @@ export function App() {
       setRates(null);
       setAdding(false);
       setPrefill('');
+      setLoginOpts({});
       if (u) {
         loadTools().catch(() => {});
         loadRates();
@@ -96,21 +100,28 @@ export function App() {
   /** Rejects on network and relay errors; the caller shows them where the user is looking. */
   const switchTo = useCallback(
     async (a: SavedAccount) => {
-      if (!a.signed_in) {
+      if (!a.signed_in && !a.has_password) {
         setPrefill(a.email);
+        setLoginOpts({});
         setAdding(true);
         return;
       }
+      // A signed-out account with a remembered password signs in with it on the Rust side.
       const r = await api.switchAccount(a.user_id);
       if (r.kind === 'done') enter(r.user);
-      else {
-        // Its session ended; sign in again with the email filled in.
+      else if (r.kind === 'two_factor') {
+        setPrefill(a.email);
+        setLoginOpts({ twoFactor: r.email_masked });
+        setAdding(true);
+      } else {
+        // Its session ended (or its remembered password was changed); sign in again with the email filled in.
         setPrefill(r.email);
+        setLoginOpts(a.has_password ? { notice: t('login.passwordChanged', { email: r.email }) } : {});
         setAdding(true);
         loadAccounts();
       }
     },
-    [enter, loadAccounts],
+    [enter, loadAccounts, t],
   );
 
   const removeAccount = useCallback(
@@ -130,6 +141,7 @@ export function App() {
   const addAccount = useCallback(() => {
     api.addAccountBegin().then(setAccounts, () => {});
     setPrefill('');
+    setLoginOpts({ form: true });
     setAdding(true);
   }, []);
 
@@ -163,19 +175,20 @@ export function App() {
       for (let wait = 1000; !stop; wait = Math.min(wait * 2, 15000)) {
         try {
           const u = await api.me();
+          // After me(): a v0.8 session is named by then. Read before the login
+          // page mounts, so it opens on the account picker.
+          const list = await api.accounts().catch(() => [] as SavedAccount[]);
           if (stop) return;
+          setAccounts(list);
+          // An active account that was signed out (and has no remembered
+          // password) gets its email filled in on the login page.
+          const lapsed = !u && list.find((a) => a.active && !a.signed_in && !a.has_password);
+          if (lapsed) setPrefill(lapsed.email);
           setUser(u);
           if (u) {
             loadRates();
             checkLottery();
           }
-          // After me(): a v0.8 session is named by then. An active account
-          // that was signed out gets its email filled in on the login page.
-          api.accounts().then((list) => {
-            setAccounts(list);
-            const lapsed = !u && list.find((a) => a.active && !a.signed_in);
-            if (lapsed) setPrefill(lapsed.email);
-          }, () => {});
           return;
         } catch {
           await new Promise((r) => setTimeout(r, wait));
@@ -209,11 +222,14 @@ export function App() {
   if (user === null || adding)
     return (
       <Login
-        key={prefill}
+        key={`${prefill}|${loginOpts.twoFactor ?? ''}|${loginOpts.notice ?? ''}|${loginOpts.form ? 1 : 0}`}
         update={<UpdateButton updater={updater} />}
         // While adding, the current account is not offered; it is what 返回 goes back to.
         accounts={accounts.filter((a) => !(user && a.user_id === user.id))}
         prefill={prefill}
+        form={loginOpts.form}
+        twoFactorFor={loginOpts.twoFactor ?? null}
+        notice={loginOpts.notice}
         onSwitch={switchTo}
         onRemove={removeAccount}
         onBack={
@@ -221,6 +237,7 @@ export function App() {
             ? () => {
                 setAdding(false);
                 setPrefill('');
+                setLoginOpts({});
               }
             : undefined
         }
@@ -267,6 +284,10 @@ export function App() {
               )}
             </button>
           )}
+          <button className={`nav-item ${view === 'redeem' ? 'selected' : ''}`} onClick={() => setView('redeem')}>
+            <Icon name="ticket" className="size-[17px]" />
+            {t('nav.redeem')}
+          </button>
           <button className={`nav-item ${view === 'keys' ? 'selected' : ''}`} onClick={() => setView('keys')}>
             <Icon name="key" className="size-[17px]" />
             {t('nav.keys')}
@@ -331,8 +352,10 @@ export function App() {
             onRemove={removeAccount}
             onAdd={addAccount}
             onLogout={async () => {
-              // The next signed-in account takes over; none left means the login page.
-              enter(await api.logout().catch(() => null));
+              // The account stays saved. The next signed-in account takes over; none left means the login page.
+              const next = await api.logout().catch(() => null);
+              setAccounts(await api.accounts().catch(() => accounts));
+              enter(next);
             }}
           />
         </div>
@@ -348,6 +371,7 @@ export function App() {
             onSignIn={() => {
               // Sign this account in again; it stays in the list.
               setPrefill(user.email);
+              setLoginOpts({});
               setAdding(true);
             }}
           />
@@ -357,6 +381,8 @@ export function App() {
           <KeysView onToast={setToast} />
         ) : view === 'status' ? (
           <StatusView />
+        ) : view === 'redeem' ? (
+          <RedeemView balance={user.balance} onRedeemed={refetchMe} />
         ) : view === 'lottery' ? (
           <LotteryView balance={user.balance} onBalance={refetchMe} onStatus={lotteryStatus} />
         ) : view === 'admin' && isAdmin(user) ? (

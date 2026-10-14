@@ -109,7 +109,7 @@ enum RawErr {
 }
 use RawErr::{Other, Unauth401};
 
-fn bad_credentials() -> &'static str {
+pub fn bad_credentials() -> &'static str {
     tr("邮箱或密码不正确", "Wrong email or password")
 }
 
@@ -119,6 +119,12 @@ fn friendly(env: &Envelope) -> String {
         Some("INVALID_CREDENTIALS") => bad_credentials().into(),
         Some("USER_NOT_ACTIVE") | Some("USER_DISABLED") => tr("这个账号已被停用", "This account has been disabled").into(),
         Some("INVALID_TOTP_CODE") | Some("TOTP_INVALID") => tr("验证码不正确", "That code is not correct").into(),
+        Some("REDEEM_CODE_NOT_FOUND") => tr("兑换码不存在，请检查后重试", "That code does not exist. Check it and try again.").into(),
+        Some("REDEEM_CODE_USED") => tr("这个兑换码已经用过了", "That code has already been used").into(),
+        Some("REDEEM_CODE_EXPIRED") => tr("这个兑换码已过期", "That code has expired").into(),
+        Some("REDEEM_RATE_LIMITED") => tr("尝试次数太多，请稍后再试", "Too many attempts. Try again later.").into(),
+        Some("REDEEM_CODE_LOCKED") => tr("这个兑换码正在处理，请稍后再试", "That code is being processed. Try again in a moment.").into(),
+        Some("REDEEM_CODE_UNSUPPORTED_TYPE") => tr("这个兑换码不能在这里使用", "That code cannot be used here").into(),
         Some("LOTTERY_DISABLED") => tr("宝箱活动未开启", "The chest event is off").into(),
         Some("LOTTERY_NOT_ACTIVE") => tr("不在活动时间内", "The chest event is not running right now").into(),
         Some("LOTTERY_NO_CHESTS") | Some("LOTTERY_NO_DRAWS") => tr("没有可开启的宝箱", "You have no chests to open").into(),
@@ -293,6 +299,16 @@ impl Client {
     /// Buys chests with balance.
     pub async fn lottery_buy(&self, access: &str, count: u32) -> Result<Value> {
         self.send(self.http.post(self.url("/api/v1/lottery/buy")).bearer_auth(access).json(&json!({ "count": count }))).await
+    }
+
+    pub async fn redeem(&self, access: &str, code: &str) -> Result<Value> {
+        self.send(self.http.post(self.url("/api/v1/redeem")).bearer_auth(access).json(&json!({ "code": code }))).await
+    }
+
+    /// Paged: `{ items, total, page, page_size }`.
+    pub async fn redeem_history(&self, access: &str, page: u32, page_size: u32) -> Result<Value> {
+        let q = [("page", page.max(1)), ("page_size", page_size.clamp(1, 100))];
+        self.send(self.http.get(self.url("/api/v1/redeem/history")).query(&q).bearer_auth(access)).await
     }
 
     pub async fn login(&self, email: &str, password: &str) -> Result<(LoginOutcome, Option<Tokens>)> {
@@ -543,6 +559,16 @@ mod tests {
         let e: Envelope =
             serde_json::from_str(r#"{"code":409,"message":"今日宝箱已售罄","reason":"LOTTERY_BUY_SOLD_OUT"}"#).unwrap();
         assert_eq!(friendly(&e), "今日宝箱已售罄");
+    }
+
+    #[test]
+    fn redeem_errors_are_worded() {
+        let e: Envelope =
+            serde_json::from_str(r#"{"code":409,"message":"redeem code already used","reason":"REDEEM_CODE_USED"}"#).unwrap();
+        assert_eq!(friendly(&e), "这个兑换码已经用过了");
+        let e: Envelope =
+            serde_json::from_str(r#"{"code":404,"message":"redeem code not found","reason":"REDEEM_CODE_NOT_FOUND"}"#).unwrap();
+        assert_eq!(friendly(&e), "兑换码不存在，请检查后重试");
     }
 
     #[test]

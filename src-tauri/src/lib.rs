@@ -52,6 +52,8 @@ pub fn run() {
             commands::lottery_status,
             commands::lottery_open,
             commands::lottery_buy,
+            commands::redeem,
+            commands::redeem_history,
             commands::admin_overview,
             commands::admin_users,
             commands::admin_user,

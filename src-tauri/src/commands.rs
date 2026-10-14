@@ -12,44 +12,53 @@ use crate::error::{Error, Result};
 use crate::install::{self, InstallStarted};
 use crate::lang::tr;
 use crate::accounts::AccountInfo;
-use crate::session::{Session, SwitchOutcome};
+use crate::session::{Pending2fa, Session, SwitchOutcome};
 use crate::tools::{self, detect, Connection, ToolId};
 
 fn key_name(tool: ToolId) -> String {
     format!("Cloudborne Desktop · {}", tool.display_name())
 }
 
-#[tauri::command]
-pub async fn login(s: State<'_, Session>, email: String, password: String) -> Result<LoginOutcome> {
-    let (outcome, tokens) = s.client.login(email.trim(), &password).await?;
+/// Signs in with email and password. `remember` keeps the password (in the
+/// same store as the tokens) so the account signs back in with one click.
+async fn sign_in(s: &Session, email: &str, password: &str, remember: bool) -> Result<LoginOutcome> {
+    let (outcome, tokens) = s.client.login(email.trim(), password).await?;
+    let remember = remember.then(|| password.to_string());
     match (&outcome, tokens) {
         (LoginOutcome::TwoFactor { temp_token, .. }, _) => {
-            *s.pending_2fa.lock().await = Some(temp_token.clone());
+            *s.pending_2fa.lock().await = Some(Pending2fa { temp_token: temp_token.clone(), remember });
         }
-        (LoginOutcome::Done { user }, Some(t)) => s.add(user, t).await?,
+        (LoginOutcome::Done { user }, Some(t)) => s.add(user, t, remember.as_deref()).await?,
         (LoginOutcome::Done { .. }, None) => return Err(Error::Api(tr("登录响应缺少令牌", "The sign-in response had no token").into())),
     }
     Ok(outcome)
 }
 
 #[tauri::command]
+pub async fn login(s: State<'_, Session>, email: String, password: String, remember: Option<bool>) -> Result<LoginOutcome> {
+    sign_in(&s, &email, &password, remember.unwrap_or(false)).await
+}
+
+#[tauri::command]
 pub async fn login_2fa(s: State<'_, Session>, code: String) -> Result<LoginOutcome> {
-    let temp = s
-        .pending_2fa
-        .lock()
-        .await
-        .clone()
-        .ok_or_else(|| Error::Other(tr("两步验证已过期，请重新登录", "Two-step verification expired. Please sign in again.").into()))?;
+    let (temp, remember) = {
+        let p = s.pending_2fa.lock().await;
+        let p = p
+            .as_ref()
+            .ok_or_else(|| Error::Other(tr("两步验证已过期，请重新登录", "Two-step verification expired. Please sign in again.").into()))?;
+        (p.temp_token.clone(), p.remember.clone())
+    };
     let (outcome, tokens) = s.client.login_2fa(&temp, code.trim()).await?;
     if let (LoginOutcome::Done { user }, Some(t)) = (&outcome, tokens) {
-        s.add(user, t).await?;
+        s.add(user, t, remember.as_deref()).await?;
         *s.pending_2fa.lock().await = None;
     }
     Ok(outcome)
 }
 
-/// Signs the current account out and forgets it. Returns the account that
-/// took over, or null when none is signed in (the UI shows the login page).
+/// Signs the current account out; it stays in the saved list. Returns the
+/// account that took over, or null when none is signed in (the UI shows the
+/// login page).
 #[tauri::command]
 pub async fn logout(s: State<'_, Session>) -> Result<Option<User>> {
     s.logout().await?;
@@ -73,11 +82,26 @@ pub async fn accounts_list(s: State<'_, Session>) -> Result<Vec<AccountInfo>> {
     Ok(s.list().await)
 }
 
-/// Makes a saved account active: `{ kind: "done", user }`, or
-/// `{ kind: "signed_out", email }` when it needs its password again.
+/// Makes a saved account active: `{ kind: "done", user }`. A signed-out
+/// account with a remembered password signs in with it, which may need a 2FA
+/// code next (`{ kind: "two_factor" }`). Otherwise `{ kind: "signed_out",
+/// email }`: it needs its password typed again.
 #[tauri::command]
 pub async fn account_switch(s: State<'_, Session>, user_id: i64) -> Result<SwitchOutcome> {
-    s.switch(user_id).await
+    let out = s.switch(user_id).await?;
+    let SwitchOutcome::SignedOut { .. } = out else { return Ok(out) };
+    let Some((email, password)) = s.saved_login(user_id).await else { return Ok(out) };
+    *s.pending_2fa.lock().await = None;
+    match sign_in(&s, &email, &password, true).await {
+        Ok(LoginOutcome::Done { user }) => Ok(SwitchOutcome::Done { user }),
+        Ok(LoginOutcome::TwoFactor { email_masked, .. }) => Ok(SwitchOutcome::TwoFactor { email_masked }),
+        // The password was changed since it was remembered.
+        Err(Error::Api(m)) if m == crate::api::bad_credentials() => {
+            s.forget_password(user_id).await;
+            Ok(SwitchOutcome::SignedOut { email })
+        }
+        Err(e) => Err(e),
+    }
 }
 
 /// The UI is about to show the login page to add an account; the current one
@@ -88,8 +112,8 @@ pub async fn account_add_begin(s: State<'_, Session>) -> Result<Vec<AccountInfo>
     Ok(s.list().await)
 }
 
-/// Signs a saved account out on the relay and forgets it. Returns the active
-/// account afterwards, null when none is signed in.
+/// Signs a saved account out on the relay and forgets it, with its remembered
+/// password. Returns the active account afterwards, null when none is signed in.
 #[tauri::command]
 pub async fn account_remove(s: State<'_, Session>, user_id: i64) -> Result<Option<User>> {
     s.remove(user_id).await?;
@@ -404,6 +428,28 @@ pub async fn lottery_open(s: State<'_, Session>, count: Option<u32>) -> Result<s
 pub async fn lottery_buy(s: State<'_, Session>, count: u32) -> Result<serde_json::Value> {
     let c = &s.client;
     s.authed(|a| async move { c.lottery_buy(&a, count).await }).await
+}
+
+// ---- Redeem codes ----
+
+/// Redeems a code for balance, concurrency or a subscription; returns the
+/// relay's record of the code (`type`, `value`, ...).
+#[tauri::command]
+pub async fn redeem(s: State<'_, Session>, code: String) -> Result<serde_json::Value> {
+    let code = code.trim().to_string();
+    if code.is_empty() {
+        return Err(Error::Api(tr("请输入兑换码", "Enter a code").into()));
+    }
+    let c = &s.client;
+    let code = &code;
+    s.authed(|a| async move { c.redeem(&a, code).await }).await
+}
+
+/// This account's redeemed codes and balance changes, newest first.
+#[tauri::command]
+pub async fn redeem_history(s: State<'_, Session>, page: u32, page_size: u32) -> Result<serde_json::Value> {
+    let c = &s.client;
+    s.authed(|a| async move { c.redeem_history(&a, page, page_size).await }).await
 }
 
 // ---- Admin (ops origin) ----

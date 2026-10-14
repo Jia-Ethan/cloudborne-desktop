@@ -432,6 +432,18 @@ html[data-glass='mica'] {
     transform: translate3d(-4%, 6%, 0) scale(1.05) rotate(-1.5deg);
   }
 }
+@keyframes redeem-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-4px);
+  }
+  75% {
+    transform: translateX(4px);
+  }
+}
 @keyframes rise-in {
   0% {
     opacity: 0;
@@ -665,9 +677,9 @@ html[data-glass='mica'] {
     position: relative;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     margin-bottom: 4px;
-    padding: 11px 12px;
+    padding: 10px 12px 10px 10px;
     background: var(--quiet);
     border-radius: 10px;
     font-size: 14px;
@@ -4326,21 +4338,61 @@ html[data-glass='mica'] {
     font-variant-numeric: tabular-nums;
   }
 
-  /* Saved accounts: in the account menu and above the login form. */
+  /* Saved accounts: the sidebar switcher, the login picker and the email suggestions. */
+  .avatar-lg {
+    width: 38px;
+    height: 38px;
+    font-size: 15px;
+  }
+  .account-button .avatar {
+    width: 28px;
+    height: 28px;
+    font-size: 12px;
+  }
+  .menu-identity .avatar-lg {
+    width: 34px;
+    height: 34px;
+    font-size: 14px;
+  }
+  .menu-identity-email {
+    display: block;
+    overflow: hidden;
+    color: var(--ink-3);
+    font-size: 12px;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .account-menu {
+    width: 264px;
+  }
   .menu-account {
     position: relative;
   }
-  .menu-account .avatar,
-  .login-account .avatar {
-    width: 22px;
-    height: 22px;
+  .menu-account .avatar {
+    width: 26px;
+    height: 26px;
     font-size: 11px;
   }
   .menu-account .menu-item {
+    min-height: 42px;
     padding-right: 30px;
   }
+  .menu-account-text {
+    display: grid;
+    min-width: 0;
+    flex: 1;
+    line-height: 1.25;
+  }
+  .menu-account-text b {
+    font-weight: 600;
+  }
+  .menu-account-text span {
+    color: var(--ink-3);
+    font-size: 11.5px;
+  }
   .menu-account-remove,
-  .login-account-remove {
+  .acct-card-remove {
     position: absolute;
     top: 50%;
     right: 6px;
@@ -4359,60 +4411,425 @@ html[data-glass='mica'] {
     cursor: pointer;
   }
   .menu-account:hover .menu-account-remove,
-  .login-account:hover .login-account-remove,
+  .acct-card:hover .acct-card-remove,
   .menu-account-remove:focus-visible,
-  .login-account-remove:focus-visible {
+  .acct-card-remove:focus-visible {
     opacity: 1;
   }
   .menu-account-remove:hover,
-  .login-account-remove:hover {
+  .acct-card-remove:hover {
     color: var(--danger);
     background: color-mix(in srgb, var(--danger) 12%, transparent);
   }
-  .login-accounts {
+
+  /* Login picker: one card per saved account. */
+  .acct-cards {
     display: grid;
-    gap: 6px;
+    gap: 8px;
+    margin-top: 6px;
   }
-  .login-accounts > span {
-    color: var(--ink-3);
-    font-size: 12.5px;
-    font-weight: 500;
-  }
-  .login-account {
+  .acct-card {
     position: relative;
   }
-  .login-account-open {
+  .acct-card-open,
+  .acct-card-other {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 12px 14px;
+    text-align: left;
+    background: var(--field);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    box-shadow: 0 1px 2px rgb(20 20 20 / 0.03);
+    transition:
+      border-color 0.16s ease,
+      box-shadow 0.16s ease,
+      transform 0.16s ease;
+    cursor: pointer;
+  }
+  .acct-card-open {
+    padding-right: 40px;
+  }
+  .acct-card-open:hover:not(:disabled),
+  .acct-card-open:focus-visible {
+    border-color: #ff8d5c;
+    box-shadow:
+      0 0 0 3px rgb(255 141 92 / 0.14),
+      0 10px 28px -12px rgb(150 64 14 / 0.3);
+    transform: translateY(-1px);
+    outline: none;
+  }
+  .acct-card-open:disabled,
+  .acct-card-other:disabled {
+    cursor: default;
+  }
+  .acct-card-open:disabled:not(:has(.wait)) {
+    opacity: 0.55;
+  }
+  .acct-card-text {
+    display: grid;
+    min-width: 0;
+    flex: 1;
+    line-height: 1.3;
+  }
+  .acct-card-text b {
+    font-size: 15px;
+    font-weight: 650;
+  }
+  .acct-card-text span {
+    color: var(--ink-3);
+    font-size: 12.5px;
+  }
+  .acct-state {
+    flex: none;
+    padding: 3px 8px;
+    color: var(--ink-3);
+    background: var(--quiet);
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .acct-state.on {
+    color: var(--color-ok);
+    background: color-mix(in srgb, var(--color-ok) 11%, transparent);
+  }
+  .acct-state.wait {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .acct-card-go {
+    position: absolute;
+    right: 14px;
+    color: var(--ink-3);
+    transition:
+      opacity 0.16s ease,
+      transform 0.16s ease;
+  }
+  .acct-card:hover .acct-card-go {
+    opacity: 0;
+    transform: translateX(4px);
+  }
+  .acct-card-remove {
+    right: 12px;
+  }
+  .acct-card-other {
+    color: var(--ink-2);
+    font-size: 14px;
+    font-weight: 600;
+    background: transparent;
+    border-style: dashed;
+    box-shadow: none;
+  }
+  .acct-card-other:hover:not(:disabled) {
+    color: var(--ink);
+    background: var(--quiet);
+  }
+  .acct-card-plus {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    background: var(--quiet);
+    border-radius: 999px;
+  }
+
+  /* Saved accounts offered under the email field. */
+  .login-suggest {
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    padding: 6px;
+    transform-origin: top center;
+  }
+  .login-suggest-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px 6px;
+    color: var(--ink-3);
+    font-size: 12px;
+    font-weight: 650;
+  }
+  .login-suggest-item {
     display: flex;
     align-items: center;
     gap: 10px;
     width: 100%;
-    height: 44px;
-    padding: 0 38px 0 10px;
-    background: var(--field);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    font-size: 14px;
-    font-weight: 550;
+    padding: 7px 8px;
     text-align: left;
-    transition:
-      border-color 0.14s ease,
-      background-color 0.14s ease;
+    border-radius: 9px;
     cursor: pointer;
   }
-  .login-account-open:hover:not(:disabled),
-  .login-account.on .login-account-open {
-    border-color: #ff8d5c;
+  .login-suggest-item.on {
+    background: var(--quiet-hover);
   }
-  .login-account-open:disabled {
-    opacity: 0.6;
-    cursor: default;
+  .login-suggest-item b {
+    font-size: 13.5px;
+    font-weight: 600;
   }
-  .login-account-open em {
+  .login-suggest-item span span {
+    color: var(--ink-3);
+    font-size: 12px;
+  }
+  .login-suggest-item em {
+    color: var(--color-ok);
+    font-size: 11.5px;
+    font-style: normal;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  /* Password field with show/hide, and the remember switch. */
+  .field-wrap {
+    position: relative;
+  }
+  .field-eye {
+    position: absolute;
+    top: 50%;
+    right: 6px;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    color: var(--ink-3);
+    border-radius: 8px;
+    transform: translateY(-50%);
+    cursor: pointer;
+  }
+  .field-eye:hover {
+    color: var(--ink);
+    background: var(--quiet);
+  }
+  .remember {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--ink-2);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    user-select: none;
+  }
+  .remember input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .remember i {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 17px;
+    height: 17px;
+    color: transparent;
+    background: var(--field);
+    border: 1.5px solid color-mix(in srgb, var(--ink) 22%, transparent);
+    border-radius: 5px;
+    transition:
+      background-color 0.14s ease,
+      border-color 0.14s ease,
+      color 0.14s ease;
+  }
+  .remember input:checked + i {
+    color: #fff;
+    background: #ff7a45;
+    border-color: #ff7a45;
+  }
+  .remember input:focus-visible + i {
+    box-shadow: 0 0 0 3px rgb(255 141 92 / 0.25);
+  }
+  .remember em {
+    min-width: 0;
+    overflow: hidden;
     color: var(--ink-3);
     font-size: 12px;
     font-style: normal;
-    font-weight: 500;
+    text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* Redeem page. */
+  .redeem-column {
+    max-width: 640px;
+  }
+  .redeem-hero {
+    position: relative;
+    display: grid;
+    gap: 2px;
+    margin-bottom: 12px;
+    padding: 22px 24px;
+    overflow: hidden;
+    color: #1b1b1b;
+    background:
+      radial-gradient(120% 140% at 0% 0%, rgb(148 177 255 / 0.55), transparent 60%),
+      radial-gradient(120% 140% at 100% 100%, rgb(255 141 92 / 0.5), transparent 60%),
+      linear-gradient(135deg, #fff6f0, #fde7f0);
+    border: 1px solid rgb(255 255 255 / 0.7);
+    border-radius: 20px;
+    box-shadow: 0 18px 40px -24px rgb(150 64 14 / 0.45);
+  }
+  .redeem-hero-label {
+    color: rgb(27 27 27 / 0.6);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .redeem-hero-amount {
+    font-size: 34px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  .redeem-hero-glyph {
+    position: absolute;
+    right: -10px;
+    bottom: -18px;
+    width: 120px;
+    height: 120px;
+    color: rgb(255 255 255 / 0.75);
+    transform: rotate(-14deg);
+  }
+  .redeem-card {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 10px;
+    padding: 18px;
+    border-radius: 16px;
+  }
+  .redeem-card h2 {
+    font-size: 15px;
+    font-weight: 650;
+  }
+  .redeem-field {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 52px;
+    padding: 0 8px 0 14px;
+    background: var(--field);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    transition:
+      border-color 0.14s ease,
+      box-shadow 0.14s ease;
+  }
+  .redeem-field:focus-within {
+    border-color: #ff8d5c;
+    box-shadow: 0 0 0 3px rgb(255 141 92 / 0.18);
+  }
+  .redeem-field.bad {
+    border-color: var(--danger);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 14%, transparent);
+    animation: redeem-shake 0.32s ease;
+  }
+  .redeem-field input {
+    min-width: 0;
+    flex: 1;
+    height: 100%;
+    color: var(--ink);
+    background: transparent;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 15px;
+    letter-spacing: 0.04em;
+    outline: none;
+  }
+  .redeem-field input::placeholder {
+    font-family: inherit;
+    letter-spacing: 0;
+  }
+  .redeem-paste {
+    height: 34px;
+    padding: 0 12px;
+    color: var(--ink-2);
+    background: var(--quiet);
+    border-radius: 9px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .redeem-paste:hover {
+    color: var(--ink);
+    background: var(--quiet-hover);
+  }
+  .redeem-note {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--ink-3);
+    font-size: 12.5px;
+  }
+  .redeem-note.bad {
+    color: var(--danger);
+  }
+  .redeem-note.ok {
+    color: var(--color-ok);
+    font-weight: 600;
+    animation: rise-in 0.42s cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+  }
+  .redeem-list {
+    display: grid;
+  }
+  .redeem-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 2px;
+    border-top: 1px solid var(--line);
+  }
+  .redeem-row:first-child {
+    border-top: 0;
+  }
+  .redeem-row > i {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    color: var(--ink-3);
+    background: var(--quiet);
+    border-radius: 999px;
+  }
+  .redeem-row.d-in > i {
+    color: var(--color-ok);
+    background: color-mix(in srgb, var(--color-ok) 12%, transparent);
+  }
+  .redeem-row.d-out > i {
+    color: #e0703a;
+    background: rgb(255 141 92 / 0.14);
+  }
+  .redeem-row > div:nth-child(2) {
+    display: grid;
+    line-height: 1.35;
+  }
+  .redeem-row > div:nth-child(2) b {
+    font-size: 13.5px;
+    font-weight: 600;
+  }
+  .redeem-row > div:nth-child(2) span {
+    color: var(--ink-3);
+    font-size: 12px;
+  }
+  .redeem-row-end {
+    display: grid;
+    justify-items: end;
+    line-height: 1.35;
+    white-space: nowrap;
+  }
+  .redeem-row-end b {
+    font-size: 14px;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+  }
+  .redeem-row.d-in .redeem-row-end b {
+    color: var(--color-ok);
+  }
+  .redeem-row-end time {
+    color: var(--ink-3);
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
   }
 }
 

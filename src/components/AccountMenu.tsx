@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { api, type SavedAccount, type User } from '../api';
+import { api, displayName, type SavedAccount, type User } from '../api';
 import { LANGS, useI18n } from '../i18n';
 import type { Updater } from '../update';
 import { Icon } from './Icon';
@@ -9,17 +9,32 @@ import { updateLabel } from './UpdateButton';
 // The relay's own home is a landing page; the account pages start at /keys.
 const CONSOLE_PATH = '/keys';
 
-export function Avatar({ email }: { email: string }) {
+// Each account keeps its own wash, so the avatars tell accounts apart at a glance.
+const WASHES = [
+  ['#94b1ff', '#ffafcb', '#ff8d5c'],
+  ['#7dd3c0', '#94b1ff', '#b89cff'],
+  ['#ffc46b', '#ff8d5c', '#ff6f91'],
+  ['#b89cff', '#ff9ad5', '#ffc46b'],
+  ['#6fb7ff', '#7dd3c0', '#c6f08a'],
+];
+
+export function Avatar({ name, seed = 0, size }: { name: string; seed?: number; size?: 'lg' }) {
+  const [a, b, c] = WASHES[Math.abs(seed) % WASHES.length];
   return (
-    <span className="avatar" aria-hidden>
-      {(email.trim()[0] ?? '?').toUpperCase()}
+    <span
+      className={`avatar ${size === 'lg' ? 'avatar-lg' : ''}`}
+      style={{ background: `linear-gradient(150deg, ${a}, ${b} 55%, ${c})` }}
+      aria-hidden
+    >
+      {(Array.from(name.trim())[0] ?? '?').toUpperCase()}
     </span>
   );
 }
 
 /**
- * Sidebar footer: avatar and email; clicking opens a glass menu upward with
- * the other saved accounts, console, language, updates, about and sign out.
+ * Sidebar footer: avatar and username; clicking opens a glass menu upward
+ * with this account, the other saved accounts (one click to switch), console,
+ * language, updates, about and sign out.
  */
 export function AccountMenu({
   user,
@@ -90,27 +105,34 @@ export function AccountMenu({
               setCopied(true);
             }}
           >
-            <b className="truncate">{user.email}</b>
+            <Avatar name={displayName(user)} seed={user.id} size="lg" />
+            <span className="min-w-0 flex-1">
+              <b className="block truncate">{displayName(user)}</b>
+              <span className="menu-identity-email">{copied ? t('menu.copyEmailDone') : user.email}</span>
+            </span>
             <span className={`menu-identity-copy ${copied ? 'copied' : ''}`}>
               <Icon name={copied ? 'check' : 'copy'} className="size-3.5" />
-              {copied && t('common.copied')}
             </span>
           </button>
 
+          {others.length > 0 && <span className="menu-label">{t('menu.switchAccount')}</span>}
           {others.map((a) => (
             <div key={a.user_id} className="menu-account">
               <button
                 className="menu-item"
                 role="menuitem"
-                title={a.signed_in ? t('menu.switchTo', { email: a.email }) : t('menu.signInAs', { email: a.email })}
+                title={a.signed_in || a.has_password ? t('menu.switchTo', { email: a.email }) : t('menu.signInAs', { email: a.email })}
                 onClick={() => {
                   setOpen(false);
                   onSwitch(a);
                 }}
               >
-                <Avatar email={a.email} />
-                <span className="min-w-0 flex-1 truncate">{a.email}</span>
-                {!a.signed_in && <span className="menu-meta">{t('login.needsPassword')}</span>}
+                <Avatar name={displayName(a)} seed={a.user_id} />
+                <span className="menu-account-text">
+                  <b className="truncate">{displayName(a)}</b>
+                  <span className="truncate">{a.email}</span>
+                </span>
+                {!a.signed_in && !a.has_password && <span className="menu-meta">{t('login.needsPassword')}</span>}
               </button>
               <button
                 className="menu-account-remove"
@@ -205,8 +227,9 @@ export function AccountMenu({
       )}
 
       <button className="account-button" aria-expanded={open} aria-label={t('menu.account')} onClick={() => setOpen((o) => !o)}>
-        <Avatar email={user.email} />
-        <span className="min-w-0 flex-1 truncate text-left text-[13px] font-semibold">{user.email}</span>
+        <Avatar name={displayName(user)} seed={user.id} />
+        <span className="min-w-0 flex-1 truncate text-left text-[13px] font-semibold">{displayName(user)}</span>
+        <Icon name="chevronUpDown" className="size-3.5 text-ink-3" />
         {offer && <span className="update-dot" />}
       </button>
     </div>
