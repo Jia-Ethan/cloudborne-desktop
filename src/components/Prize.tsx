@@ -7,6 +7,15 @@ export function RarityTag({ rarity }: { rarity: Rarity }) {
   return <span className={`rarity-tag r-${rarity}`}>{t(`rarity.${rarity}`)}</span>;
 }
 
+/** 保底 / 连开保底 / 首开加成, when one of them decided or boosted the draw. */
+export function GuaranteeTag({ draw }: { draw: Pick<Draw, 'detail'> }) {
+  const { t } = useI18n();
+  const g = draw.detail?.guarantee;
+  if (g === 'pity' || g === 'batch') return <em className={`lot-guarantee g-${g}`}>{t(`lottery.guarantee.${g}`)}</em>;
+  if (draw.detail?.boost) return <em className="lot-guarantee g-boost">{t('lottery.guarantee.boost')}</em>;
+  return null;
+}
+
 /** What a draw gave, in one short line: $3.20, 8 折 · 24 小时, 再来一次 … */
 export function PrizeText({ draw }: { draw: Pick<Draw, 'kind' | 'amount' | 'detail'> }) {
   const { t } = useI18n();

@@ -8,6 +8,9 @@ export const PERCENT_KINDS: PrizeKind[] = ['cashback', 'balance_percent'];
 
 export const isBig = (r: Rarity) => r === 'epic' || r === 'legendary';
 
+/** Settings an older relay leaves out read as these, the relay's own defaults. */
+export const GUARANTEE_DEFAULTS = { pity_epic: 30, batch_rare: 5, first_open_boost: 2 } as const;
+
 /** Dollars with two decimals, the unit balance and usage are shown in. */
 export function dollars(n: number): string {
   const v = Number.isFinite(n) ? n : 0;
@@ -50,15 +53,51 @@ export function extraChance(prizes: Prize[]): number {
 
 /**
  * Most one chest can pay out on average, counting the chests it can chain
- * into: Σ pᵢ·maxᵢ over the other kinds ÷ (1 − p_extra). Infinity when an
- * uncapped prize can be picked or every pick is another chest.
+ * into, the relay's LotteryCostCeiling. Without guarantees it is
+ * Σ pᵢ·maxᵢ over the other kinds ÷ (1 − p_extra).
+ *
+ * The batch guarantee (every `batch` chests of one open hold a rare or
+ * better) swaps f = c^(batch−1)/batch of draws for a pick among rare-or-better
+ * prizes that are not another chest; c is the chance of a common. Pity (an
+ * epic or legendary at least every `pity` draws) lifts their long-run share
+ * from h to h / (1 − (1−h)^pity). Infinity when an uncapped prize can be
+ * picked or every pick is another chest.
  */
-export function costCeiling(prizes: Prize[]): number {
-  const ps = probabilities(prizes);
-  const extra = extraChance(prizes);
-  if (extra >= 1) return Infinity;
-  const sum = prizes.reduce((s, p, i) => (ps[i] > 0 && p.kind !== 'extra_draw' ? s + ps[i] * prizeMax(p) : s), 0);
-  return sum / (1 - extra);
+export function costCeiling(prizes: Prize[], pity = 0, batch = 0): number {
+  const live = prizes.filter((p) => p.weight > 0);
+  const total = live.reduce((s, p) => s + p.weight, 0);
+  if (total <= 0) return 0;
+  if (extraChance(live) >= 1) return Infinity;
+  if (live.some((p) => !Number.isFinite(prizeMax(p)))) return Infinity;
+  const lifts = (p: Prize) => p.kind !== 'extra_draw' && p.rarity !== 'common';
+  const common = live.filter((p) => p.rarity === 'common').reduce((s, p) => s + p.weight, 0);
+  const upgrade = live.filter(lifts).reduce((s, p) => s + p.weight, 0);
+  const f = batch >= 2 && upgrade > 0 ? (common / total) ** (batch - 1) / batch : 0;
+  let big = 0;
+  let bigCost = 0;
+  let lowCost = 0;
+  let again = 0;
+  for (const p of live) {
+    const d = (1 - f) * (p.weight / total) + (lifts(p) && upgrade > 0 ? (f * p.weight) / upgrade : 0);
+    if (p.kind === 'extra_draw') again += d;
+    else if (isBig(p.rarity)) {
+      big += d;
+      bigCost += d * prizeMax(p);
+    } else lowCost += d * prizeMax(p);
+  }
+  const r = pity >= 2 && big > 0 ? big / (1 - (1 - big) ** pity) : big;
+  let cost = big > 0 ? (r * bigCost) / big : 0;
+  let x = 0;
+  if (1 - big > 1e-12) {
+    cost += ((1 - r) * lowCost) / (1 - big);
+    x = ((1 - r) * again) / (1 - big);
+  }
+  return x >= 1 ? Infinity : cost / (1 - x);
+}
+
+/** The ceiling with the settings' own guarantees. */
+export function settingsCeiling(s: Pick<LotterySettings, 'prizes' | 'pity_epic' | 'batch_rare'>): number {
+  return costCeiling(s.prizes, s.pity_epic ?? 0, s.batch_rare ?? 0);
 }
 
 /** Ceiling above price, ignoring float noise at the boundary (4.675 vs 4.675000000000001). */
@@ -103,6 +142,9 @@ export type SettingsProblem =
   | 'dailyThreshold'
   | 'dailyPerUser'
   | 'dailyQuota'
+  | 'pity'
+  | 'batch'
+  | 'boost'
   | 'count'
   | 'id'
   | 'duplicate'
@@ -136,6 +178,12 @@ export function settingsProblem(s: LotterySettings): { problem: SettingsProblem;
   if (!(s.daily_threshold > 0)) return { problem: 'dailyThreshold' };
   if (!(s.daily_per_user >= 1 && s.daily_per_user <= 10 && isInt(s.daily_per_user))) return { problem: 'dailyPerUser' };
   if (!(s.daily_quota >= 0 && isInt(s.daily_quota))) return { problem: 'dailyQuota' };
+  const pity = s.pity_epic ?? 0;
+  if (!(isInt(pity) && (pity === 0 || (pity >= 2 && pity <= 1000)))) return { problem: 'pity' };
+  const batch = s.batch_rare ?? 0;
+  if (!(isInt(batch) && (batch === 0 || (batch >= 2 && batch <= BATCH)))) return { problem: 'batch' };
+  const boost = s.first_open_boost ?? 1;
+  if (!(boost >= 1 && boost <= 10)) return { problem: 'boost' };
   if (s.prizes.length < 1 || s.prizes.length > 20) return { problem: 'count' };
   const seen = new Set<string>();
   for (const [i, p] of s.prizes.entries()) {
@@ -169,7 +217,7 @@ export function settingsProblem(s: LotterySettings): { problem: SettingsProblem;
     const i = s.prizes.findIndex((p) => p.weight > 0 && PERCENT_KINDS.includes(p.kind) && !((p.cap ?? 0) > 0));
     if (i >= 0) return { problem: 'buyUncapped', index: i };
     if (extraChance(s.prizes) >= 1) return { problem: 'buyAllExtra' };
-    if (sellsAtLoss(costCeiling(s.prizes), s.buy_price)) return { problem: 'buyLoss' };
+    if (sellsAtLoss(settingsCeiling(s), s.buy_price)) return { problem: 'buyLoss' };
   }
   return null;
 }

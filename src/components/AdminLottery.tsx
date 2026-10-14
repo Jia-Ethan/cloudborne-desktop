@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties, type Rea
 import { api, errorText, type Draw, type LotterySettings, type LotterySummary, type Prize, type Rarity } from '../api';
 import { useI18n } from '../i18n';
 import {
+  GUARANTEE_DEFAULTS,
   KINDS,
   RARITIES,
-  costCeiling,
+  settingsCeiling,
   fromPercent,
   fromShanghaiInput,
   payoutRatio,
@@ -20,7 +21,7 @@ import {
 import { Pager } from './AdminUsers';
 import { Dialog } from './Dialog';
 import { Icon } from './Icon';
-import { PrizeText, RarityTag } from './Prize';
+import { GuaranteeTag, PrizeText, RarityTag } from './Prize';
 import { BigWins, WinnerSheet, when } from './WinnerSheet';
 
 const PAGE = 30;
@@ -242,7 +243,9 @@ export function AdminLottery({ onOpenUser, onToast }: { onOpenUser: (u: { id: nu
                         {d.email || d.username || `#${d.user_id}`}
                       </span>
                       <RarityTag rarity={d.rarity} />
-                      <span className="truncate">{d.name}</span>
+                      <span className="truncate">
+                        {d.name} <GuaranteeTag draw={d} />
+                      </span>
                       {d.source ? <em className={`lot-source s-${d.source}`}>{t(`lottery.source.${d.source}`)}</em> : <span />}
                       <b>
                         <PrizeText draw={d} />
@@ -354,6 +357,7 @@ function complete(x: LotterySettings): LotterySettings {
     daily_threshold: old && old > 0 ? old : 20,
     daily_per_user: 1,
     daily_quota: 50,
+    ...GUARANTEE_DEFAULTS,
     ...rest,
   };
 }
@@ -377,7 +381,7 @@ function SettingsEditor({ onToast }: { onToast: (m: string) => void }) {
   }, [t]);
 
   const probs = useMemo(() => probabilities(s?.prizes ?? []), [s]);
-  const ceiling = useMemo(() => costCeiling(s?.prizes ?? []), [s]);
+  const ceiling = useMemo(() => (s ? settingsCeiling(s) : 0), [s]);
   const ratio = s ? payoutRatio(ceiling, s.buy_price) : Infinity;
   const loss = !!s && s.buy_enabled && sellsAtLoss(ceiling, s.buy_price);
   const problem = s ? settingsProblem(s) : null;
@@ -408,7 +412,7 @@ function SettingsEditor({ onToast }: { onToast: (m: string) => void }) {
     setError('');
     try {
       const d = complete(await api.adminLotteryDefaults());
-      // Only the table and the money knobs; the switches and window stay as edited.
+      // The table, guarantees and money knobs; the switches and window stay as edited.
       setS((cur) =>
         cur
           ? {
@@ -521,6 +525,16 @@ function SettingsEditor({ onToast }: { onToast: (m: string) => void }) {
             <NumField label={t('admin.lottery.reserve')} prefix="$" value={s.pool_reserve} onChange={(v) => setS({ ...s, pool_reserve: v })} />
           </div>
           <p className="lot-settings-hint">{t('admin.lottery.quotaHint')}</p>
+        </div>
+
+        <div className="lot-settings-group">
+          <h3>{t('admin.lottery.guaranteeGroup')}</h3>
+          <div className="lot-settings-row">
+            <NumField label={t('admin.lottery.pityEpic')} value={s.pity_epic ?? 0} onChange={(v) => setS({ ...s, pity_epic: v })} />
+            <NumField label={t('admin.lottery.batchRare')} value={s.batch_rare ?? 0} onChange={(v) => setS({ ...s, batch_rare: v })} />
+            <NumField label={t('admin.lottery.firstOpenBoost')} value={s.first_open_boost ?? 1} onChange={(v) => setS({ ...s, first_open_boost: v })} />
+          </div>
+          <p className="lot-settings-hint">{t('admin.lottery.guaranteeHint')}</p>
         </div>
 
         <div className={`ceiling ${loss ? 'bad' : ''}`}>

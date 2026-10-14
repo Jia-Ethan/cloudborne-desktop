@@ -69,6 +69,12 @@ export interface LotterySettings {
   daily_per_user: number;
   /** Site-wide per day; 0 = unlimited. */
   daily_quota: number;
+  /** After pity_epic − 1 draws without epic or legendary, the next one is; 0 = off, else 2..1000. Older relays leave it out. */
+  pity_epic?: number;
+  /** In one open, every batch_rare chests hold at least one rare or better; 0 = off, else 2..10. */
+  batch_rare?: number;
+  /** The day's first earn-pool draw multiplies epic and legendary weights by this; 1 = off, 1..10. */
+  first_open_boost?: number;
   prizes: Prize[];
 }
 
@@ -148,9 +154,24 @@ export interface LotteryStatus {
   };
   /** Low-spend chest. Older relays leave it out. */
   daily?: DailyChest;
+  /** Guarantees and boosts. Older relays leave it out. */
+  bonus?: LotteryBonus;
   prizes: { id: string; name: string; rarity: Rarity; kind: PrizeKind }[];
   today: Draw[];
   perks: Perk[];
+}
+
+export interface LotteryBonus {
+  /** 0 = off. */
+  pity_epic: number;
+  /** Draws until a guaranteed epic or legendary, counting the next one; ≥ 1. */
+  pity_left: number;
+  /** 0 = off. */
+  batch_rare: number;
+  /** 1 = off. */
+  first_open_boost: number;
+  /** The boost is still there for today's first spend or low-spend chest. */
+  first_open_ready: boolean;
 }
 
 export interface DailyChest {

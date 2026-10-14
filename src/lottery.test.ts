@@ -97,6 +97,35 @@ describe('lottery', () => {
     expect(settingsProblem(settings(RECOMMENDED, { buy_enabled: true }))).toBeNull();
   });
 
+  it('counts pity and the batch guarantee like the relay', () => {
+    // The relay's v0.9.3 recommended table: 4.7321 plain, 4.8451 with pity 30 and batch 5.
+    const v3: Prize[] = [
+      { id: 'coin_s', name: '零钱', rarity: 'common', kind: 'balance_fixed', weight: 33, min: 0.5, max: 2 },
+      { id: 'discount_9', name: '9折卡', rarity: 'common', kind: 'discount', weight: 12, rate: 0.9, hours: 24, cap: 3 },
+      { id: 'again', name: '再开一箱', rarity: 'rare', kind: 'extra_draw', weight: 10 },
+      { id: 'coin_m', name: '钱袋', rarity: 'rare', kind: 'balance_fixed', weight: 17, min: 3, max: 6 },
+      { id: 'cashback', name: '今日返现', rarity: 'rare', kind: 'cashback', weight: 8, min: 0.1, max: 0.2, cap: 6 },
+      { id: 'discount_8', name: '8折卡', rarity: 'epic', kind: 'discount', weight: 3, rate: 0.8, hours: 48, cap: 10 },
+      { id: 'credit', name: '畅用额度', rarity: 'epic', kind: 'credit', weight: 2, amount: 15, hours: 24 },
+      { id: 'coin_l', name: '金币箱', rarity: 'epic', kind: 'balance_fixed', weight: 3, min: 10, max: 18 },
+      { id: 'boost', name: '余额加成', rarity: 'epic', kind: 'balance_percent', weight: 1, min: 0.05, max: 0.1, cap: 15 },
+      { id: 'jackpot', name: '头奖', rarity: 'legendary', kind: 'balance_fixed', weight: 0.6, min: 66, max: 66 },
+      { id: 'mega', name: '超级头奖', rarity: 'legendary', kind: 'balance_fixed', weight: 0.1, min: 188, max: 188 },
+    ];
+    expect(costCeiling(v3)).toBeCloseTo(4.7321, 4);
+    expect(costCeiling(v3, 30, 5)).toBeCloseTo(4.8451, 4);
+    expect(settingsProblem(settings(v3, { buy_enabled: true, pity_epic: 30, batch_rare: 5, first_open_boost: 2 }))).toBeNull();
+    // A short pity on the old table sells at a loss.
+    expect(settingsProblem(settings(RECOMMENDED, { buy_enabled: true, pity_epic: 3 }))?.problem).toBe('buyLoss');
+  });
+
+  it('checks the guarantee settings', () => {
+    expect(settingsProblem(settings(DEFAULT, { pity_epic: 1 }))?.problem).toBe('pity');
+    expect(settingsProblem(settings(DEFAULT, { batch_rare: 11 }))?.problem).toBe('batch');
+    expect(settingsProblem(settings(DEFAULT, { first_open_boost: 0.5 }))?.problem).toBe('boost');
+    expect(settingsProblem(settings(DEFAULT, { pity_epic: 0, batch_rare: 0, first_open_boost: 1 }))).toBeNull();
+  });
+
   it('spreads an extra chest over the chests it chains into', () => {
     // 0.08 of picks are another chest: the rest is divided by 0.92.
     expect(extraChance(DEFAULT)).toBeCloseTo(0.08);

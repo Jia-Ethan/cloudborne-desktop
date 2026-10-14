@@ -4394,6 +4394,47 @@ html[data-glass='mica'] {
     font-weight: 600;
     white-space: nowrap;
   }
+  .lot-guarantee {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 0 5px;
+    color: color-mix(in srgb, #ff7a45 85%, var(--ink));
+    background: color-mix(in srgb, #ff7a45 12%, transparent);
+    border-radius: 5px;
+    font-size: 10.5px;
+    font-style: normal;
+    font-weight: 650;
+    line-height: 17px;
+    vertical-align: 1px;
+    white-space: nowrap;
+  }
+  .lot-guarantee.g-boost {
+    color: color-mix(in srgb, #f5b301 80%, var(--ink));
+    background: color-mix(in srgb, #f5b301 14%, transparent);
+  }
+  .lot-card-tags {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .lot-bonus {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .lot-bonus span {
+    padding: 2px 9px;
+    color: var(--ink-2);
+    background: var(--quiet);
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 550;
+  }
+  .lot-bonus span.hot {
+    color: color-mix(in srgb, #ff7a45 85%, var(--ink));
+    background: color-mix(in srgb, #ff7a45 13%, transparent);
+  }
   .lot-source.s-buy {
     color: color-mix(in srgb, #ff7a45 80%, var(--ink));
     background: color-mix(in srgb, #ff7a45 12%, transparent);

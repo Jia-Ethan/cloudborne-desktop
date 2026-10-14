@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent, type RefObject } from 'react';
-import { api, errorText, type ChestSource, type Draw, type LotteryStatus, type Perk, type Rarity } from '../api';
+import { api, errorText, type ChestSource, type Draw, type LotteryBonus, type LotteryStatus, type Perk, type Rarity } from '../api';
 import { useI18n, type T } from '../i18n';
 import {
   RARITIES,
@@ -21,7 +21,7 @@ import {
 import { Dialog } from './Dialog';
 import { Icon } from './Icon';
 import { burst, coinRain, confetti, lightning, motes, type Motes } from './fx';
-import { PrizeText, RarityTag } from './Prize';
+import { GuaranteeTag, PrizeText, RarityTag } from './Prize';
 
 type Phase = 'idle' | 'charge' | 'reveal' | 'burst' | 'result';
 /** What the chest looks like at rest: one to open, none yet, or none and the activity is over. */
@@ -302,6 +302,7 @@ export function LotteryView({
               {cap > 0 && <em className={s?.full ? 'full' : ''}>{t('lottery.held', { n: s?.chests ?? 0, cap })}</em>}
             </h1>
             {s && <ActivityLine status={s} phase={win} skew={skew} />}
+            {s?.bonus && <BonusLine bonus={s.bonus} />}
             {s?.full && <p className="lot-full">{t('lottery.full')}</p>}
           </div>
           <div className="lot-open">
@@ -426,7 +427,9 @@ export function LotteryView({
                 {[...(s?.today ?? [])].reverse().map((d) => (
                   <div key={d.id} className={`lot-result r-${d.rarity}`}>
                     <i />
-                    <span className="truncate">{d.name}</span>
+                    <span className="truncate">
+                      {d.name} <GuaranteeTag draw={d} />
+                    </span>
                     <SourceTag source={d.source} />
                     <b>
                       <PrizeText draw={d} />
@@ -682,7 +685,12 @@ function ResultCard({ draw, onDone }: { draw: Draw; onDone: () => void }) {
   return (
     <div className={`lot-card r-${draw.rarity} ${draw.kind === 'none' ? 'k-none' : ''}`} role="dialog" aria-label={draw.name}>
       <div className="lot-card-inner">
-        {draw.kind !== 'none' && <RarityTag rarity={draw.rarity} />}
+        {draw.kind !== 'none' && (
+          <span className="lot-card-tags">
+            <RarityTag rarity={draw.rarity} />
+            <GuaranteeTag draw={draw} />
+          </span>
+        )}
         {h.kind === 'none' ? (
           <div className="lot-amount words">{draw.name || t('lottery.thanks')}</div>
         ) : h.kind === 'again' ? (
@@ -801,6 +809,25 @@ function PerkCard({ perk, index }: { perk: Perk; index: number }) {
         </span>
       </div>
     </div>
+  );
+}
+
+/** What the guarantees promise this user right now: 再开 N 个必出史诗, 今日首开大奖概率 ×2, 连开 5 个必出稀有. */
+function BonusLine({ bonus: b }: { bonus: LotteryBonus }) {
+  const { t } = useI18n();
+  const items: { key: string; text: string; hot?: boolean }[] = [];
+  if (b.pity_epic >= 2) items.push({ key: 'pity', text: t('lottery.bonus.pity', { n: b.pity_left }), hot: b.pity_left <= 3 });
+  if (b.first_open_boost > 1 && b.first_open_ready) items.push({ key: 'first', text: t('lottery.bonus.first', { x: b.first_open_boost }), hot: true });
+  if (b.batch_rare >= 2) items.push({ key: 'batch', text: t('lottery.bonus.batch', { n: b.batch_rare }) });
+  if (items.length === 0) return null;
+  return (
+    <p className="lot-bonus">
+      {items.map((x) => (
+        <span key={x.key} className={x.hot ? 'hot' : ''}>
+          {x.text}
+        </span>
+      ))}
+    </p>
   );
 }
 
@@ -1031,7 +1058,9 @@ function BatchSheet({ draws, onClose }: { draws: Draw[]; onClose: () => void }) 
             >
               <i />
               {d.kind !== 'none' ? <RarityTag rarity={d.rarity} /> : <span />}
-              <span className="truncate">{d.name}</span>
+              <span className="truncate">
+                {d.name} <GuaranteeTag draw={d} />
+              </span>
               <SourceTag source={d.source} />
               <b>
                 <PrizeText draw={d} />

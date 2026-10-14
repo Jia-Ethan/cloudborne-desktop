@@ -5,7 +5,7 @@ import { dollars, zhe, zheVars } from '../lottery';
 import { money } from '../usage';
 import { Dialog } from './Dialog';
 import { Icon } from './Icon';
-import { PrizeText, RarityTag } from './Prize';
+import { GuaranteeTag, PrizeText, RarityTag } from './Prize';
 
 export const when = (iso: string) =>
   new Date(iso).toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -69,7 +69,9 @@ export function WinnerSheet({
           <RarityTag rarity={draw.rarity} />
           <time>{when(draw.created_at)}</time>
         </div>
-        <h3>{draw.name}</h3>
+        <h3>
+          {draw.name} <GuaranteeTag draw={draw} />
+        </h3>
         <b className="win-amount">
           <PrizeText draw={draw} />
         </b>
