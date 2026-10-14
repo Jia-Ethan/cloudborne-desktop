@@ -4534,6 +4534,43 @@ html[data-glass='mica'] {
     text-align: center;
     font-variant-numeric: tabular-nums;
   }
+  /* Admin: one 小丑斗地主 deal per row: when, stake and field, then the three seats. */
+  .draw-row.ddz-admin-row {
+    grid-template-columns: 100px minmax(0, 1fr) repeat(3, minmax(0, 0.8fr));
+  }
+  .ddz-admin-seat {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .ddz-admin-seat em {
+    color: var(--ink-3);
+    font-style: normal;
+  }
+  .ddz-admin-seat b {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+  }
+  .ddz-admin-seat.up b {
+    color: var(--color-ok);
+  }
+  .ddz-admin-seat.down b {
+    color: var(--danger);
+  }
+  .ddz-admin-field {
+    color: var(--ink-2);
+  }
+
+  /* A game is running while the player looks at another page. */
+  .nav-badge-dot {
+    min-width: 8px;
+    width: 8px;
+    height: 8px;
+    padding: 0;
+    background: #d9a441;
+    box-shadow: 0 0 0 3px color-mix(in srgb, #d9a441 25%, transparent);
+  }
 
   /* Saved accounts: the sidebar switcher, the login picker and the email suggestions. */
   .avatar-lg {
@@ -6792,6 +6829,34 @@ html[data-glass='mica'] {
     background: #d6a94f;
     box-shadow: 0 0 6px rgb(214 169 79 / 0.8);
   }
+  /* The table line dropped: the relay keeps the seat while it reconnects. */
+  .ddz-conn {
+    position: absolute;
+    top: 64px;
+    left: 50%;
+    z-index: 6;
+    padding: 6px 16px;
+    translate: -50% 0;
+    color: #f3dfae;
+    background: rgb(4 25 18 / 0.9);
+    border: 1px solid rgb(212 175 96 / 0.6);
+    border-radius: 3px;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    animation: ddz-pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes ddz-pulse {
+    50% {
+      opacity: 0.55;
+    }
+  }
+  .ddz-lobby-note {
+    margin-top: 14px;
+    color: rgb(243 223 174 / 0.75);
+    font-size: 12px;
+    text-align: center;
+  }
+
   .ddz-auto {
     position: absolute;
     left: 50%;

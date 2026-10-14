@@ -25,6 +25,7 @@ import {
   type Table,
 } from '../ddz';
 import { useI18n, type MessageKey, type T } from '../i18n';
+import type { DdzConn } from '../useDdz';
 import { dollars } from '../lottery';
 import { Dialog } from './Dialog';
 import { burst } from './fx';
@@ -96,7 +97,7 @@ const fmtX = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(n * 10 
  * runs the game and sends a snapshot of the table on every change; this view
  * only draws it and sends the player's actions back.
  */
-export function DdzView({ balance, table, send }: { balance: number; table: Table | null; send: (a: Action) => void }) {
+export function DdzView({ balance, table, conn, send }: { balance: number; table: Table | null; conn: DdzConn; send: (a: Action) => void }) {
   const [rulesFor, setRulesFor] = useState<Action | 'read' | null>(null);
   const accepted = () => localStorage.getItem(RULES_KEY) === RULES_VERSION;
 
@@ -110,9 +111,9 @@ export function DdzView({ balance, table, send }: { balance: number; table: Tabl
   );
 
   let body: ReactNode;
-  if (!table) body = <Lobby balance={balance} onEnter={enter} onRules={() => setRulesFor('read')} />;
+  if (!table) body = <Lobby balance={balance} conn={conn} onEnter={enter} onRules={() => setRulesFor('read')} />;
   else if (table.phase === 'waiting' && !table.code) body = <Matching send={send} />;
-  else body = <TableScene table={table} send={send} />;
+  else body = <TableScene table={table} conn={conn} send={send} />;
 
   return (
     <>
@@ -134,12 +135,12 @@ export function DdzView({ balance, table, send }: { balance: number; table: Tabl
 
 // ---------------------------------------------------------------- lobby
 
-function Lobby({ balance, onEnter, onRules }: { balance: number; onEnter: (a: Action) => void; onRules: () => void }) {
+function Lobby({ balance, conn, onEnter, onRules }: { balance: number; conn: DdzConn; onEnter: (a: Action) => void; onRules: () => void }) {
   const { t } = useI18n();
   const affordable = (b: number) => balance >= minBalance(b);
   const [base, setBase] = useState(STAKES[0]);
   const [code, setCode] = useState('');
-  const canPlay = affordable(base);
+  const canPlay = affordable(base) && conn === 'open';
 
   return (
     <div className="main-scroll">
@@ -207,11 +208,16 @@ function Lobby({ balance, onEnter, onRules }: { balance: number; onEnter: (a: Ac
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
             />
-            <button className="btn ddz-glass-btn" disabled={code.length !== 6}>
+            <button className="btn ddz-glass-btn" disabled={code.length !== 6 || conn !== 'open'}>
               {t('ddz.join')}
             </button>
           </form>
         </div>
+        {conn !== 'open' && conn !== 'idle' && (
+          <p className="ddz-lobby-note" role="status">
+            {t(conn === 'auth' ? 'ddz.signedOut' : conn === 'unavailable' ? 'ddz.unavailable' : 'ddz.reconnecting')}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -370,7 +376,7 @@ function JokerCard({ joker, size = 'md', onClick, picked }: { joker: Joker; size
 
 // ---------------------------------------------------------------- table
 
-function TableScene({ table, send }: { table: Table; send: (a: Action) => void }) {
+function TableScene({ table, conn, send }: { table: Table; conn: DdzConn; send: (a: Action) => void }) {
   const { t } = useI18n();
   const me = table.me;
   const myTurn = table.turn === me && (table.phase === 'bid' || table.phase === 'play');
@@ -388,6 +394,11 @@ function TableScene({ table, send }: { table: Table; send: (a: Action) => void }
       <Ornaments />
       <canvas ref={fx.canvas} className="ddz-sparks" aria-hidden />
       <TopBar table={table} onLeave={leave} send={send} />
+      {conn !== 'open' && (
+        <div className="ddz-conn" role="status">
+          {t(conn === 'auth' ? 'ddz.signedOut' : conn === 'unavailable' ? 'ddz.unavailable' : 'ddz.reconnecting')}
+        </div>
+      )}
 
       <Opponent table={table} seat={prevSeat(me)} side="left" />
       <Opponent table={table} seat={nextSeat(me)} side="right" />
@@ -1159,7 +1170,7 @@ function useTableFx(table: Table) {
 
   useEffect(() => {
     const u = table.skill;
-    const key = u ? `${u.seat}:${u.skill}:${table.moves.map((m) => m?.cards?.join() ?? '').join('|')}` : null;
+    const key = u ? `${table.commit}:${u.n ?? table.moves.map((m) => m?.cards?.join() ?? '').join('|')}:${u.seat}:${u.skill}` : null;
     if (!u || key === seenSkill.current) return;
     seenSkill.current = key;
     show({ key: `skill-${key}`, kind: 'skill', text: t(`ddz.skill.${u.skill}` as MessageKey), hero: u.hero }, 1700);

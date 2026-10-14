@@ -27,7 +27,9 @@ export function historyTitle(item: Pick<RedeemItem, 'type' | 'value'>, t: T): st
                 ? 'redeem.type.affiliate'
                 : item.type === 'lottery'
                   ? 'redeem.type.lottery'
-                  : 'redeem.type.other';
+                  : item.type === 'doudizhu'
+                    ? 'redeem.type.ddz'
+                    : 'redeem.type.other';
   return t(key);
 }
 

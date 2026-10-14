@@ -6,6 +6,7 @@ use tauri::ipc::Channel;
 use tauri::State;
 
 use crate::agent;
+use crate::ddz;
 
 use crate::api::{ApiKey, Group, LoginOutcome, Method, UsageKind, User};
 use crate::error::{Error, Result};
@@ -430,6 +431,34 @@ pub async fn lottery_buy(s: State<'_, Session>, count: u32) -> Result<serde_json
     s.authed(|a| async move { c.lottery_buy(&a, count).await }).await
 }
 
+// ---- 小丑斗地主 ----
+
+/// Whether the tables are open and at which stakes.
+#[tauri::command]
+pub async fn ddz_status(s: State<'_, Session>) -> Result<serde_json::Value> {
+    let c = &s.client;
+    s.authed(|a| async move { c.ddz(&a).await }).await
+}
+
+/// Opens the table line (replacing any open one); snapshots arrive on `channel`.
+#[tauri::command]
+pub async fn ddz_connect(app: tauri::AppHandle, line: State<'_, ddz::SharedLine>, channel: Channel<ddz::Event>) -> Result<()> {
+    ddz::connect(app, &line, channel).await;
+    Ok(())
+}
+
+/// Sends one action to the table.
+#[tauri::command]
+pub async fn ddz_send(line: State<'_, ddz::SharedLine>, action: serde_json::Value) -> Result<()> {
+    ddz::send(&line, &action).await
+}
+
+#[tauri::command]
+pub async fn ddz_close(line: State<'_, ddz::SharedLine>) -> Result<()> {
+    ddz::close(&line).await;
+    Ok(())
+}
+
 // ---- Redeem codes ----
 
 /// Redeems a code for balance, concurrency or a subscription; returns the
@@ -553,6 +582,22 @@ pub async fn admin_lottery_settings(s: State<'_, Session>) -> Result<serde_json:
 #[tauri::command]
 pub async fn admin_lottery_save(s: State<'_, Session>, settings: serde_json::Value) -> Result<serde_json::Value> {
     admin_call(s.inner(), Method::Put, "/lottery/settings", vec![], Some(settings)).await
+}
+
+#[tauri::command]
+pub async fn admin_ddz_settings(s: State<'_, Session>) -> Result<serde_json::Value> {
+    admin_call(s.inner(), Method::Get, "/ddz/settings", vec![], None).await
+}
+
+#[tauri::command]
+pub async fn admin_ddz_save(s: State<'_, Session>, settings: serde_json::Value) -> Result<serde_json::Value> {
+    admin_call(s.inner(), Method::Put, "/ddz/settings", vec![], Some(settings)).await
+}
+
+/// 小丑斗地主 games, players and money over the last `days` days.
+#[tauri::command]
+pub async fn admin_ddz_summary(s: State<'_, Session>, days: u32) -> Result<serde_json::Value> {
+    admin_call(s.inner(), Method::Get, "/ddz/summary", q(&[("days", &days.to_string())]), None).await
 }
 
 /// The recommended settings, for the form only; nothing is saved.

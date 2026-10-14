@@ -2,6 +2,36 @@ import { invoke } from '@tauri-apps/api/core';
 
 export type ToolId = 'codex' | 'claude' | 'zcode' | 'grok' | 'pi';
 
+/** 小丑斗地主 lobby as the relay reports it. */
+export interface DdzStatus {
+  enabled: boolean;
+  stakes: number[];
+  min_balance_times: number;
+}
+
+/** 小丑斗地主 money over a range, for admins. `platform_net` is what the AI seats won (+) or lost (−). */
+export interface DdzSummary {
+  since: string;
+  games: number;
+  bot_games: number;
+  players: number;
+  won: number;
+  platform_net: number;
+  recent:
+    | {
+        id: string;
+        base: number;
+        field: string;
+        landlord: number;
+        winner: number;
+        users: [number, number, number];
+        roles: [string, string, string];
+        delta: [number, number, number];
+        at: string;
+      }[]
+    | null;
+}
+
 export interface User {
   id: number;
   email: string;
@@ -449,6 +479,7 @@ export const api = {
   /** `draws` is missing on relays without batch open; `draw` is always there. */
   lotteryOpen: (count = 1) => invoke<{ draws?: Draw[]; draw: Draw; status: LotteryStatus }>('lottery_open', { count }),
   lotteryBuy: (count: number) => invoke<{ bought: number; status: LotteryStatus }>('lottery_buy', { count }),
+  ddzStatus: () => invoke<DdzStatus>('ddz_status'),
   redeem: (code: string) => invoke<RedeemItem>('redeem', { code }),
   redeemHistory: (page: number, pageSize: number) => invoke<Page<RedeemItem>>('redeem_history', { page, pageSize }),
   adminOverview: (today: string, start: string, timezone: string) =>
@@ -459,6 +490,9 @@ export const api = {
   adminUserBalance: (id: number, amount: number, add: boolean, notes: string) =>
     invoke<AdminUser>('admin_user_balance', { id, amount, add, notes }),
   adminUserStatus: (id: number, active: boolean) => invoke<AdminUser>('admin_user_status', { id, active }),
+  adminDdzSettings: () => invoke<{ enabled: boolean }>('admin_ddz_settings'),
+  adminDdzSave: (settings: { enabled: boolean }) => invoke<{ enabled: boolean }>('admin_ddz_save', { settings }),
+  adminDdzSummary: (days: number) => invoke<DdzSummary>('admin_ddz_summary', { days }),
   adminLotterySettings: () => invoke<LotterySettings>('admin_lottery_settings'),
   adminLotterySave: (settings: LotterySettings) => invoke<LotterySettings>('admin_lottery_save', { settings }),
   adminLotteryDefaults: () => invoke<LotterySettings>('admin_lottery_defaults'),

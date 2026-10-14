@@ -392,6 +392,8 @@ export type Move = {
 
 /** A skill someone used, as the table sees it. */
 export type SkillUse = {
+  /** Counts the deal's skill uses, so each one shows its banner once. */
+  n?: number;
   seat: Seat;
   hero: Hero;
   /** The skill used: hero, or what 百变 copied. */

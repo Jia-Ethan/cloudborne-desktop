@@ -13,17 +13,20 @@ import { UsageView } from './components/UsageView';
 import { KeysView } from './components/KeysView';
 import { StatusView } from './components/StatusView';
 import { LotteryView } from './components/LotteryView';
+import { DdzView } from './components/DdzView';
 import { RedeemView } from './components/RedeemView';
 import { AdminOverview } from './components/AdminOverview';
 import { AdminUsers } from './components/AdminUsers';
 import { AdminLottery } from './components/AdminLottery';
+import { AdminDdz } from './components/AdminDdz';
 import { useI18n } from './i18n';
 import { useUpdater } from './update';
 import { useAgent } from './useAgent';
+import { useDdz } from './useDdz';
 
 const usd = (n: number) => `$${n.toFixed(2)}`;
 
-type View = 'home' | 'task' | 'usage' | 'lottery' | 'redeem' | 'keys' | 'status' | 'admin' | 'adminUsers' | 'adminLottery';
+type View = 'home' | 'task' | 'usage' | 'lottery' | 'ddz' | 'redeem' | 'keys' | 'status' | 'admin' | 'adminUsers' | 'adminLottery' | 'adminDdz';
 
 export function App() {
   const { t, lang } = useI18n();
@@ -37,6 +40,8 @@ export function App() {
   // Shown only once the relay says the chest event is on.
   const [lotteryOn, setLotteryOn] = useState(false);
   const [chests, setChests] = useState(0);
+  // Shown only once the relay says the tables are open.
+  const [ddzOn, setDdzOn] = useState(false);
   const [userFocus, setUserFocus] = useState<{ id: number; email: string } | null>(null);
   const [accounts, setAccounts] = useState<SavedAccount[]>([]);
   // The login page over a signed-in account (adding one, or one that needs its password again).
@@ -73,6 +78,13 @@ export function App() {
       () => g === gen.current && setLotteryOn(false),
     );
   }, [lotteryStatus]);
+  const checkDdz = useCallback(() => {
+    const g = gen.current;
+    api.ddzStatus().then(
+      (s) => g === gen.current && setDdzOn(s.enabled),
+      () => g === gen.current && setDdzOn(false),
+    );
+  }, []);
 
   /** Shows `u` (or the login page) with nothing left over from the previous account. */
   const enter = useCallback(
@@ -83,6 +95,7 @@ export function App() {
       setUserFocus(null);
       setLotteryOn(false);
       setChests(0);
+      setDdzOn(false);
       setRates(null);
       setAdding(false);
       setPrefill('');
@@ -91,10 +104,11 @@ export function App() {
         loadTools().catch(() => {});
         loadRates();
         checkLottery();
+        checkDdz();
       }
       loadAccounts();
     },
-    [loadTools, loadRates, loadAccounts, checkLottery],
+    [loadTools, loadRates, loadAccounts, checkLottery, checkDdz],
   );
 
   /** Rejects on network and relay errors; the caller shows them where the user is looking. */
@@ -207,6 +221,7 @@ export function App() {
   const refetchMe = useCallback(() => {
     api.me().then((u) => u && u.id === uid && setUser(u), () => {});
   }, [uid]);
+  const ddz = useDdz(uid ?? null, view === 'ddz', setToast, refetchMe);
   const openUser = useCallback((u: { id: number; email: string }) => {
     setUserFocus(u);
     setView('adminUsers');
@@ -284,6 +299,13 @@ export function App() {
               )}
             </button>
           )}
+          {(ddzOn || ddz.table) && (
+            <button className={`nav-item ${view === 'ddz' ? 'selected' : ''}`} onClick={() => setView('ddz')}>
+              <Icon name="spade" className="size-[17px]" />
+              {t('nav.ddz')}
+              {ddz.table && view !== 'ddz' && <span className="nav-badge nav-badge-dot" aria-label={t('ddz.inGame')} />}
+            </button>
+          )}
           <button className={`nav-item ${view === 'redeem' ? 'selected' : ''}`} onClick={() => setView('redeem')}>
             <Icon name="ticket" className="size-[17px]" />
             {t('nav.redeem')}
@@ -317,6 +339,10 @@ export function App() {
             <button className={`nav-item ${view === 'adminLottery' ? 'selected' : ''}`} onClick={() => setView('adminLottery')}>
               <Icon name="dice" className="size-[17px]" />
               {t('nav.adminLottery')}
+            </button>
+            <button className={`nav-item ${view === 'adminDdz' ? 'selected' : ''}`} onClick={() => setView('adminDdz')}>
+              <Icon name="spade" className="size-[17px]" />
+              {t('nav.adminDdz')}
             </button>
           </nav>
         )}
@@ -385,12 +411,16 @@ export function App() {
           <RedeemView balance={user.balance} onRedeemed={refetchMe} />
         ) : view === 'lottery' ? (
           <LotteryView balance={user.balance} onBalance={refetchMe} onStatus={lotteryStatus} />
+        ) : view === 'ddz' ? (
+          <DdzView balance={user.balance} table={ddz.table} conn={ddz.conn} send={ddz.send} />
         ) : view === 'admin' && isAdmin(user) ? (
           <AdminOverview onOpenUser={openUser} onOpenLottery={() => setView('adminLottery')} />
         ) : view === 'adminUsers' && isAdmin(user) ? (
           <AdminUsers key={userFocus?.id ?? 'all'} focus={userFocus} onToast={setToast} />
         ) : view === 'adminLottery' && isAdmin(user) ? (
           <AdminLottery onOpenUser={openUser} onToast={setToast} />
+        ) : view === 'adminDdz' && isAdmin(user) ? (
+          <AdminDdz onOpenUser={openUser} onToast={setToast} />
         ) : (
           <div className="main-scroll">
             <div className="main-column">

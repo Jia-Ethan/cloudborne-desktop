@@ -2,6 +2,7 @@ mod accounts;
 mod agent;
 mod api;
 mod commands;
+mod ddz;
 mod error;
 mod fsx;
 mod install;
@@ -20,6 +21,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .manage(session)
         .manage(agent::SharedRuns::default())
+        .manage(ddz::SharedLine::default())
         .setup(|app| {
             let config = app.config().app.windows.first().cloned().expect("main window config");
             window::style(tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?).build()?;
@@ -54,6 +56,10 @@ pub fn run() {
             commands::lottery_status,
             commands::lottery_open,
             commands::lottery_buy,
+            commands::ddz_status,
+            commands::ddz_connect,
+            commands::ddz_send,
+            commands::ddz_close,
             commands::redeem,
             commands::redeem_history,
             commands::admin_overview,
@@ -66,6 +72,9 @@ pub fn run() {
             commands::admin_lottery_defaults,
             commands::admin_lottery_summary,
             commands::admin_lottery_draws,
+            commands::admin_ddz_settings,
+            commands::admin_ddz_save,
+            commands::admin_ddz_summary,
             commands::relay_origin,
             commands::set_language,
             commands::agent_models,

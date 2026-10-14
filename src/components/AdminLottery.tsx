@@ -279,7 +279,7 @@ export function AdminLottery({ onOpenUser, onToast }: { onOpenUser: (u: { id: nu
   );
 }
 
-function Panel({ title, children }: { title: string; children: ReactNode }) {
+export function Panel({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="lot-panel">
       <h3>{title}</h3>
@@ -289,7 +289,7 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
 }
 
 /** The panel's headline number. */
-function Figure({ label, value, tone, title }: { label: string; value: string; tone?: 'bad'; title?: string }) {
+export function Figure({ label, value, tone, title }: { label: string; value: string; tone?: 'bad'; title?: string }) {
   return (
     <div className={`lot-figure ${tone ?? ''}`} title={title}>
       <b>{value}</b>
@@ -298,7 +298,7 @@ function Figure({ label, value, tone, title }: { label: string; value: string; t
   );
 }
 
-function Line({ label, value, sub, muted, title }: { label: string; value: string; sub?: string; muted?: boolean; title?: string }) {
+export function Line({ label, value, sub, muted, title }: { label: string; value: string; sub?: string; muted?: boolean; title?: string }) {
   return (
     <div className={`lot-line ${muted ? 'muted' : ''}`} title={title}>
       <span>{label}</span>

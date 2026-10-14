@@ -165,6 +165,7 @@ pub struct Client {
     http: reqwest::Client,
     origin: String,
     admin_origin: String,
+    user_agent: String,
 }
 
 /// HTTP verbs the admin pages use.
@@ -177,8 +178,9 @@ pub enum Method {
 
 impl Client {
     pub fn new(origin: &str, admin_origin: &str, device_id: &str) -> Result<Self> {
+        let ua = user_agent(device_id);
         let http = reqwest::Client::builder()
-            .user_agent(user_agent(device_id))
+            .user_agent(ua.clone())
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(30))
             .build()
@@ -187,11 +189,18 @@ impl Client {
             http,
             origin: origin.trim_end_matches('/').to_string(),
             admin_origin: admin_origin.trim_end_matches('/').to_string(),
+            user_agent: ua,
         })
     }
 
     pub fn origin(&self) -> &str {
         &self.origin
+    }
+
+    /// The User-Agent every request carries; the relay ties the session to
+    /// the device ID in it, so a WebSocket handshake must send it too.
+    pub fn user_agent(&self) -> &str {
+        &self.user_agent
     }
 
     /// Sends an authenticated request. Any 401 (expired, revoked, missing
@@ -299,6 +308,11 @@ impl Client {
     /// Buys chests with balance.
     pub async fn lottery_buy(&self, access: &str, count: u32) -> Result<Value> {
         self.send(self.http.post(self.url("/api/v1/lottery/buy")).bearer_auth(access).json(&json!({ "count": count }))).await
+    }
+
+    /// 小丑斗地主 lobby: `{ enabled, stakes, min_balance_times }`.
+    pub async fn ddz(&self, access: &str) -> Result<Value> {
+        self.send(self.http.get(self.url("/api/v1/ddz")).bearer_auth(access)).await
     }
 
     pub async fn redeem(&self, access: &str, code: &str) -> Result<Value> {
