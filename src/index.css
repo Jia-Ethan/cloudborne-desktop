@@ -3371,6 +3371,162 @@ html[data-glass='mica'] {
     color: var(--ink);
   }
 
+  /* Admin chests: summary panels. */
+  .admin-lot-date {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .lot-panels {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .lot-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px 16px 16px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+  }
+  .lot-panel h3 {
+    color: var(--ink-3);
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .lot-panel > .lot-figure + .lot-figure {
+    margin-top: -4px;
+  }
+  .lot-figure {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .lot-figure b {
+    font-size: 24px;
+    font-weight: 750;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+  }
+  .lot-figure span {
+    color: var(--ink-2);
+    font-size: 12.5px;
+  }
+  .lot-figure.bad b {
+    color: var(--danger);
+  }
+  .lot-split {
+    display: grid;
+    gap: 6px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+  }
+  .lot-line {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12.5px;
+  }
+  .lot-line span {
+    color: var(--ink-2);
+  }
+  .lot-line b {
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .lot-line em {
+    color: var(--ink-3);
+    font-style: normal;
+    font-weight: 500;
+  }
+  .lot-line.muted span,
+  .lot-line.muted b {
+    color: var(--ink-3);
+  }
+  .lot-rarity {
+    display: grid;
+    gap: 8px;
+    margin-top: auto;
+  }
+  .lot-rarity-bar {
+    display: flex;
+    gap: 2px;
+    height: 8px;
+    overflow: hidden;
+    background: var(--quiet);
+    border-radius: 4px;
+  }
+  .lot-rarity-bar i {
+    min-width: 3px;
+    background: var(--r);
+  }
+  .lot-rarity-legend {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px 12px;
+    font-size: 12px;
+  }
+  .lot-rarity-legend span {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--ink-2);
+  }
+  .lot-rarity-legend i {
+    width: 7px;
+    height: 7px;
+    background: var(--r);
+    border-radius: 50%;
+  }
+  .lot-rarity-legend b {
+    margin-left: auto;
+    color: var(--ink);
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+  }
+  .usage-card-head h2 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .head-sub {
+    color: var(--ink-3);
+    font-size: 12.5px;
+    font-weight: 500;
+  }
+  .lot-more {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    margin-bottom: 10px;
+    padding: 13px 18px;
+    color: var(--ink-2);
+    font-size: 13.5px;
+    font-weight: 550;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .lot-more:hover {
+    color: var(--ink);
+    border-color: color-mix(in srgb, var(--ink) 18%, var(--line));
+  }
+  .draw-row.with-source {
+    grid-template-columns: 112px minmax(0, 1.3fr) 52px minmax(0, 1fr) 44px 120px;
+  }
+  .draw-row .lot-source {
+    justify-self: start;
+  }
+
   .big-card {
     border-color: color-mix(in srgb, #f5b301 30%, var(--line));
     background:
@@ -4849,6 +5005,15 @@ html[data-glass='mica'] {
   }
   .draw-row {
     grid-template-columns: 100px minmax(0, 1.3fr) 52px minmax(0, 1fr) 110px;
+  }
+  .draw-row.with-source {
+    grid-template-columns: 100px minmax(0, 1.3fr) 52px minmax(0, 1fr) 40px 110px;
+  }
+  .lot-panels {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .lot-panels > :last-child {
+    grid-column: 1 / -1;
   }
 }
 

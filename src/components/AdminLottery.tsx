@@ -24,13 +24,21 @@ import { PrizeText, RarityTag } from './Prize';
 import { BigWins, WinnerSheet, when } from './WinnerSheet';
 
 const PAGE = 30;
+/** How many big wins the summary tab lists before pointing to the draws tab. */
+const BIG_SHOWN = 5;
+
+type Tab = 'summary' | 'draws' | 'settings';
+/** Draws filter: everything, epic and legendary together, or one rarity. */
+type Filter = '' | 'big' | Rarity;
+const FILTERS: Filter[] = ['', 'big', ...RARITIES];
 
 export function AdminLottery({ onOpenUser, onToast }: { onOpenUser: (u: { id: number; email: string }) => void; onToast: (m: string) => void }) {
   const { t } = useI18n();
+  const [tab, setTab] = useState<Tab>('summary');
   // Draw days are counted in the relay's timezone.
   const [date, setDate] = useState(shanghaiToday);
   const [summary, setSummary] = useState<LotterySummary | null>(null);
-  const [rarity, setRarity] = useState<Rarity | ''>('');
+  const [filter, setFilter] = useState<Filter>('');
   const [page, setPage] = useState(1);
   const [draws, setDraws] = useState<Draw[] | null>(null);
   const [total, setTotal] = useState(0);
@@ -52,166 +60,206 @@ export function AdminLottery({ onOpenUser, onToast }: { onOpenUser: (u: { id: nu
 
   const loadDraws = useCallback(async () => {
     try {
+      const rarity = filter === 'big' ? 'epic,legendary' : filter;
       const p = await api.adminLotteryDraws({ date, rarity, page, pageSize: PAGE });
       setDraws(p.items);
       setTotal(p.total);
     } catch (e) {
       setError(errorText(e, t('common.genericError')));
     }
-  }, [date, rarity, page, t]);
+  }, [date, filter, page, t]);
 
   useEffect(() => {
     loadSummary();
   }, [loadSummary]);
   useEffect(() => {
-    loadDraws();
-  }, [loadDraws]);
+    if (tab === 'draws') loadDraws();
+  }, [tab, loadDraws]);
 
   const refresh = () => {
     loadSummary();
-    loadDraws();
+    if (tab === 'draws') loadDraws();
+  };
+
+  const showDraws = (f: Filter) => {
+    setFilter(f);
+    setPage(1);
+    setTab('draws');
   };
 
   const pages = Math.max(1, Math.ceil(total / PAGE));
+  const bigs = summary?.big_wins ?? [];
 
   return (
     <div className="main-scroll">
       <div className="main-column">
         <div className="usage-head rise" style={{ '--i': 0 } as CSSProperties}>
-          <input
-            type="date"
-            className="field date-field"
-            value={date}
-            max={shanghaiToday()}
-            onChange={(e) => {
-              if (!e.target.value) return;
-              setDate(e.target.value);
-              setPage(1);
-            }}
-          />
-          <button className="usage-refresh" title={t('usage.refresh')} aria-label={t('usage.refresh')} disabled={busy} onClick={refresh}>
-            <Icon name="refresh" className={`size-[15px] ${busy ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
-
-        {error && <div className="usage-error rise">{error}</div>}
-
-        <div className="usage-stats rise" style={{ '--i': 1 } as CSSProperties}>
-          <Stat label={t('admin.lottery.draws')} value={summary ? String(summary.draws) : '—'} />
-          <Stat label={t('admin.lottery.participants')} value={summary ? String(summary.participants) : '—'} />
-          <Stat
-            label={t('admin.lottery.chestsIn')}
-            value={summary ? String((summary.earned_chests ?? 0) + (summary.bought_chests ?? 0) + (summary.daily_chests ?? 0)) : '—'}
-            sub={
-              summary
-                ? t('admin.lottery.chestsSplit', { daily: summary.daily_chests ?? 0, earned: summary.earned_chests ?? 0, bought: summary.bought_chests ?? 0 })
-                : undefined
-            }
-          />
-          <Stat
-            label={t('admin.lottery.dailyExpired')}
-            value={summary ? String(summary.daily_expired ?? 0) : '—'}
-            sub={summary ? `/ ${summary.daily_chests ?? 0}` : undefined}
-          />
-          <Stat label={t('admin.lottery.forfeited')} value={summary ? String(summary.forfeited_chests ?? 0) : '—'} title={t('admin.lottery.forfeitedHint')} />
-          <Stat
-            label={t('admin.lottery.spent')}
-            value={summary ? dollars(summary.value_earn ?? summary.value) : '—'}
-            sub={summary ? `/ ${summary.budget > 0 ? dollars(summary.budget) : t('admin.lottery.noCap')}` : undefined}
-          />
-          <Stat
-            label={t('admin.lottery.revenue')}
-            value={summary ? dollars(summary.buy_revenue ?? 0) : '—'}
-            sub={summary ? t('admin.lottery.paidOut', { amount: dollars(summary.value_buy ?? 0) }) : undefined}
-          />
-          <Stat
-            label={t('admin.lottery.poolBalance')}
-            value={summary?.pool ? dollars(summary.pool.balance) : '—'}
-            tone={summary?.pool && summary.pool.balance < 0 ? 'bad' : undefined}
-            title={
-              summary?.pool
-                ? t('admin.lottery.poolDetail', {
-                    reserve: dollars(summary.pool.reserve),
-                    revenue: dollars(summary.pool.revenue),
-                    payout: dollars(summary.pool.payout),
-                  })
-                : undefined
-            }
-          />
-          <div className="usage-stat">
-            <span>{t('admin.lottery.byRarity')}</span>
-            <div className="rarity-counts">
-              {RARITIES.map((r) => (
-                <span key={r} className={`r-${r}`} title={t(`rarity.${r}`)}>
-                  <i />
-                  {summary?.by_rarity[r] ?? 0}
-                </span>
-              ))}
-            </div>
+          <div className="seg" role="tablist">
+            {(['summary', 'draws', 'settings'] as const).map((x) => (
+              <button key={x} role="tab" aria-selected={tab === x} className={tab === x ? 'on' : ''} onClick={() => setTab(x)}>
+                {t(`admin.lottery.tab.${x}`)}
+              </button>
+            ))}
           </div>
-        </div>
-
-        <section className="card usage-card big-card rise" style={{ '--i': 2 } as CSSProperties}>
-          <div className="usage-card-head">
-            <h2>{t('admin.lottery.bigWins')}</h2>
-            {summary && summary.big_wins.length > 0 && <span className="head-count">{summary.big_wins.length}</span>}
-          </div>
-          {summary ? <BigWins wins={summary.big_wins} onOpen={setWin} /> : <p className="usage-empty">{t('common.wait')}</p>}
-        </section>
-
-        <section className="card usage-card rise" style={{ '--i': 3 } as CSSProperties}>
-          <div className="usage-card-head">
-            <h2>{t('admin.lottery.allDraws')}</h2>
-            <div className="seg seg-sm" role="tablist">
-              {(['', ...RARITIES] as const).map((r) => (
-                <button
-                  key={r || 'all'}
-                  role="tab"
-                  aria-selected={rarity === r}
-                  className={rarity === r ? 'on' : ''}
-                  onClick={() => {
-                    setRarity(r);
-                    setPage(1);
-                  }}
-                >
-                  {r ? t(`rarity.${r}`) : t('usage.allTools')}
-                </button>
-              ))}
-            </div>
-          </div>
-          {draws && draws.length === 0 ? (
-            <p className="usage-empty">{t('admin.lottery.noDraws')}</p>
-          ) : (
-            <div className="draw-list">
-              {(draws ?? []).map((d) => {
-                const big = d.rarity === 'epic' || d.rarity === 'legendary';
-                return (
-                  <div
-                    key={d.id}
-                    className={`draw-row ${big ? 'clickable' : ''}`}
-                    onClick={big ? () => setWin(d) : undefined}
-                    role={big ? 'button' : undefined}
-                    tabIndex={big ? 0 : undefined}
-                    onKeyDown={big ? (e) => e.key === 'Enter' && setWin(d) : undefined}
-                  >
-                    <time>{when(d.created_at)}</time>
-                    <span className="truncate" title={d.email}>
-                      {d.email || d.username || `#${d.user_id}`}
-                    </span>
-                    <RarityTag rarity={d.rarity} />
-                    <span className="truncate">{d.name}</span>
-                    <b>
-                      <PrizeText draw={d} />
-                    </b>
-                  </div>
-                );
-              })}
+          {tab !== 'settings' && (
+            <div className="admin-lot-date">
+              <input
+                type="date"
+                className="field date-field"
+                value={date}
+                max={shanghaiToday()}
+                onChange={(e) => {
+                  if (!e.target.value) return;
+                  setDate(e.target.value);
+                  setPage(1);
+                }}
+              />
+              <button className="usage-refresh" title={t('usage.refresh')} aria-label={t('usage.refresh')} disabled={busy} onClick={refresh}>
+                <Icon name="refresh" className={`size-[15px] ${busy ? 'animate-spin' : ''}`} />
+              </button>
             </div>
           )}
-          {pages > 1 && <Pager page={page} pages={pages} onPage={setPage} />}
-        </section>
+        </div>
 
-        <SettingsEditor onToast={onToast} />
+        {error && tab !== 'settings' && <div className="usage-error rise">{error}</div>}
+
+        {tab === 'summary' && (
+          <>
+            <div className="lot-panels rise" style={{ '--i': 1 } as CSSProperties}>
+              <Panel title={t('admin.lottery.panel.opens')}>
+                <Figure label={t('admin.lottery.draws')} value={summary ? String(summary.draws) : '—'} />
+                <Figure label={t('admin.lottery.participants')} value={summary ? String(summary.participants) : '—'} />
+                <RarityBar counts={summary?.by_rarity} />
+              </Panel>
+              <Panel title={t('admin.lottery.panel.chests')}>
+                <Figure
+                  label={t('admin.lottery.chestsIn')}
+                  value={summary ? String((summary.earned_chests ?? 0) + (summary.bought_chests ?? 0) + (summary.daily_chests ?? 0)) : '—'}
+                />
+                <div className="lot-split">
+                  <Line label={t('lottery.source.daily')} value={summary ? String(summary.daily_chests ?? 0) : '—'} />
+                  <Line label={t('admin.lottery.earnGroup')} value={summary ? String(summary.earned_chests ?? 0) : '—'} />
+                  <Line label={t('admin.lottery.buyGroup')} value={summary ? String(summary.bought_chests ?? 0) : '—'} />
+                  <Line label={t('admin.lottery.dailyExpired')} value={summary ? String(summary.daily_expired ?? 0) : '—'} muted />
+                  <Line label={t('admin.lottery.forfeited')} value={summary ? String(summary.forfeited_chests ?? 0) : '—'} title={t('admin.lottery.forfeitedHint')} muted />
+                </div>
+              </Panel>
+              <Panel title={t('admin.lottery.panel.money')}>
+                <Figure
+                  label={t('admin.lottery.poolBalance')}
+                  value={summary?.pool ? dollars(summary.pool.balance) : '—'}
+                  tone={summary?.pool && summary.pool.balance < 0 ? 'bad' : undefined}
+                  title={
+                    summary?.pool
+                      ? t('admin.lottery.poolDetail', {
+                          reserve: dollars(summary.pool.reserve),
+                          revenue: dollars(summary.pool.revenue),
+                          payout: dollars(summary.pool.payout),
+                        })
+                      : undefined
+                  }
+                />
+                <div className="lot-split">
+                  <Line
+                    label={t('admin.lottery.spent')}
+                    value={summary ? dollars(summary.value_earn ?? summary.value) : '—'}
+                    sub={summary ? `/ ${summary.budget > 0 ? dollars(summary.budget) : t('admin.lottery.noCap')}` : undefined}
+                  />
+                  <Line label={t('admin.lottery.revenue')} value={summary ? dollars(summary.buy_revenue ?? 0) : '—'} />
+                  <Line label={t('admin.lottery.buyPaid')} value={summary ? dollars(summary.value_buy ?? 0) : '—'} />
+                </div>
+              </Panel>
+            </div>
+
+            <section className="card usage-card big-card rise" style={{ '--i': 2 } as CSSProperties}>
+              <div className="usage-card-head">
+                <h2>
+                  {t('admin.lottery.bigWins')}
+                  {bigs.length > 0 && <span className="head-count">{bigs.length}</span>}
+                </h2>
+                {bigs.length > BIG_SHOWN && (
+                  <button className="text-link" onClick={() => showDraws('big')}>
+                    {t('admin.lottery.seeAll', { n: bigs.length })}
+                    <Icon name="chevronRight" className="size-3.5" />
+                  </button>
+                )}
+              </div>
+              {summary ? <BigWins wins={bigs} onOpen={setWin} limit={BIG_SHOWN} /> : <p className="usage-empty">{t('common.wait')}</p>}
+            </section>
+
+            {summary && summary.draws > 0 && (
+              <button className="lot-more rise" style={{ '--i': 3 } as CSSProperties} onClick={() => showDraws('')}>
+                <span>{t('admin.lottery.allDrawsLink', { n: summary.draws })}</span>
+                <Icon name="chevronRight" className="size-4" />
+              </button>
+            )}
+          </>
+        )}
+
+        {tab === 'draws' && (
+          <section className="card usage-card rise" style={{ '--i': 1 } as CSSProperties}>
+            <div className="usage-card-head">
+              <h2>
+                {t('admin.lottery.allDraws')}
+                {draws && <span className="head-sub">{t('admin.lottery.drawsTotal', { n: total })}</span>}
+              </h2>
+              <div className="seg seg-sm" role="tablist">
+                {FILTERS.map((f) => (
+                  <button
+                    key={f || 'all'}
+                    role="tab"
+                    aria-selected={filter === f}
+                    className={filter === f ? 'on' : ''}
+                    onClick={() => {
+                      setFilter(f);
+                      setPage(1);
+                    }}
+                  >
+                    {f === '' ? t('usage.allTools') : f === 'big' ? t('admin.lottery.filterBig') : t(`rarity.${f}`)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {draws === null ? (
+              <p className="usage-empty">{t('common.wait')}</p>
+            ) : draws.length === 0 ? (
+              <p className="usage-empty">{t('admin.lottery.noDraws')}</p>
+            ) : (
+              <div className="draw-list">
+                {draws.map((d) => {
+                  const big = d.rarity === 'epic' || d.rarity === 'legendary';
+                  return (
+                    <div
+                      key={d.id}
+                      className={`draw-row with-source ${big ? 'clickable' : ''}`}
+                      onClick={big ? () => setWin(d) : undefined}
+                      role={big ? 'button' : undefined}
+                      tabIndex={big ? 0 : undefined}
+                      onKeyDown={big ? (e) => e.key === 'Enter' && setWin(d) : undefined}
+                    >
+                      <time>{when(d.created_at)}</time>
+                      <span className="truncate" title={d.email}>
+                        {d.email || d.username || `#${d.user_id}`}
+                      </span>
+                      <RarityTag rarity={d.rarity} />
+                      <span className="truncate">{d.name}</span>
+                      {d.source ? <em className={`lot-source s-${d.source}`}>{t(`lottery.source.${d.source}`)}</em> : <span />}
+                      <b>
+                        <PrizeText draw={d} />
+                      </b>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {pages > 1 && <Pager page={page} pages={pages} onPage={setPage} />}
+          </section>
+        )}
+
+        {/* Kept mounted so unsaved edits survive a look at the other tabs. */}
+        <div hidden={tab !== 'settings'}>
+          <SettingsEditor onToast={onToast} />
+        </div>
       </div>
 
       {win && (
@@ -228,14 +276,56 @@ export function AdminLottery({ onOpenUser, onToast }: { onOpenUser: (u: { id: nu
   );
 }
 
-function Stat({ label, value, sub, tone, title }: { label: string; value: string; sub?: string; tone?: 'bad'; title?: string }) {
+function Panel({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className={`usage-stat ${tone ?? ''}`} title={title}>
+    <section className="lot-panel">
+      <h3>{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+/** The panel's headline number. */
+function Figure({ label, value, tone, title }: { label: string; value: string; tone?: 'bad'; title?: string }) {
+  return (
+    <div className={`lot-figure ${tone ?? ''}`} title={title}>
+      <b>{value}</b>
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function Line({ label, value, sub, muted, title }: { label: string; value: string; sub?: string; muted?: boolean; title?: string }) {
+  return (
+    <div className={`lot-line ${muted ? 'muted' : ''}`} title={title}>
       <span>{label}</span>
       <b>
         {value}
-        {sub && <em className="stat-sub"> {sub}</em>}
+        {sub && <em> {sub}</em>}
       </b>
+    </div>
+  );
+}
+
+/** Opens by rarity: a stacked bar and the counts under it. */
+function RarityBar({ counts }: { counts?: Partial<Record<Rarity, number>> }) {
+  const { t } = useI18n();
+  const n = (r: Rarity) => counts?.[r] ?? 0;
+  const sum = RARITIES.reduce((s, r) => s + n(r), 0);
+  return (
+    <div className="lot-rarity">
+      <div className="lot-rarity-bar">
+        {sum > 0 && RARITIES.map((r) => n(r) > 0 && <i key={r} className={`r-${r}`} style={{ flexGrow: n(r) }} />)}
+      </div>
+      <div className="lot-rarity-legend">
+        {RARITIES.map((r) => (
+          <span key={r} className={`r-${r}`}>
+            <i />
+            {t(`rarity.${r}`)}
+            <b>{n(r)}</b>
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
