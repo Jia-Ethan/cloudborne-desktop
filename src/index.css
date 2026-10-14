@@ -5324,7 +5324,7 @@ html[data-glass='mica'] {
   }
 }
 
-/* ---- 斗地主: lobby, the felt table, cards ---- */
+/* ---- 小丑斗地主: lobby, the felt table, cards ---- */
 @layer components {
   /* Cards. Sizes are set once here; the hand, the table and the result rows pick one. */
   .pc {
@@ -5478,7 +5478,6 @@ html[data-glass='mica'] {
   .pc-row-xs > .pc {
     animation: none;
   }
-
   /* ---- Lobby ---- */
   .ddz-lobby {
     display: flex;
@@ -5527,62 +5526,6 @@ html[data-glass='mica'] {
     font-size: 13.5px;
     line-height: 1.55;
   }
-  .ddz-hero-balance {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 8px;
-    margin-top: 16px;
-    padding: 7px 14px;
-    background: rgb(255 255 255 / 0.08);
-    border: 1px solid rgb(255 255 255 / 0.1);
-    border-radius: 999px;
-    font-size: 12.5px;
-    color: rgb(255 255 255 / 0.7);
-  }
-  .ddz-hero-balance b {
-    color: #ffd98a;
-    font-size: 16px;
-    font-variant-numeric: tabular-nums;
-  }
-  .ddz-hero-fan {
-    position: absolute;
-    right: 150px;
-    top: 50%;
-    width: 0;
-    height: 0;
-  }
-  .ddz-hero-fan .pc {
-    position: absolute;
-    left: -37px;
-    top: -40px;
-    transform: translateX(var(--x)) rotate(var(--r));
-    transform-origin: 50% 140%;
-    box-shadow:
-      0 0 0 1px rgb(0 0 0 / 0.1),
-      0 14px 30px rgb(0 0 0 / 0.35);
-    animation: ddz-fan-in 0.7s cubic-bezier(0.2, 0.8, 0.3, 1.1) backwards;
-    animation-delay: calc(0.12s + var(--x) * 0);
-    transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.3, 1.2);
-  }
-  .ddz-hero:hover .ddz-hero-fan .pc {
-    transform: translateX(calc(var(--x) * 1.18)) rotate(calc(var(--r) * 1.3)) translateY(-4px);
-  }
-  .ddz-stakes h2,
-  .ddz-entry h3 {
-    font-size: 14px;
-    font-weight: 650;
-  }
-  .ddz-stakes h2 {
-    margin: 4px 2px 8px;
-    color: var(--ink-2);
-    font-size: 13px;
-    font-weight: 600;
-  }
-  .ddz-stake-row {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
-  }
   .ddz-stake {
     display: flex;
     flex-direction: column;
@@ -5603,10 +5546,6 @@ html[data-glass='mica'] {
     font-weight: 700;
     font-variant-numeric: tabular-nums;
   }
-  .ddz-stake span {
-    color: var(--ink-3);
-    font-size: 11.5px;
-  }
   .ddz-stake:hover:not(:disabled) {
     border-color: color-mix(in srgb, var(--ink) 22%, transparent);
   }
@@ -5619,49 +5558,9 @@ html[data-glass='mica'] {
   .ddz-stake.on b {
     color: #ffd98a;
   }
-  .ddz-stake.on span {
-    color: rgb(255 255 255 / 0.62);
-  }
   .ddz-stake:disabled {
     opacity: 0.45;
     cursor: not-allowed;
-  }
-  .ddz-entries {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
-  .ddz-entry {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 20px;
-  }
-  .ddz-entry p {
-    flex: 1;
-    color: var(--ink-2);
-    font-size: 12.5px;
-    line-height: 1.55;
-  }
-  .ddz-entry-icon {
-    display: grid;
-    place-items: center;
-    width: 36px;
-    height: 36px;
-    margin-bottom: 4px;
-    color: #0f2d2b;
-    background: linear-gradient(150deg, #ffe1a1, #ffb866);
-    border-radius: 11px;
-  }
-  .ddz-entry-go {
-    margin-top: 8px;
-    width: 100%;
-  }
-  .ddz-entry-split {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-top: 8px;
   }
   .ddz-join {
     display: flex;
@@ -5679,24 +5578,6 @@ html[data-glass='mica'] {
   .ddz-code-input::placeholder {
     font-size: 12.5px;
     letter-spacing: 0;
-  }
-  .ddz-rules-strip {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 12px 16px;
-    color: var(--ink-2);
-    background: color-mix(in srgb, #ffb866 12%, transparent);
-    border: 1px solid color-mix(in srgb, #c7772a 22%, transparent);
-    border-radius: 14px;
-    font-size: 12.5px;
-    line-height: 1.5;
-  }
-  .ddz-rules-strip > svg {
-    color: #c7772a;
-  }
-  .ddz-rules-strip p {
-    flex: 1;
   }
   .ddz-rules {
     display: flex;
@@ -5717,7 +5598,6 @@ html[data-glass='mica'] {
     font-size: 13.5px;
     line-height: 1.6;
   }
-
   /* ---- The felt ---- */
   .ddz-felt {
     --gold: #ffd36e;
@@ -5785,10 +5665,6 @@ html[data-glass='mica'] {
     color: rgb(255 255 255 / 0.55);
     font-size: 12.5px;
   }
-  .ddz-small {
-    font-size: 11.5px;
-  }
-
   .btn-gold {
     color: #2a1c05;
     background: linear-gradient(180deg, #ffe39a 0%, #f6b94a 100%);
@@ -5813,17 +5689,6 @@ html[data-glass='mica'] {
   .ddz-glass-btn:hover:not(:disabled) {
     background: rgb(255 255 255 / 0.16);
   }
-  .ddz-felt .btn kbd {
-    margin-left: 2px;
-    padding: 0 4px;
-    font: inherit;
-    font-size: 10.5px;
-    opacity: 0.55;
-    border: 1px solid currentColor;
-    border-radius: 4px;
-    line-height: 1.4;
-  }
-
   /* Top bar */
   .ddz-top {
     grid-area: top;
@@ -5885,7 +5750,6 @@ html[data-glass='mica'] {
     display: flex;
     gap: 8px;
   }
-
   /* Seats */
   .ddz-opp {
     display: flex;
@@ -5901,45 +5765,6 @@ html[data-glass='mica'] {
   .ddz-opp.right {
     grid-area: right;
   }
-  .ddz-opp-meta {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    max-width: 100%;
-    font-size: 13px;
-  }
-  .ddz-me-who .ddz-opp-meta {
-    align-items: flex-start;
-  }
-  .ddz-tags {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 4px;
-  }
-  .ddz-role,
-  .ddz-tag {
-    padding: 1px 7px;
-    color: rgb(255 255 255 / 0.75);
-    background: rgb(255 255 255 / 0.1);
-    border-radius: 999px;
-    font-size: 10.5px;
-    font-weight: 600;
-    line-height: 1.6;
-  }
-  .ddz-role.lord {
-    color: #2a1c05;
-    background: var(--gold);
-  }
-  .ddz-tag.warn {
-    color: #ffd0d0;
-    background: rgb(238 80 80 / 0.3);
-  }
-  .ddz-tag.ok {
-    color: #c7f5dc;
-    background: rgb(47 158 110 / 0.35);
-  }
   .ddz-avatar {
     position: relative;
     display: grid;
@@ -5951,45 +5776,6 @@ html[data-glass='mica'] {
   .ddz-avatar.lg {
     width: 58px;
     height: 58px;
-  }
-  .ddz-avatar-face {
-    display: grid;
-    place-items: center;
-    width: calc(100% - 8px);
-    height: calc(100% - 8px);
-    border-radius: 50%;
-    font-size: 18px;
-    font-weight: 700;
-    color: #fff;
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.35),
-      0 4px 12px rgb(0 0 0 / 0.3);
-  }
-  .ddz-avatar.lg .ddz-avatar-face {
-    font-size: 22px;
-  }
-  .ddz-avatar.hue-0 .ddz-avatar-face {
-    background: linear-gradient(150deg, #8fb0ff, #5b74e6);
-  }
-  .ddz-avatar.hue-1 .ddz-avatar-face {
-    background: linear-gradient(150deg, #ffb3cf, #d9658f);
-  }
-  .ddz-avatar.hue-2 .ddz-avatar-face {
-    background: linear-gradient(150deg, #ffc49b, #e5824c);
-  }
-  .ddz-avatar.empty .ddz-avatar-face {
-    background: rgb(255 255 255 / 0.06);
-    box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 0.25);
-    color: rgb(255 255 255 / 0.4);
-  }
-  .ddz-avatar.turn .ddz-avatar-face {
-    animation: ddz-breathe 1.6s ease-in-out infinite;
-  }
-  .ddz-avatar.lord .ddz-avatar-face {
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.35),
-      0 0 0 2px var(--gold),
-      0 4px 14px rgb(255 200 80 / 0.35);
   }
   .ddz-crown {
     position: absolute;
@@ -6054,18 +5840,6 @@ html[data-glass='mica'] {
       0 0 18px rgb(255 93 115 / 0.6);
     animation: ddz-alarm 0.9s ease-in-out infinite;
   }
-  .ddz-alarm {
-    position: absolute;
-    top: calc(100% + 6px);
-    padding: 1px 8px;
-    color: #fff;
-    background: #e5484d;
-    border-radius: 999px;
-    font-size: 11px;
-    font-weight: 700;
-    white-space: nowrap;
-  }
-
   /* The middle: what each seat last did */
   .ddz-center {
     grid-area: center;
@@ -6105,12 +5879,6 @@ html[data-glass='mica'] {
   }
   .ddz-move.none {
     animation: none;
-  }
-  .ddz-move-kind {
-    color: rgb(255 255 255 / 0.5);
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.04em;
   }
   .ddz-move.word {
     justify-content: center;
@@ -6153,24 +5921,6 @@ html[data-glass='mica'] {
   .ddz-move.thinking i:nth-child(3) {
     animation-delay: 0.3s;
   }
-  .ddz-banner {
-    position: absolute;
-    left: 50%;
-    top: 42%;
-    z-index: 6;
-    translate: -50% -50%;
-    pointer-events: none;
-    font-size: 54px;
-    font-weight: 900;
-    letter-spacing: 0.06em;
-    white-space: nowrap;
-    color: transparent;
-    background: linear-gradient(180deg, #fff6d6 0%, #ffd36e 45%, #f08a24 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    filter: drop-shadow(0 4px 0 rgb(80 30 0 / 0.55)) drop-shadow(0 10px 24px rgb(0 0 0 / 0.45));
-    animation: ddz-banner 1.5s cubic-bezier(0.2, 0.8, 0.3, 1.2) forwards;
-  }
   .ddz-banner.k-rocket,
   .ddz-banner.k-bomb {
     font-size: 64px;
@@ -6191,7 +5941,6 @@ html[data-glass='mica'] {
     font-size: 64px;
     background-image: linear-gradient(180deg, #fff 0%, #ffc3d8 45%, #ff6f9b 100%);
   }
-
   /* Waiting room */
   .ddz-room {
     display: flex;
@@ -6210,11 +5959,6 @@ html[data-glass='mica'] {
     align-items: center;
     gap: 10px;
   }
-  .ddz-code-label {
-    color: rgb(255 255 255 / 0.55);
-    font-size: 12px;
-    letter-spacing: 0.1em;
-  }
   .ddz-code-digits {
     display: flex;
     gap: 6px;
@@ -6232,7 +5976,6 @@ html[data-glass='mica'] {
     font-weight: 750;
     font-variant-numeric: tabular-nums;
   }
-
   /* Matching */
   .ddz-matching {
     display: flex;
@@ -6265,7 +6008,6 @@ html[data-glass='mica'] {
     animation: ddz-shuffle 1.6s cubic-bezier(0.45, 0, 0.3, 1) infinite;
     animation-delay: calc(var(--i) * -0.53s);
   }
-
   /* My seat: name and actions over the hand */
   .ddz-me {
     grid-area: me;
@@ -6374,7 +6116,6 @@ html[data-glass='mica'] {
     border-radius: 999px;
     font-size: 13px;
   }
-
   /* Result */
   .ddz-result-wrap {
     position: absolute;
@@ -6395,33 +6136,6 @@ html[data-glass='mica'] {
     box-shadow: 0 30px 70px rgb(0 0 0 / 0.45);
     animation: ddz-result-in 0.48s cubic-bezier(0.2, 0.8, 0.3, 1.25);
   }
-  .ddz-result-head {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    padding-bottom: 14px;
-  }
-  .ddz-result-badge {
-    padding: 2px 10px;
-    color: var(--ink-2);
-    background: var(--quiet);
-    border-radius: 999px;
-    font-size: 11.5px;
-    font-weight: 600;
-  }
-  .ddz-result h2 {
-    margin-top: 6px;
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--ink-2);
-  }
-  .ddz-result-amount {
-    font-size: 40px;
-    font-weight: 800;
-    letter-spacing: -0.02em;
-    font-variant-numeric: tabular-nums;
-  }
   .ddz-result.won .ddz-result-amount {
     color: transparent;
     background: linear-gradient(180deg, #f6b94a, #d77a12);
@@ -6430,40 +6144,6 @@ html[data-glass='mica'] {
   }
   .ddz-result.lost .ddz-result-amount {
     color: var(--ink-2);
-  }
-  .ddz-formula {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 6px;
-    padding: 12px 0;
-    border-top: 1px solid var(--line);
-    border-bottom: 1px solid var(--line);
-  }
-  .ddz-factor {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    min-width: 56px;
-    padding: 6px 10px;
-    background: var(--quiet);
-    border-radius: 10px;
-    font-size: 15px;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-  }
-  .ddz-factor small {
-    color: var(--ink-3);
-    font-size: 10.5px;
-    font-weight: 600;
-  }
-  .ddz-factor.total {
-    color: #2a1c05;
-    background: linear-gradient(180deg, #ffe39a, #f6b94a);
-  }
-  .ddz-factor.total small {
-    color: rgb(42 28 5 / 0.65);
   }
   .ddz-result-rows {
     display: flex;
@@ -6490,7 +6170,7 @@ html[data-glass='mica'] {
     min-width: 0;
     font-weight: 600;
   }
-  .ddz-result-who svg {
+  .ddz-result-who > svg {
     color: #d99a1e;
   }
   .ddz-result-who .ddz-tag {
@@ -6503,11 +6183,6 @@ html[data-glass='mica'] {
     min-width: 0;
     overflow: hidden;
   }
-  .ddz-result-left em {
-    color: var(--ink-3);
-    font-size: 12px;
-    font-style: normal;
-  }
   .ddz-result-rows b {
     font-variant-numeric: tabular-nums;
   }
@@ -6516,14 +6191,6 @@ html[data-glass='mica'] {
   }
   .ddz-result-rows b.down {
     color: var(--danger);
-  }
-  .ddz-proof {
-    overflow: hidden;
-    color: var(--ink-3);
-    font-size: 10.5px;
-    text-align: center;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
   .ddz-result-actions {
     display: grid;
@@ -6537,20 +6204,714 @@ html[data-glass='mica'] {
     box-shadow: none;
   }
 
+  /* ---- Lobby ---- */
+  .ddz-hero-rules {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    margin-top: 14px;
+    color: rgb(255 255 255 / 0.75);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .ddz-hero-rules:hover {
+    color: #fff;
+  }
+  .ddz-hero-heroes {
+    position: absolute;
+    right: 28px;
+    top: 50%;
+    display: grid;
+    grid-template-columns: repeat(3, 52px);
+    gap: 10px;
+    translate: 0 -50%;
+  }
+  .ddz-hero-heroes .ddz-herob {
+    animation: ddz-pop 0.5s cubic-bezier(0.2, 0.8, 0.3, 1.5) backwards;
+    animation-delay: calc(0.1s + var(--i) * 45ms);
+  }
+  .ddz-stake-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+  .ddz-stake small {
+    color: var(--ink-3);
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .ddz-stake.on small {
+    color: rgb(255 255 255 / 0.55);
+  }
+  .ddz-entries {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1.2fr;
+    gap: 10px;
+  }
+  .ddz-go {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 56px;
+    color: #2a1c05;
+    background: linear-gradient(180deg, #ffe39a 0%, #f6b94a 100%);
+    border-radius: 16px;
+    font-size: 15px;
+    font-weight: 700;
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.6),
+      0 8px 20px rgb(246 185 74 / 0.28);
+    transition:
+      transform 0.14s ease,
+      filter 0.14s ease;
+  }
+  .ddz-go:hover:not(:disabled) {
+    filter: brightness(1.04);
+    transform: translateY(-1px);
+  }
+  .ddz-go.quiet {
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    box-shadow: none;
+  }
+  .ddz-go:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .ddz-entries .ddz-join {
+    align-items: stretch;
+  }
+  .ddz-entries .ddz-join .field,
+  .ddz-entries .ddz-join .btn {
+    height: 56px;
+    border-radius: 16px;
+  }
+
+  /* Guide inside the rules dialog */
+  .ddz-guide-tabs {
+    display: flex;
+    gap: 4px;
+    margin: 18px 0 12px;
+    padding: 3px;
+    background: var(--quiet);
+    border-radius: 10px;
+  }
+  .ddz-guide-tabs button {
+    flex: 1;
+    height: 30px;
+    color: var(--ink-2);
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .ddz-guide-tabs button.on {
+    color: var(--ink);
+    background: var(--menu-solid);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+  }
+  .ddz-guide-text {
+    color: var(--ink-2);
+    font-size: 13px;
+    line-height: 1.7;
+  }
+  .ddz-guide-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .ddz-guide-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px;
+    background: var(--quiet);
+    border-radius: 12px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--ink-2);
+  }
+  .ddz-guide-list li b {
+    display: block;
+    color: var(--ink);
+    font-size: 13px;
+  }
+  .ddz-guide-list.jokers {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .ddz-guide-list.jokers li {
+    padding: 0;
+    background: none;
+  }
+
+  /* ---- Heroes: a vendor mark on a light chip, ringed in its colour ---- */
+  .ddz-herob {
+    --s: 44px;
+    display: grid;
+    place-items: center;
+    width: var(--s);
+    height: var(--s);
+    flex: none;
+    color: #111;
+    background: radial-gradient(circle at 30% 25%, #ffffff, #eeeef2 70%);
+    border-radius: 30%;
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--tint) 75%, transparent),
+      0 0 18px color-mix(in srgb, var(--tint) 35%, transparent),
+      0 6px 14px rgb(0 0 0 / 0.3);
+  }
+  .ddz-herob.sm {
+    --s: 26px;
+    box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--tint) 70%, transparent);
+  }
+  .ddz-herob.lg {
+    --s: 54px;
+  }
+  .ddz-herob-logo {
+    width: 58%;
+    height: 58%;
+  }
+
+  /* ---- Jokers: tall cards in the Balatro way ---- */
+  .ddz-joker {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    width: 128px;
+    min-height: 168px;
+    padding: 18px 12px 14px;
+    color: #2a1c05;
+    text-align: center;
+    background:
+      radial-gradient(120% 60% at 50% 0%, rgb(255 255 255 / 0.65), transparent 60%),
+      linear-gradient(165deg, #fff6dc 0%, #ffd98a 100%);
+    border-radius: 14px;
+    box-shadow:
+      inset 0 0 0 2px rgb(255 255 255 / 0.55),
+      inset 0 0 0 5px rgb(210 140 40 / 0.35),
+      0 14px 30px rgb(0 0 0 / 0.35);
+    transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.3, 1.4);
+  }
+  .ddz-joker.sm {
+    width: auto;
+    min-height: 0;
+    padding: 10px 10px 10px;
+    box-shadow:
+      inset 0 0 0 1.5px rgb(255 255 255 / 0.55),
+      inset 0 0 0 3.5px rgb(210 140 40 / 0.3);
+  }
+  .ddz-joker-glyph {
+    font-size: 30px;
+    line-height: 1;
+    color: #d7891b;
+    text-shadow: 0 2px 0 rgb(255 255 255 / 0.6);
+  }
+  .ddz-joker.sm .ddz-joker-glyph {
+    display: none;
+  }
+  .ddz-joker b {
+    font-size: 15px;
+    font-weight: 800;
+  }
+  .ddz-joker.sm b {
+    font-size: 13px;
+  }
+  .ddz-joker span {
+    color: rgb(42 28 5 / 0.72);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  button.ddz-joker:hover {
+    transform: translateY(-8px) rotate(-1.5deg);
+  }
+  .ddz-joker-pick {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    align-self: center;
+  }
+  .ddz-joker-pick h3 {
+    color: rgb(255 255 255 / 0.8);
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .ddz-joker-row {
+    display: flex;
+    gap: 14px;
+  }
+  .ddz-joker-row .ddz-joker {
+    animation: ddz-deal 0.5s cubic-bezier(0.2, 0.8, 0.3, 1.1) backwards;
+  }
+  .ddz-joker-row .ddz-joker:nth-child(2) {
+    animation-delay: 80ms;
+  }
+  .ddz-joker-row .ddz-joker:nth-child(3) {
+    animation-delay: 160ms;
+  }
+  .ddz-joker-wait {
+    align-self: center;
+    opacity: 0.85;
+  }
+
+  /* ---- Field card, top bar ---- */
+  .ddz-field {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 30px;
+    padding: 0 12px 0 10px;
+    color: #f4ecff;
+    background: linear-gradient(135deg, rgb(150 110 255 / 0.4), rgb(80 60 200 / 0.3));
+    border: 1px solid rgb(200 180 255 / 0.3);
+    border-radius: 999px;
+    font-size: 12.5px;
+    white-space: nowrap;
+    animation: ddz-pop 0.45s cubic-bezier(0.2, 0.8, 0.3, 1.5);
+  }
+  .ddz-field b {
+    font-weight: 700;
+  }
+  .ddz-field span {
+    color: rgb(244 236 255 / 0.7);
+  }
+  .ddz-top-mid {
+    display: flex;
+    justify-content: center;
+    flex: 1;
+  }
+  .ddz-top-mid .ddz-bottom-cards {
+    margin: 0;
+  }
+  .ddz-mult b {
+    font-size: 14px;
+  }
+
+  /* ---- Seats ---- */
+  .ddz-avatar-empty {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 100%;
+    color: rgb(255 255 255 / 0.4);
+    border-radius: 30%;
+    box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 0.25);
+    font-size: 18px;
+  }
+  .ddz-avatar.lg {
+    width: 64px;
+    height: 64px;
+  }
+  .ddz-avatar.turn .ddz-herob {
+    animation: ddz-breathe 1.6s ease-in-out infinite;
+  }
+  .ddz-avatar.lord .ddz-herob {
+    box-shadow:
+      0 0 0 2.5px var(--gold),
+      0 0 20px rgb(255 200 80 / 0.45),
+      0 6px 14px rgb(0 0 0 / 0.3);
+  }
+  .ddz-ring {
+    inset: -5px;
+  }
+  .ddz-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    font-size: 13px;
+  }
+  .ddz-me-who .ddz-meta {
+    align-items: flex-start;
+  }
+  .ddz-tags {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px;
+  }
+  .ddz-tag {
+    padding: 1px 7px;
+    color: rgb(255 255 255 / 0.75);
+    background: rgb(255 255 255 / 0.1);
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 1.6;
+    white-space: nowrap;
+  }
+  .ddz-tag.warn {
+    color: #ffd0d0;
+    background: rgb(238 80 80 / 0.3);
+  }
+  .ddz-tag.ok {
+    color: #c7f5dc;
+    background: rgb(47 158 110 / 0.35);
+  }
+  .ddz-tag.joker {
+    color: #2a1c05;
+    background: linear-gradient(180deg, #fff1c4, #ffd27a);
+  }
+  .ddz-tag.spent {
+    color: rgb(255 255 255 / 0.4);
+    text-decoration: line-through;
+  }
+  .ddz-shown {
+    max-width: 150px;
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  /* ---- My skill ---- */
+  .ddz-skill-wrap {
+    position: relative;
+  }
+  .ddz-skill {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 34px;
+    padding: 0 14px;
+    color: rgb(255 255 255 / 0.5);
+    background: rgb(255 255 255 / 0.06);
+    border: 1px solid rgb(255 255 255 / 0.12);
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .ddz-skill i {
+    font-style: normal;
+    font-size: 11px;
+    opacity: 0.7;
+  }
+  .ddz-skill.ready {
+    color: #fff;
+    background: color-mix(in srgb, var(--tint) 45%, rgb(0 0 0 / 0.2));
+    border-color: color-mix(in srgb, var(--tint) 80%, white);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--tint) 55%, transparent);
+    animation: ddz-skill-glow 1.8s ease-in-out infinite;
+  }
+  .ddz-skill.spent {
+    text-decoration: line-through;
+  }
+  .ddz-skill-pop {
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 8px);
+    z-index: 6;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px;
+    background: rgb(10 30 28 / 0.95);
+    border: 1px solid rgb(255 255 255 / 0.12);
+    border-radius: 12px;
+    box-shadow: 0 12px 30px rgb(0 0 0 / 0.4);
+  }
+  .ddz-skill-pop button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px 6px 6px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .ddz-skill-pop button:hover {
+    background: rgb(255 255 255 / 0.08);
+  }
+
+  /* Aiming a skill: a strip above the hand */
+  .ddz-aim {
+    position: absolute;
+    left: 50%;
+    bottom: 150px;
+    z-index: 7;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    max-width: calc(100% - 40px);
+    padding: 12px 14px;
+    translate: -50% 0;
+    background: rgb(8 26 24 / 0.94);
+    border: 1px solid rgb(255 255 255 / 0.12);
+    border-radius: 16px;
+    box-shadow: 0 16px 40px rgb(0 0 0 / 0.45);
+    animation: ddz-from-below 0.2s ease;
+  }
+  .ddz-aim-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    font-size: 13px;
+  }
+  .ddz-aim-head span {
+    flex: 1;
+    color: rgb(255 255 255 / 0.6);
+  }
+  .ddz-aim-x {
+    color: rgb(255 255 255 / 0.6);
+  }
+  .ddz-aim-row,
+  .ddz-aim-ranks,
+  .ddz-aim-pool {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+  }
+  .ddz-aim-row button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px 4px 4px;
+    background: rgb(255 255 255 / 0.08);
+    border-radius: 999px;
+    font-size: 13px;
+  }
+  .ddz-aim-row button.on,
+  .ddz-aim-pool button.on .pc {
+    box-shadow: 0 0 0 2px var(--gold);
+  }
+  .ddz-aim-ranks button {
+    min-width: 36px;
+    height: 30px;
+    padding: 0 6px;
+    background: rgb(255 255 255 / 0.08);
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .ddz-aim-ranks button:hover:not(:disabled) {
+    background: rgb(255 255 255 / 0.16);
+  }
+  .ddz-aim-ranks button:disabled {
+    opacity: 0.35;
+  }
+  .ddz-aim-pool {
+    max-height: 132px;
+    overflow-y: auto;
+  }
+  .ddz-aim-pool .pc {
+    transition: transform 0.12s ease;
+  }
+  .ddz-aim-pool button.on .pc {
+    transform: translateY(-4px);
+  }
+
+  /* 记牌器 */
+  .ddz-tracker {
+    position: absolute;
+    left: 50%;
+    top: 4px;
+    display: flex;
+    gap: 2px;
+    padding: 4px 6px;
+    translate: -50% 0;
+    background: rgb(0 0 0 / 0.25);
+    border-radius: 10px;
+    font-size: 11px;
+  }
+  .ddz-tracker span {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 20px;
+  }
+  .ddz-tracker i {
+    color: rgb(255 255 255 / 0.55);
+    font-style: normal;
+  }
+  .ddz-tracker b {
+    font-variant-numeric: tabular-nums;
+  }
+  .ddz-tracker .gone {
+    opacity: 0.3;
+  }
+
+  /* ---- Banners: big plays and skills ---- */
+  .ddz-banner {
+    position: absolute;
+    left: 50%;
+    top: 42%;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    translate: -50% -50%;
+    pointer-events: none;
+    white-space: nowrap;
+    animation: ddz-banner 1.5s cubic-bezier(0.2, 0.8, 0.3, 1.2) forwards;
+  }
+  .ddz-banner > span {
+    font-size: 54px;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    color: transparent;
+    background: linear-gradient(180deg, #fff6d6 0%, #ffd36e 45%, #f08a24 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    filter: drop-shadow(0 4px 0 rgb(80 30 0 / 0.55)) drop-shadow(0 10px 24px rgb(0 0 0 / 0.45));
+  }
+  .ddz-banner.k-rocket > span,
+  .ddz-banner.k-bomb > span {
+    font-size: 64px;
+    background-image: linear-gradient(180deg, #fff2e0 0%, #ff8a4c 45%, #e5304b 100%);
+  }
+  .ddz-banner.k-plane > span,
+  .ddz-banner.k-plane_singles > span,
+  .ddz-banner.k-plane_pairs > span {
+    background-image: linear-gradient(180deg, #ffffff 0%, #a9c6ff 50%, #5b7cf0 100%);
+  }
+  .ddz-banner.k-plane,
+  .ddz-banner.k-plane_singles,
+  .ddz-banner.k-plane_pairs {
+    animation-name: ddz-fly;
+  }
+  .ddz-banner.k-straight > span,
+  .ddz-banner.k-pair_straight > span {
+    font-size: 40px;
+    background-image: linear-gradient(180deg, #ffffff 0%, #b8f0d8 55%, #39b385 100%);
+  }
+  .ddz-banner.k-skill > span {
+    font-size: 46px;
+    background-image: linear-gradient(180deg, #ffffff 0%, #e2d6ff 50%, #9a7bff 100%);
+  }
+
+  /* ---- Result: the multiplier climbs, then the money lands ---- */
+  .ddz-result-head {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 6px;
+  }
+  .ddz-result-badge {
+    padding: 2px 10px;
+    color: var(--ink-2);
+    background: var(--quiet);
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 600;
+  }
+  .ddz-climb {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-variant-numeric: tabular-nums;
+  }
+  .ddz-climb-base {
+    padding: 4px 10px;
+    color: #fff;
+    background: #2f6fe0;
+    border-radius: 10px;
+    font-size: 22px;
+    font-weight: 800;
+  }
+  .ddz-climb-x {
+    color: var(--ink-3);
+    font-size: 20px;
+    font-weight: 800;
+  }
+  .ddz-climb-mult {
+    display: inline-block;
+    min-width: 64px;
+    padding: 4px 12px;
+    color: #fff;
+    text-align: center;
+    background: #e0412f;
+    border-radius: 10px;
+    font-size: 28px;
+    font-weight: 900;
+    animation: ddz-bump 0.32s cubic-bezier(0.2, 0.8, 0.3, 1.8);
+  }
+  .ddz-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    width: 100%;
+    min-height: 24px;
+    max-height: 168px;
+    overflow-y: auto;
+  }
+  .ddz-steps li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    background: var(--quiet);
+    border-radius: 9px;
+    font-size: 13px;
+    animation: ddz-from-left 0.26s cubic-bezier(0.2, 0.8, 0.3, 1.2);
+  }
+  .ddz-steps li span {
+    flex: 1;
+  }
+  .ddz-steps li b {
+    font-variant-numeric: tabular-nums;
+    font-weight: 800;
+  }
+  .ddz-steps li.add b {
+    color: #2f6fe0;
+  }
+  .ddz-steps li.times b {
+    color: #e0412f;
+  }
+  .ddz-result-amount {
+    min-height: 48px;
+    font-size: 40px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  .ddz-result.done .ddz-result-amount {
+    animation: ddz-land 0.4s cubic-bezier(0.2, 0.8, 0.3, 1.4);
+  }
+  .ddz-result.won .ddz-result-amount {
+    color: transparent;
+    background: linear-gradient(180deg, #f6b94a, #d77a12);
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+  .ddz-result.lost .ddz-result-amount {
+    color: var(--ink-2);
+  }
+  .ddz-result-rows {
+    border-top: 1px solid var(--line);
+  }
+
   @media (max-width: 980px) {
     .ddz-table {
       grid-template-columns: 128px minmax(0, 1fr) 128px;
     }
-  }
-  @media (max-width: 720px) {
-    .ddz-entries {
-      grid-template-columns: 1fr;
+    .ddz-field span {
+      display: none;
     }
-    .ddz-hero-fan {
+  }
+  @media (max-width: 760px) {
+    .ddz-entries {
+      grid-template-columns: 1fr 1fr;
+    }
+    .ddz-entries .ddz-join {
+      grid-column: 1 / -1;
+    }
+    .ddz-hero-heroes {
       display: none;
     }
     .ddz-hero-text {
       max-width: none;
+    }
+    .ddz-guide-list,
+    .ddz-guide-list.jokers {
+      grid-template-columns: 1fr;
     }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -6561,6 +6922,7 @@ html[data-glass='mica'] {
     }
   }
 }
+
 
 @keyframes ddz-deal {
   from {
@@ -6732,5 +7094,15 @@ html[data-glass='mica'] {
   from {
     opacity: 0;
     transform: translateY(30px) scale(0.92);
+  }
+}
+@keyframes ddz-bump {
+  from {
+    transform: scale(1.35);
+  }
+}
+@keyframes ddz-skill-glow {
+  50% {
+    box-shadow: 0 0 26px color-mix(in srgb, var(--tint) 75%, transparent);
   }
 }

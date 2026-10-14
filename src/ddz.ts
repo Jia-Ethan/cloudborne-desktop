@@ -337,12 +337,43 @@ export function multiplier(d: { rob: number; bombs: number; spring: boolean }, c
 
 // ---- What the relay sends: one snapshot per change, from this player's seat ----
 
-export type Role = 'landlord' | 'farmer';
+/** The character a seat plays this deal; each has one active skill. */
+export type Hero = 'gpt' | 'claude' | 'gemini' | 'grok' | 'deepseek' | 'kimi' | 'glm' | 'minimax' | 'qwen';
+export const HEROES: Hero[] = ['gpt', 'claude', 'gemini', 'grok', 'deepseek', 'kimi', 'glm', 'minimax', 'qwen'];
+
+export type Joker =
+  | 'straight'
+  | 'chain'
+  | 'pilot'
+  | 'trio'
+  | 'pair'
+  | 'demo'
+  | 'shield'
+  | 'last_stand'
+  | 'closer'
+  | 'snatch'
+  | 'clutch'
+  | 'control'
+  | 'first'
+  | 'speed'
+  | 'dragon'
+  | 'lowkey'
+  | 'raise'
+  | 'ledger';
+
+export type Field = 'blast' | 'spring' | 'bottom' | 'overtime' | 'offline' | 'throttle' | 'open' | 'rally' | 'double' | 'calm';
 
 export type SeatInfo = {
   name: string;
   /** Filled by the relay's own player (a program, no model calls). */
   bot: boolean;
+  hero: Hero;
+  /** Picked once bidding is over; null while picking. */
+  joker: Joker | null;
+  /** Skill uses left this deal. */
+  skills: number;
+  /** 开源: the hand, face up, for everyone. */
+  shown: Card[] | null;
   /** Cards still in hand. */
   left: number;
   /** Disconnected or timed out twice: the relay plays for them. */
@@ -359,16 +390,32 @@ export type Move = {
   pattern?: Pattern;
 };
 
-export type Doubles = { rob: number; bombs: number; spring: boolean };
+/** A skill someone used, as the table sees it. */
+export type SkillUse = {
+  seat: Seat;
+  hero: Hero;
+  /** The skill used: hero, or what 百变 copied. */
+  skill: Hero;
+  target: Seat | null;
+  /** 求证: the rank asked; the count is told only to the two seats. */
+  rank?: number;
+  count?: number;
+  cards?: Card[];
+};
+
+/** One line of the multiplier: adds, or multiplies. */
+export type Step = { source: string; seat: Seat | null; add?: number; times?: number };
+
+/** The landlord against one farmer. */
+export type Share = { farmer: Seat; steps: Step[]; mult: number };
 
 export type Result = {
   winner: Seat;
-  /** Each seat's win (+) or loss (−) in $, after the cap. */
+  shares: [Share, Share];
+  /** Each seat's win (+) or loss (−) in $, after balances cap it. */
   delta: [number, number, number];
   /** What was left in each hand. */
   hands: [Card[], Card[], Card[]];
-  doubles: Doubles;
-  multiplier: number;
   /** The seed behind this deal; sha256(seed) is `commit`. */
   seed: string;
 };
@@ -379,10 +426,13 @@ export type Table = {
   code: string | null;
   owner: Seat | null;
   base: number;
-  phase: 'waiting' | 'bid' | 'play' | 'over';
+  phase: 'waiting' | 'bid' | 'joker' | 'play' | 'over';
   me: Seat;
   seats: [SeatInfo | null, SeatInfo | null, SeatInfo | null];
   hand: Card[];
+  field: Field | null;
+  /** The three jokers offered to me while picking. */
+  offers: Joker[] | null;
   /** Face down (null) until the landlord takes them. */
   bottom: Card[] | null;
   landlord: Seat | null;
@@ -395,11 +445,20 @@ export type Table = {
   last: Move | null;
   /** Each seat's latest move this round, for the bubbles on the table. */
   moves: [Move | null, Move | null, Move | null];
-  doubles: Doubles;
+  /** The latest skill used, for the banner. */
+  skill: SkillUse | null;
+  /** Cards from finished tricks, the pool 长记忆 picks from. */
+  played: Card[];
+  /** 记牌器: how many of each rank are still out, when I have it. */
+  tracker: number[] | null;
+  /** Running multiplier against each opponent, landlord's view first. */
+  mult: number;
   /** sha256 of the deal's seed, published before the deal. */
   commit: string;
   result: Result | null;
 };
+
+export type SkillArgs = { target?: Seat; rank?: number; cards?: Card[]; give?: Card[]; copy?: Hero };
 
 /** What the player asks the relay to do. */
 export type Action =
@@ -410,6 +469,8 @@ export type Action =
   | { type: 'bots' }
   | { type: 'ready' }
   | { type: 'bid'; want: boolean }
+  | { type: 'joker'; index: number }
+  | { type: 'skill'; args: SkillArgs }
   | { type: 'play'; cards: Card[] }
   | { type: 'pass' }
   | { type: 'auto'; on: boolean }
@@ -417,8 +478,22 @@ export type Action =
 
 /** Base stakes on offer, in $. */
 export const STAKES = [0.1, 0.5, 1, 2];
-/** The most one deal can cost: the landlord's share at the cap. */
-export const maxLoss = (base: number, cap = 16) => base * cap * 2;
+/** Balance needed to sit at a stake. */
+export const minBalance = (base: number) => base * 20;
+
+/** What a skill needs from the player before it can be sent. */
+export type SkillAim = 'none' | 'opponent-rank' | 'cards-played' | 'cards-hand' | 'copy';
+export const SKILL_AIM: Record<Hero, SkillAim> = {
+  gpt: 'none',
+  claude: 'none',
+  gemini: 'cards-played',
+  grok: 'opponent-rank',
+  deepseek: 'none',
+  kimi: 'none',
+  glm: 'cards-hand',
+  minimax: 'none',
+  qwen: 'copy',
+};
 
 /** The seat to the right (plays next) and to the left (played before) of `me`. */
 export const nextSeat = (s: Seat): Seat => ((s + 1) % 3) as Seat;
