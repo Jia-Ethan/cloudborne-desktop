@@ -412,7 +412,7 @@ export function App() {
         ) : view === 'lottery' ? (
           <LotteryView balance={user.balance} onBalance={refetchMe} onStatus={lotteryStatus} />
         ) : view === 'ddz' ? (
-          <DdzView balance={user.balance} table={ddz.table} conn={ddz.conn} send={ddz.send} />
+          <DdzView userId={user.id} balance={user.balance} table={ddz.table} conn={ddz.conn} send={ddz.send} />
         ) : view === 'admin' && isAdmin(user) ? (
           <AdminOverview onOpenUser={openUser} onOpenLottery={() => setView('adminLottery')} />
         ) : view === 'adminUsers' && isAdmin(user) ? (

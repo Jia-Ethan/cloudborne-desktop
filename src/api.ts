@@ -1,9 +1,12 @@
+import type { FeePolicy } from './ddz';
 import { invoke } from '@tauri-apps/api/core';
 
 export type ToolId = 'codex' | 'claude' | 'zcode' | 'grok' | 'pi';
 
 /** 小丑斗地主 lobby as the relay reports it. */
+export interface DdzSettings { enabled: boolean; fee_enabled: boolean; fee_bps: number }
 export interface DdzStatus {
+  fee_policy?: FeePolicy;
   enabled: boolean;
   stakes: number[];
   min_balance_times: number;
@@ -17,6 +20,10 @@ export interface DdzSummary {
   players: number;
   won: number;
   platform_net: number;
+  fee_income?: number;
+  gross_won?: number;
+  total_net?: number;
+  unknown_seats?: number;
   recent:
     | {
         id: string;
@@ -26,6 +33,11 @@ export interface DdzSummary {
         winner: number;
         users: [number, number, number];
         roles: [string, string, string];
+        names?: [string,string,string];
+        kinds?: [string,string,string];
+        gross_delta?: [number,number,number];
+        fee?: [number,number,number];
+        fee_policy?: FeePolicy;
         delta: [number, number, number];
         at: string;
       }[]
@@ -490,8 +502,8 @@ export const api = {
   adminUserBalance: (id: number, amount: number, add: boolean, notes: string) =>
     invoke<AdminUser>('admin_user_balance', { id, amount, add, notes }),
   adminUserStatus: (id: number, active: boolean) => invoke<AdminUser>('admin_user_status', { id, active }),
-  adminDdzSettings: () => invoke<{ enabled: boolean }>('admin_ddz_settings'),
-  adminDdzSave: (settings: { enabled: boolean }) => invoke<{ enabled: boolean }>('admin_ddz_save', { settings }),
+  adminDdzSettings: () => invoke<DdzSettings>('admin_ddz_settings'),
+  adminDdzSave: (settings: Partial<DdzSettings>) => invoke<DdzSettings>('admin_ddz_save', { settings }),
   adminDdzSummary: (days: number) => invoke<DdzSummary>('admin_ddz_summary', { days }),
   adminLotterySettings: () => invoke<LotterySettings>('admin_lottery_settings'),
   adminLotterySave: (settings: LotterySettings) => invoke<LotterySettings>('admin_lottery_save', { settings }),

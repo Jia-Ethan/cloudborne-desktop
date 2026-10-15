@@ -363,6 +363,11 @@ export type Joker =
 
 export type Field = 'blast' | 'spring' | 'bottom' | 'overtime' | 'offline' | 'throttle' | 'open' | 'rally' | 'double' | 'calm';
 
+export const HERO_NAMES: Record<Hero,string> = {gpt:'GPT',claude:'Claude',gemini:'Gemini',grok:'Grok',deepseek:'DeepSeek',kimi:'Kimi',glm:'GLM',minimax:'MiniMax',qwen:'Qwen'};
+export type FeePolicy = { version: string; bps: number };
+export const FREE_POLICY: FeePolicy = { version: 'winnings-v1:0', bps: 0 };
+export const seatName = (info: SeatInfo) => info.bot ? HERO_NAMES[info.hero] : info.name;
+export const isNewerTable = (current: Table | null, incoming: Table | null) => !current || !incoming || current.id !== incoming.id || current.version === undefined || incoming.version === undefined || incoming.version >= current.version;
 export type SeatInfo = {
   name: string;
   /** Filled by the relay's own player (a program, no model calls). */
@@ -372,6 +377,8 @@ export type SeatInfo = {
   joker: Joker | null;
   /** Skill uses left this deal. */
   skills: number;
+  skill_total?: number;
+  effects?: string[];
   /** 开源: the hand, face up, for everyone. */
   shown: Card[] | null;
   /** Cards still in hand. */
@@ -384,6 +391,10 @@ export type SeatInfo = {
 
 /** The seat's latest move this trick: a bid, a pass, or cards. */
 export type Move = {
+  seq?: number;
+  trick?: number;
+  reverted?: boolean;
+  skill?: Hero;
   seat: Seat;
   bid?: 'call' | 'pass' | 'rob' | 'norob';
   cards?: Card[];
@@ -412,6 +423,9 @@ export type Step = { source: string; seat: Seat | null; add?: number; times?: nu
 export type Share = { farmer: Seat; steps: Step[]; mult: number };
 
 export type Result = {
+  gross_delta?: [number, number, number];
+  fee?: [number, number, number];
+  fee_policy?: FeePolicy;
   winner: Seat;
   shares: [Share, Share];
   /** Each seat's win (+) or loss (−) in $, after balances cap it. */
@@ -423,6 +437,10 @@ export type Result = {
 };
 
 export type Table = {
+  version?: number;
+  trick?: number;
+  history?: Move[] | null;
+  fee_policy?: FeePolicy;
   id: string;
   /** Six digits for rooms made by a player; null for quick-match tables. */
   code: string | null;
@@ -463,7 +481,7 @@ export type Table = {
 export type SkillArgs = { target?: Seat; rank?: number; cards?: Card[]; give?: Card[]; copy?: Hero };
 
 /** What the player asks the relay to do. */
-export type Action =
+export type Action = ({ fee_policy?: string }) & (
   | { type: 'match'; base: number }
   | { type: 'cancel' }
   | { type: 'create'; base: number }
@@ -476,7 +494,7 @@ export type Action =
   | { type: 'play'; cards: Card[] }
   | { type: 'pass' }
   | { type: 'auto'; on: boolean }
-  | { type: 'leave' };
+  | { type: 'leave' });
 
 /** Base stakes on offer, in $. */
 export const STAKES = [0.1, 0.5, 1, 2];

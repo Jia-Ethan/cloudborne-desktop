@@ -3,6 +3,7 @@ import { api, errorText, type DdzSummary } from '../api';
 import { useI18n, type MessageKey } from '../i18n';
 import { dollars } from '../lottery';
 import { Figure, Line, Panel } from './AdminLottery';
+import { HERO_NAMES, type Hero } from '../ddz';
 import { Dialog } from './Dialog';
 import { Icon } from './Icon';
 import { when } from './WinnerSheet';
@@ -17,6 +18,9 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
   const [days, setDays] = useState<(typeof RANGES)[number]>(7);
   const [summary, setSummary] = useState<DdzSummary | null>(null);
   const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [feeEnabled, setFeeEnabled] = useState(false);
+  const [feeRate, setFeeRate] = useState('5');
+  const [saving, setSaving] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -27,6 +31,8 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
       const [s, st] = await Promise.all([api.adminDdzSummary(days), api.adminDdzSettings()]);
       setSummary(s);
       setEnabled(st.enabled);
+      setFeeEnabled(st.fee_enabled ?? false);
+      setFeeRate(String((st.fee_bps ?? 500) / 100));
       setError('');
     } catch (e) {
       setError(errorText(e, t('common.genericError')));
@@ -41,13 +47,25 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
 
   const save = async (on: boolean) => {
     setConfirm(false);
+    setSaving(true);
     try {
       const st = await api.adminDdzSave({ enabled: on });
       setEnabled(st.enabled);
       onToast(t(st.enabled ? 'admin.ddz.turnedOn' : 'admin.ddz.turnedOff'));
     } catch (e) {
       onToast(errorText(e, t('common.genericError')));
-    }
+    } finally { setSaving(false); }
+  };
+
+  const saveFee = async () => {
+    setSaving(true);
+    try {
+      const st = await api.adminDdzSave({ fee_enabled: feeEnabled, fee_bps: Math.round(Number(feeRate) * 100) });
+      setFeeEnabled(st.fee_enabled);
+      setFeeRate(String(st.fee_bps / 100));
+      onToast(t('admin.ddz.feeSaved'));
+    } catch (e) { onToast(errorText(e, t('common.genericError'))); }
+    finally { setSaving(false); }
   };
 
   return (
@@ -75,6 +93,7 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
             <h2>{t('nav.ddz')}</h2>
             {enabled !== null && (
               <button
+                disabled={busy || saving}
                 role="switch"
                 aria-checked={enabled}
                 className={`switch ${enabled ? 'on' : ''}`}
@@ -87,6 +106,12 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
             )}
           </div>
           <p className="lot-settings-hint">{t('admin.ddz.switchHint')}</p>
+          <form className="ddz-fee-settings" onSubmit={e => {e.preventDefault();void saveFee();}}>
+            <label><input type="checkbox" checked={feeEnabled} disabled={busy || saving || enabled === null} onChange={e=>setFeeEnabled(e.target.checked)} /> {t('admin.ddz.feeEnabled')}</label>
+            <label>{t('admin.ddz.feeBps')} <input type="number" min="0" max="10" step="0.01" required value={feeRate} disabled={busy || saving || enabled === null} onChange={e=>setFeeRate(e.target.value)} /> %</label>
+            <button className="btn btn-primary" disabled={busy || saving || enabled === null}>{t('admin.ddz.feeSave')}</button>
+          </form>
+          <p className="lot-settings-hint">{t('admin.ddz.feeHint')}</p>
         </section>
 
         <div className="lot-panels rise" style={{ '--i': 2 } as CSSProperties}>
@@ -99,16 +124,21 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
           </Panel>
           <Panel title={t('admin.ddz.panel.money')}>
             <Figure
-              label={t('admin.ddz.platformNet')}
-              value={summary ? signed(summary.platform_net) : '—'}
-              tone={summary && summary.platform_net < 0 ? 'bad' : undefined}
+              label={t('admin.ddz.platformTotal')}
+              value={summary ? signed(summary.total_net ?? summary.platform_net) : '—'}
+              tone={summary && (summary.total_net ?? summary.platform_net) < 0 ? 'bad' : undefined}
               title={t('admin.ddz.platformNetHint')}
             />
             <div className="lot-split">
-              <Line label={t('admin.ddz.won')} value={summary ? dollars(summary.won) : '—'} title={t('admin.ddz.wonHint')} />
+              <Line label={t('admin.ddz.platformNet')} value={summary ? signed(summary.platform_net) : '—'} />
+              <Line label={t('admin.ddz.feeIncome')} value={summary ? dollars(summary.fee_income ?? 0) : '—'} />
+              <Line label={t('admin.ddz.grossWon')} value={summary ? dollars(summary.gross_won ?? summary.won) : '—'} />
+              <Line label={t('admin.ddz.netWon')} value={summary ? dollars(summary.won) : '—'} />
             </div>
           </Panel>
         </div>
+
+        {!!summary?.unknown_seats && <p className="lot-settings-hint">{t('admin.ddz.unknownSeats', {n: summary.unknown_seats})}</p>}
 
         <section className="card usage-card rise" style={{ '--i': 3 } as CSSProperties}>
           <div className="usage-card-head">
@@ -131,12 +161,13 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
                       {g.landlord === s && <Icon name="crown" className="size-3" />}
                       {u ? (
                         <button className="text-link" onClick={() => onOpenUser({ id: u, email: '' })}>
-                          #{u}
+                          {g.names?.[s] || `#${u}`}
                         </button>
                       ) : (
-                        <em>AI</em>
+                        <em>{g.kinds?.[s] === 'bot' ? g.names?.[s] || HERO_NAMES[g.roles[s] as Hero] || 'AI' : t('admin.ddz.unknown')}</em>
                       )}
                       <b>{signed(g.delta[s])}</b>
+                      {!!g.fee?.[s] && <small>{t('admin.ddz.feeIncome')} {dollars(g.fee[s])} · {(g.fee_policy?.bps ?? 0)/100}%</small>}
                     </span>
                   ))}
                 </div>

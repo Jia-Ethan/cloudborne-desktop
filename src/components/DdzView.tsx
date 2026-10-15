@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   HEROES,
+  HERO_NAMES, FREE_POLICY, seatName, type FeePolicy,
   SKILL_AIM,
   STAKES,
   byHand,
-  byPlay,
   hints,
   judge,
   minBalance,
@@ -27,6 +27,8 @@ import {
 import { useI18n, type MessageKey, type T } from '../i18n';
 import type { DdzConn } from '../useDdz';
 import { dollars } from '../lottery';
+import { api, errorText, type DdzStatus } from '../api';
+import { HeroInfo, PlayHistory, PlayCards } from './DdzDetails';
 import { Dialog } from './Dialog';
 import { burst } from './fx';
 import { Icon } from './Icon';
@@ -34,7 +36,7 @@ import { Logo, type LogoId } from './Logo';
 import { CardBack, CardRow, PlayingCard } from './PlayingCard';
 
 /** Bump when the rules text changes so everyone reads it again. */
-const RULES_VERSION = '2';
+const RULES_VERSION = '3';
 const RULES_KEY = 'cloudborne.ddz.rules';
 
 /** Turn clocks; the relay enforces them, these only draw the ring. */
@@ -54,17 +56,7 @@ const LOGO: Record<Hero, LogoId> = {
   minimax: 'minimax',
   qwen: 'qwen',
 };
-const NAME: Record<Hero, string> = {
-  gpt: 'GPT',
-  claude: 'Claude',
-  gemini: 'Gemini',
-  grok: 'Grok',
-  deepseek: 'DeepSeek',
-  kimi: 'Kimi',
-  glm: 'GLM',
-  minimax: 'MiniMax',
-  qwen: 'Qwen',
-};
+const NAME = HERO_NAMES;
 /** Brand tint for the ring around each hero. */
 const TINT: Record<Hero, string> = {
   gpt: '#10a37f',
@@ -97,45 +89,49 @@ const fmtX = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(n * 10 
  * runs the game and sends a snapshot of the table on every change; this view
  * only draws it and sends the player's actions back.
  */
-export function DdzView({ balance, table, conn, send }: { balance: number; table: Table | null; conn: DdzConn; send: (a: Action) => void }) {
+export function DdzView({ balance, table, conn, send, userId = 0, previewStatus }: { balance: number; table: Table | null; conn: DdzConn; send: (a: Action) => void; userId?: number; previewStatus?: DdzStatus }) {
+  const { t } = useI18n();
   const [rulesFor, setRulesFor] = useState<Action | 'read' | null>(null);
-  const accepted = () => localStorage.getItem(RULES_KEY) === RULES_VERSION;
-
-  // Everything that can cost money goes through the rules once.
-  const enter = useCallback(
-    (a: Action) => {
-      if (accepted()) send(a);
-      else setRulesFor(a);
-    },
-    [send],
-  );
-
+  const [status, setStatus] = useState<DdzStatus | null>(previewStatus ?? null);
+  const [policy, setPolicy] = useState<FeePolicy>(FREE_POLICY);
+  const [error, setError] = useState('');
+  const busy = useRef(false);
+  const acceptanceKey = (p: FeePolicy) => `${RULES_KEY}.${userId}.${RULES_VERSION}.${p.version}`;
+  useEffect(() => {
+    if (previewStatus) return;
+    let gone = false;
+    const refresh = () => api.ddzStatus().then(s => { if (!gone) setStatus(s); }).catch(() => {});
+    void refresh(); const timer = setInterval(refresh, 15000);
+    return () => { gone=true;clearInterval(timer); };
+  }, [previewStatus]);
+  const enter = async (a: Action) => {
+    if (!['match','create','join','ready','bots'].includes(a.type)) { send(a);return; }
+    if (busy.current) return;
+    busy.current=true;setError('');
+    try {
+      const st = previewStatus ?? await api.ddzStatus();setStatus(st);
+      if (!st.enabled) { setError(t('ddz.unavailable'));return; }
+      const p=st.fee_policy ?? FREE_POLICY;setPolicy(p);
+      const action={...a,fee_policy:p.version};
+      if (localStorage.getItem(acceptanceKey(p)) === 'yes') send(action);
+      else setRulesFor(action);
+    } catch(e) { setError(errorText(e,t('common.genericError'))); }
+    finally {busy.current=false;}
+  };
   let body: ReactNode;
-  if (!table) body = <Lobby balance={balance} conn={conn} onEnter={enter} onRules={() => setRulesFor('read')} />;
-  else if (table.phase === 'waiting' && !table.code) body = <Matching send={send} />;
-  else body = <TableScene table={table} conn={conn} send={send} />;
-
-  return (
-    <>
-      {body}
-      {rulesFor && (
-        <RulesDialog
-          agree={rulesFor !== 'read'}
-          onClose={() => setRulesFor(null)}
-          onAgree={() => {
-            localStorage.setItem(RULES_KEY, RULES_VERSION);
-            if (rulesFor !== 'read') send(rulesFor);
-            setRulesFor(null);
-          }}
-        />
-      )}
-    </>
-  );
+  if (!table) body=<Lobby balance={balance} conn={conn} onEnter={a=>void enter(a)} onRules={()=>{setPolicy(status?.fee_policy ?? FREE_POLICY);setRulesFor('read');}} policy={status?.fee_policy} />;
+  else if (table.phase === 'waiting' && !table.code) body=<Matching send={send} />;
+  else body=<TableScene table={table} conn={conn} send={a=>void enter(a)} />;
+  return <>{error && <div className="ddz-entry-error" role="alert">{error}</div>}{body}{rulesFor && <RulesDialog policy={policy} agree={rulesFor!=='read'} onClose={()=>setRulesFor(null)} onAgree={()=>{
+    localStorage.setItem(acceptanceKey(policy),'yes');
+    if(rulesFor!=='read') void enter(rulesFor);
+    setRulesFor(null);
+  }}/>}</>;
 }
 
 // ---------------------------------------------------------------- lobby
 
-function Lobby({ balance, conn, onEnter, onRules }: { balance: number; conn: DdzConn; onEnter: (a: Action) => void; onRules: () => void }) {
+function Lobby({ balance, conn, onEnter, onRules, policy }: { balance: number; conn: DdzConn; onEnter: (a: Action) => void; onRules: () => void; policy?: FeePolicy }) {
   const { t } = useI18n();
   const affordable = (b: number) => balance >= minBalance(b);
   const [base, setBase] = useState(STAKES[0]);
@@ -155,13 +151,14 @@ function Lobby({ balance, conn, onEnter, onRules }: { balance: number; conn: Ddz
               <Icon name="chevronRight" className="size-3.5" />
             </button>
           </div>
-          <div className="ddz-hero-heroes" aria-hidden>
+          <div className="ddz-hero-heroes">
             {HEROES.map((h, i) => (
-              <HeroBadge key={h} hero={h} style={{ '--i': i } as CSSProperties} />
+              <HeroInfo key={h} hero={h}><HeroBadge hero={h} style={{ '--i': i } as CSSProperties} /></HeroInfo>
             ))}
           </div>
         </section>
 
+        <p className="ddz-avatar-hint">{t('ddz.avatarHint')}</p>
         <div className="ddz-rule-line" aria-hidden>
           <i />
         </div>
@@ -183,6 +180,7 @@ function Lobby({ balance, conn, onEnter, onRules }: { balance: number; conn: Ddz
           ))}
         </section>
 
+        <p className="ddz-fee-note">{policy ? t(policy.bps > 0 ? 'ddz.feeNotice' : 'ddz.feeFree', {rate: policy.bps/100}) : t('common.wait')}</p>
         <div className="ddz-entries">
           <button className="ddz-go" disabled={!canPlay} onClick={() => onEnter({ type: 'match', base })}>
             <Icon name="bolt" className="size-5" />
@@ -223,7 +221,7 @@ function Lobby({ balance, conn, onEnter, onRules }: { balance: number; conn: Ddz
   );
 }
 
-function RulesDialog({ agree, onClose, onAgree }: { agree: boolean; onClose: () => void; onAgree: () => void }) {
+function RulesDialog({ agree, onClose, onAgree, policy }: { agree: boolean; onClose: () => void; onAgree: () => void; policy: FeePolicy }) {
   const { t } = useI18n();
   const [tab, setTab] = useState<'rules' | 'heroes' | 'jokers'>('rules');
   return (
@@ -253,6 +251,8 @@ function RulesDialog({ agree, onClose, onAgree }: { agree: boolean; onClose: () 
         <li className="warn">{t('ddz.rules.money')}</li>
         <li>{t('ddz.rules.score')}</li>
         <li>{t('ddz.rules.auto')}</li>
+        <li className="warn">{t(policy.bps>0?'ddz.feeNotice':'ddz.feeFree',{rate:policy.bps/100})}</li>
+        {policy.bps>0 && <li>{t('ddz.feeExample',{fee:dollars(2*policy.bps/10000),net:dollars(2-2*policy.bps/10000)})}</li>}
       </ol>
       <div className="ddz-guide-tabs" role="tablist">
         {(['rules', 'heroes', 'jokers'] as const).map((k) => (
@@ -266,7 +266,7 @@ function RulesDialog({ agree, onClose, onAgree }: { agree: boolean; onClose: () 
         <ul className="ddz-guide-list">
           {HEROES.map((h) => (
             <li key={h}>
-              <HeroBadge hero={h} size="sm" />
+              <HeroInfo hero={h}><HeroBadge hero={h} size="sm" /></HeroInfo>
               <span>
                 <b>
                   {NAME[h]} · {t(`ddz.skill.${h}` as MessageKey)}
@@ -404,6 +404,7 @@ function TableScene({ table, conn, send }: { table: Table; conn: DdzConn; send: 
       <Opponent table={table} seat={nextSeat(me)} side="right" />
 
       <div className="ddz-center">
+        {table.phase === 'play' && <div className="ddz-target">{table.last?.cards?.length ? <><span>{t('ddz.target')}</span><PlayCards move={table.last} compact /></> : <span>{t('ddz.newLead')}</span>}</div>}
         <MoveBubble table={table} seat={prevSeat(me)} side="left" />
         <MoveBubble table={table} seat={nextSeat(me)} side="right" />
         <div className="ddz-center-me">
@@ -468,6 +469,7 @@ function TopBar({ table, onLeave, send }: { table: Table; onLeave: () => void; s
       </button>
       <span className="ddz-chip">
         {t('ddz.base')} <b>{dollars(table.base)}</b>
+        {table.fee_policy && <small>{t('ddz.feeRate',{rate:table.fee_policy.bps/100})}</small>}
       </span>
       {table.field && <FieldCard field={table.field} />}
 
@@ -487,6 +489,7 @@ function TopBar({ table, onLeave, send }: { table: Table; onLeave: () => void; s
       </div>
 
       <div className="ddz-top-end">
+        <PlayHistory table={table} />
         {table.code && <RoomCode code={table.code} base={table.base} compact />}
         {playing && (
           <button className={`ddz-chip ddz-chip-btn ${auto ? 'on' : ''}`} onClick={() => send({ type: 'auto', on: !auto })}>
@@ -608,7 +611,7 @@ function Avatar({ info, seat, table, size = 'md' }: { info: SeatInfo | null; sea
   const left = useCountdown(turn ? table.deadline : null);
   return (
     <div className={`ddz-avatar ${size} ${turn ? 'turn' : ''} ${lord ? 'lord' : ''} ${info ? '' : 'empty'}`}>
-      {info ? <HeroBadge hero={info.hero} size={size === 'lg' ? 'lg' : 'md'} /> : <span className="ddz-avatar-empty">?</span>}
+      {info ? <HeroInfo hero={info.hero} info={info} table={table}><HeroBadge hero={info.hero} size={size === 'lg' ? 'lg' : 'md'} /></HeroInfo> : <span className="ddz-avatar-empty">?</span>}
       {turn && table.deadline && <TimerRing key={table.deadline} deadline={table.deadline} total={table.phase === 'bid' ? BID_MS : PLAY_MS} />}
       {turn && left !== null && left <= 10 && <span className="ddz-avatar-secs">{left}</span>}
       {lord && (
@@ -639,7 +642,7 @@ function SeatMeta({ info, table, seat }: { info: SeatInfo; table: Table; seat: S
   const { t } = useI18n();
   return (
     <div className="ddz-meta">
-      <b className="truncate">{info.name}</b>
+      <b className="truncate" title={seatName(info)}>{seatName(info)}</b>
       <span className="ddz-tags">
         {info.bot && <span className="ddz-tag">AI</span>}
         {info.auto && <span className="ddz-tag">{t('ddz.auto')}</span>}
@@ -667,6 +670,7 @@ function Opponent({ table, seat, side }: { table: Table; seat: Seat; side: 'left
     <aside className={`ddz-opp ${side}`}>
       <Avatar info={info} seat={seat} table={table} size="lg" />
       {info ? <SeatMeta info={info} table={table} seat={seat} /> : <span className="ddz-dim">{t('ddz.emptySeat')}</span>}
+      {table.turn === seat && table.phase === 'play' && <span className="ddz-thinking-label">{t('ddz.thinking')}</span>}
       {dealt && !info?.shown && (
         <div className={`ddz-stack ${left > 0 && left <= 2 ? 'alarm' : ''}`}>
           <CardBack size="sm" />
@@ -681,21 +685,12 @@ function Opponent({ table, seat, side }: { table: Table; seat: Seat; side: 'left
 function MoveBubble({ table, seat, side }: { table: Table; seat: Seat; side: 'left' | 'right' | 'me' }) {
   const { t } = useI18n();
   const move = table.moves[seat];
-  const thinking = table.turn === seat && (table.phase === 'bid' || table.phase === 'play') && side !== 'me';
-  if (thinking) {
-    return (
-      <div className={`ddz-move ${side} thinking`} aria-label={t('ddz.thinking')}>
-        <i />
-        <i />
-        <i />
-      </div>
-    );
-  }
   if (!move) return <div className={`ddz-move ${side} none`} />;
   if (move.cards?.length) {
     return (
       <div className={`ddz-move ${side} cards`} key={move.cards.join()}>
-        <CardRow cards={byPlay(move.cards)} size={side === 'me' ? 'md' : 'sm'} />
+        {move.trick !== undefined && table.trick !== undefined && move.trick < table.trick && <small>{t('ddz.previousTrick')}</small>}
+        <PlayCards move={move} />
       </div>
     );
   }
@@ -774,7 +769,7 @@ function MyHand({ table, myTurn, send }: { table: Table; myTurn: boolean; send: 
   useEffect(() => {
     if (!playing && !bidding) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.metaKey || e.ctrlKey) return;
+      if (document.querySelector('[data-ddz-info], [aria-modal="true"]') || (e.target instanceof HTMLElement && (e.target.closest('button,input,textarea,select') || e.target.isContentEditable)) || e.metaKey || e.ctrlKey) return;
       const k = e.key.toLowerCase();
       if (playing && (k === ' ' || k === 'enter')) {
         e.preventDefault();
@@ -972,7 +967,7 @@ function SkillAim({
             {enemies.map((s) => (
               <button key={s} className={target === s ? 'on' : ''} onClick={() => setTarget(s)}>
                 {table.seats[s] && <HeroBadge hero={table.seats[s]!.hero} size="sm" />}
-                {table.seats[s]?.name}
+                {table.seats[s] ? seatName(table.seats[s]!) : ''}
               </button>
             ))}
           </div>
@@ -1021,7 +1016,7 @@ function GeminiAim({ table, give, max, onUse }: { table: Table; give: Card[]; ma
 }
 
 function waitingLine(table: Table, t: T): string {
-  const who = table.turn !== null ? (table.seats[table.turn]?.name ?? '') : '';
+  const who = table.turn !== null ? (table.seats[table.turn] ? seatName(table.seats[table.turn]!) : '') : '';
   if (table.phase === 'bid') return t(table.rob ? 'ddz.waitRob' : 'ddz.waitCall', { name: who });
   if (table.phase === 'play') return t('ddz.waitPlay', { name: who });
   return '';
@@ -1047,7 +1042,7 @@ function ResultSheet({ table, send }: { table: Table; send: (a: Action) => void 
   const { t } = useI18n();
   const r = table.result!;
   const me = table.me;
-  const won = r.delta[me] > 0;
+  const won = (r.winner === table.landlord) === (me === table.landlord);
   const lordWon = r.winner === table.landlord;
   // My share: a farmer has one, the landlord sees the larger of its two.
   const share = me === table.landlord ? [...r.shares].sort((a, b) => b.mult - a.mult)[0] : r.shares.find((s) => s.farmer === me)!;
@@ -1088,6 +1083,7 @@ function ResultSheet({ table, send }: { table: Table; send: (a: Action) => void 
             })}
           </ul>
           <b className="ddz-result-amount">{done ? signed(r.delta[me]) : ' '}</b>
+          {done && r.gross_delta && <dl className="ddz-fee-breakdown"><div><dt>{t('ddz.gross')}</dt><dd>{signed(r.gross_delta[me])}</dd></div><div><dt>{t('ddz.feeRate',{rate:(r.fee_policy?.bps ?? 0)/100})}</dt><dd>−{dollars(r.fee?.[me] ?? 0)}</dd></div><div><dt>{t('ddz.net')}</dt><dd>{signed(r.delta[me])}</dd></div></dl>}
         </div>
 
         {done && (
@@ -1099,7 +1095,7 @@ function ResultSheet({ table, send }: { table: Table; send: (a: Action) => void 
                   <li key={s} className={s === me ? 'me' : ''}>
                     <span className="ddz-result-who">
                       {info && <HeroBadge hero={info.hero} size="sm" />}
-                      {info?.name}
+                      {info ? seatName(info) : ''}
                       {table.landlord === s && <Icon name="crown" className="size-3.5" />}
                     </span>
                     <span className="ddz-result-left">{r.hands[s].length > 0 && <CardRow cards={byHand(r.hands[s])} size="xs" />}</span>

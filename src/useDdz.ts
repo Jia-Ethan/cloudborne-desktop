@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Channel, invoke } from '@tauri-apps/api/core';
 import { errorText } from './api';
-import type { Action, Table } from './ddz';
+import { isNewerTable, type Action, type Table } from './ddz';
 
 /** The table line as Rust reports it. */
 export type DdzConn = 'idle' | 'connecting' | 'open' | 'auth' | 'unavailable';
@@ -27,6 +27,7 @@ export function useDdz(uid: number | null, wanted: boolean, onError: (message: s
   useEffect(() => {
     if (!live) return;
     let gone = false;
+    let latest: Table | null = null;
     const channel = new Channel<DdzEvent>();
     channel.onmessage = (e) => {
       if (gone) return;
@@ -40,6 +41,8 @@ export function useDdz(uid: number | null, wanted: boolean, onError: (message: s
         return;
       }
       const t = m.table;
+      if (!isNewerTable(latest,t)) return;
+      latest=t;
       setTable(t);
       if (t?.result) {
         const key = `${t.id}:${t.commit}`;

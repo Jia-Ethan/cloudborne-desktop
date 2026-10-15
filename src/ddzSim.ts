@@ -4,6 +4,7 @@
 
 import {
   HEROES,
+  HERO_NAMES,
   classify,
   follow,
   hints,
@@ -22,7 +23,7 @@ import {
   type Table,
 } from './ddz';
 
-const NAMES = ['我', '阿青', '小满'];
+const NAMES = ['Ethan', '', ''];
 const JOKERS: Joker[] = ['straight', 'pilot', 'demo', 'raise', 'speed', 'control', 'last_stand', 'closer', 'trio'];
 const FIELDS: Field[] = ['blast', 'spring', 'double', 'rally', 'overtime', 'throttle'];
 
@@ -36,7 +37,7 @@ const shuffle = <T>(xs: T[]) => {
 };
 
 const seat = (name: string, hero: Hero, bot: boolean): SeatInfo => ({
-  name,
+  name: bot ? HERO_NAMES[hero] : name,
   bot,
   hero,
   joker: null,
