@@ -1,8 +1,8 @@
 # 斗地主体验与赢家服务费方案
 
-日期：2026-10-15。状态：已在本地工作区实施，尚未部署或上线。依据：用户提供的四张截图、当前桌面端及 relay candidate 源码；未进行线上牌局复现。
+日期：2026-10-15；最后核验：2026-10-16。状态：已实现并部署；生产服务健康，`fee_enabled` 保持关闭。依据：用户提供的四张截图、当前桌面端及 relay candidate 源码；线上已完成健康和接口验收，尚未在生产建立真实牌局复现。
 
-保留墨绿牌桌、象牙白卡片与金色装饰。完成头像查技能、规则可读性、真人用户名、机器人模型名、赢家服务费、对手出牌可见性六项改动。5% 为建议初始费率，不是已确定或已启用的配置。
+保留墨绿牌桌、象牙白卡片与金色装饰。完成头像查技能、规则可读性、真人用户名、机器人模型名、赢家服务费、对手出牌可见性六项改动。5% 为默认费率；生产服务费开关仍关闭，须在管理端显式开启。
 
 ## 1. 点击头像查看技能
 
@@ -108,12 +108,18 @@
 - 后端 `internal/service/doudizhu_view.go`：Moves 只返回当前轮并清空行动座位；Last 为待压牌；可复用引擎历史生成公开记录。
 - 后端 `internal/pkg/doudizhu/score.go`：Settle 按输家余额封顶、按份额分配并取整到分，毛输赢总和为零。
 
-后端相对路径均基于 `relay/sub2api/versions/v0.2.3/work/candidate/backend/`。以上为本地静态核查结论；运行时复现与上线验收属于后续实施工作。
+后端相对路径均基于 `relay/sub2api/versions/v0.2.3/work/candidate/backend/`。以上为实施前静态核查；线上健康和认证边界已验收，完整真实牌局复现仍需在 Tauri 客户端中执行。
 
 ## 实施记录（2026-10-16）
 
-上述方案已在本地工作区实现，尚未部署。桌面端新增 `DdzDetails.tsx` 角色详情、公开出牌记录和可读牌组；`DdzView.tsx` 接入大厅/房间/对局头像点击、用户名/模型名、当前待压牌与上一轮提示、服务费确认和结算明细。`index.css` 收窄浅底金字选择器并调整牌面索引和小屏布局。管理端增加服务费开关、0–10% 费率和毛赢额/净到账/服务费/平台合计统计。
+上述方案已在本地工作区实现并部署。桌面端新增 `DdzDetails.tsx` 角色详情、公开出牌记录和可读牌组；`DdzView.tsx` 接入大厅/房间/对局头像点击、用户名/模型名、当前待压牌与上一轮提示、服务费确认和结算明细。`index.css` 收窄浅底金字选择器并调整牌面索引和小屏布局。管理端增加服务费开关、0–10% 费率和毛赢额/净到账/服务费/平台合计统计。
 
-relay 增加赢家服务费政策快照、进入收费局的版本确认、整数分向下取整、事务内毛额/费用/净额入账、重复结算读回、座位身份和名称快照，以及公开历史快照。迁移文件为 `relay/sub2api/versions/v0.2.3/work/candidate/backend/migrations/261_cloudborne_doudizhu_fees.sql`。默认费率为 5% 但 `fee_enabled` 默认关闭，未执行上线启用。
+relay 增加赢家服务费政策快照、进入收费局的版本确认、整数分向下取整、事务内毛额/费用/净额入账、重复结算读回、座位身份和名称快照，以及公开历史快照。迁移文件 `261_cloudborne_doudizhu_fees.sql` 已在生产 `schema_migrations` 中确认；默认费率为 5%，`fee_enabled` 仍关闭。
 
-本地验证：桌面端 `npm run build`、`npm test`（6 个文件、79 个测试）通过；后端 `go test -tags=unit ./internal/service ./internal/repository ./migrations -run 'TestD(dz|oudizhu)|TestCloudborneDoudizhu' -count=1` 通过。Vite 本地页已加载，因桌面运行时的 Tauri `invoke` 在纯浏览器环境不可用，无法在浏览器中建立真实牌桌；完整运行时验收仍需在 Tauri 客户端和带数据库迁移的环境执行。
+本地验证：桌面端 `npm run build`、`npm test`（6 个文件、79 个测试）通过；后端 `go test -tags=unit ./internal/service ./internal/repository ./migrations -run 'TestD(dz|oudizhu)|TestCloudborneDoudizhu' -count=1` 通过。生产 `https://api.cloudborne.cn/health` 返回 `200`，未认证的 `/api/v1/ddz` 返回预期 `401`；桌面端 `latest.json` 返回 `0.9.5`。Vite 本地页已加载，因桌面运行时的 Tauri `invoke` 在纯浏览器环境不可用，无法在浏览器中建立真实牌桌；完整运行时验收仍需在 Tauri 客户端中执行。
+
+## 部署记录（2026-10-15—2026-10-16）
+
+- 后端：`Jaaay50/cloudborne-sub2api` 的 `grok/doudizhu`，commit `25afbe12a`；生产镜像 `sub2api:cloudborne-ddz-20261015T164312Z-clean`，容器 `running / healthy`。
+- 桌面端：`Jia-Ethan/cloudborne-desktop` commit `e24905b`，tag/release `v0.9.5`。
+- 收费开关：`fee_enabled=false`；默认费率 5%，开启前须在管理端确认收费说明。
