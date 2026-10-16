@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
-import { api, errorText, type AdminUser } from '../api';
+import { api, errorText, type AdminUsageRecord, type AdminUser, type UserConcurrencyInfo } from '../api';
 import { useI18n } from '../i18n';
 import { money } from '../usage';
 import { Dialog } from './Dialog';
@@ -8,6 +8,25 @@ import { Icon } from './Icon';
 const PAGE = 20;
 
 type Action = { kind: 'add' | 'subtract'; user: AdminUser } | { kind: 'status'; user: AdminUser } | null;
+
+const CONCURRENCY_REFRESH_MS = 5000;
+
+function concurrencyFor(user: AdminUser, live: Record<string, UserConcurrencyInfo>): UserConcurrencyInfo | null {
+  return live[String(user.id)] ?? null;
+}
+
+function currentConcurrency(user: AdminUser, live: Record<string, UserConcurrencyInfo>) {
+  return concurrencyFor(user, live)?.current_in_use ?? user.current_concurrency ?? 0;
+}
+
+function waitingConcurrency(user: AdminUser, live: Record<string, UserConcurrencyInfo>) {
+  const info = concurrencyFor(user, live);
+  return info?.waiting_in_queue ?? user.waiting_count ?? 0;
+}
+
+function maxConcurrency(user: AdminUser, live: Record<string, UserConcurrencyInfo>) {
+  return concurrencyFor(user, live)?.max_capacity ?? user.concurrency ?? null;
+}
 
 /** `focus` opens the page filtered to one user (from a big win). */
 export function AdminUsers({ focus, onToast }: { focus: { id: number; email: string } | null; onToast: (m: string) => void }) {
@@ -20,7 +39,13 @@ export function AdminUsers({ focus, onToast }: { focus: { id: number; email: str
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [action, setAction] = useState<Action>(null);
+  const [liveConcurrency, setLiveConcurrency] = useState<Record<string, UserConcurrencyInfo>>({});
+  const [concurrencyEnabled, setConcurrencyEnabled] = useState<boolean | null>(null);
+  const [concurrencyUpdatedAt, setConcurrencyUpdatedAt] = useState<string | null>(null);
+  const [concurrencyError, setConcurrencyError] = useState('');
+  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const generation = useRef(0);
+  const concurrencyBusy = useRef(false);
 
   useEffect(() => {
     if (!focus) return;
@@ -42,7 +67,7 @@ export function AdminUsers({ focus, onToast }: { focus: { id: number; email: str
     const g = ++generation.current;
     setBusy(true);
     try {
-      const p = await api.adminUsers(page, PAGE, query);
+      const p = await api.adminUsers(page, PAGE, query, 'current_concurrency', 'desc');
       if (g !== generation.current) return;
       setItems(p.items);
       setTotal(p.total);
@@ -57,6 +82,55 @@ export function AdminUsers({ focus, onToast }: { focus: { id: number; email: str
   useEffect(() => {
     load();
   }, [load]);
+
+  // A background re-sort: it never shows the spinner or an error over the
+  // last good page, and a manual load or a new search/page always wins.
+  const reorder = useCallback(async () => {
+    if (busy) return;
+    const g = generation.current;
+    try {
+      const p = await api.adminUsers(page, PAGE, query, 'current_concurrency', 'desc');
+      if (g !== generation.current) return;
+      setItems(p.items);
+      setTotal(p.total);
+    } catch {
+      // The next tick or a manual refresh tries again.
+    }
+  }, [busy, page, query]);
+
+  const refreshConcurrency = useCallback(async () => {
+    if (concurrencyBusy.current) return;
+    concurrencyBusy.current = true;
+    try {
+      const result = await api.adminUserConcurrency();
+      const live = result.user ?? {};
+      setLiveConcurrency(live);
+      setConcurrencyEnabled(result.enabled);
+      setConcurrencyUpdatedAt(result.timestamp ?? new Date().toISOString());
+      setConcurrencyError('');
+    } catch (e) {
+      setConcurrencyError(errorText(e, t('common.genericError')));
+    } finally {
+      concurrencyBusy.current = false;
+    }
+  }, [t]);
+
+  // Rows keep still while a dialog is open, so the row under the pointer
+  // does not change to another user mid-action.
+  const dialogOpen = useRef(false);
+  dialogOpen.current = selectedUser !== null || action !== null;
+  const tick = useRef({ reorder, refreshConcurrency });
+  tick.current = { reorder, refreshConcurrency };
+
+  useEffect(() => {
+    void tick.current.refreshConcurrency();
+    const id = window.setInterval(() => {
+      if (document.hidden) return;
+      void tick.current.refreshConcurrency();
+      if (!dialogOpen.current) void tick.current.reorder();
+    }, CONCURRENCY_REFRESH_MS);
+    return () => window.clearInterval(id);
+  }, []);
 
   const pages = Math.max(1, Math.ceil(total / PAGE));
 
@@ -78,6 +152,18 @@ export function AdminUsers({ focus, onToast }: { focus: { id: number; email: str
           </button>
         </div>
 
+        <div className="admin-concurrency-note rise" style={{ '--i': 0.5 } as CSSProperties}>
+          <span className={`admin-concurrency-dot ${concurrencyEnabled ? 'on' : ''}`} aria-hidden />
+          <span>
+            {concurrencyEnabled === false
+              ? t('admin.users.realtimeOff')
+              : concurrencyUpdatedAt
+                ? t('admin.users.concurrencyUpdated', { time: new Date(concurrencyUpdatedAt).toLocaleTimeString() })
+                : t('common.wait')}
+          </span>
+          {concurrencyError && <span className="admin-concurrency-warning">{t('admin.users.realtimeStale')}</span>}
+        </div>
+
         {error && <div className="usage-error rise">{error}</div>}
 
         <section className="card usage-card rise" style={{ '--i': 1 } as CSSProperties}>
@@ -88,6 +174,7 @@ export function AdminUsers({ focus, onToast }: { focus: { id: number; email: str
               <thead>
                 <tr>
                   <th>{t('admin.win.email')}</th>
+                  <th>{t('admin.users.concurrency')}</th>
                   <th>{t('admin.users.balance')}</th>
                   <th>{t('keys.today')}</th>
                   <th>{t('keys.month')}</th>
@@ -98,15 +185,38 @@ export function AdminUsers({ focus, onToast }: { focus: { id: number; email: str
               <tbody>
                 {(items ?? []).map((u) => {
                   const on = u.status === 'active';
+                  const current = currentConcurrency(u, liveConcurrency);
+                  const waiting = waitingConcurrency(u, liveConcurrency);
+                  const max = maxConcurrency(u, liveConcurrency);
+                  const capacity = max == null || max <= 0 ? t('admin.users.unlimited') : `${current} / ${max}`;
+                  const open = () => setSelectedUser(u);
                   return (
-                    <tr key={u.id} className={`${on ? '' : 'off'} ${focus?.id === u.id ? 'focus' : ''}`}>
+                    <tr
+                      key={u.id}
+                      className={`${on ? '' : 'off'} ${focus?.id === u.id ? 'focus' : ''}`}
+                      tabIndex={0}
+                      onClick={(e) => {
+                        if ((e.target as HTMLElement).closest('button')) return;
+                        open();
+                      }}
+                      onKeyDown={(e) => {
+                        if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
+                          e.preventDefault();
+                          open();
+                        }
+                      }}
+                    >
                       <td className="usage-model">
-                        <span className="user-cell">
-                          <span className="truncate" title={u.email}>
-                            {u.email}
-                          </span>
+                        <button className="user-link" title={t('admin.users.details')} onClick={open}>
+                          <span className="truncate" title={u.email}>{u.email}</span>
                           {u.role === 'admin' && <em className="user-role">{t('admin.users.admin')}</em>}
-                        </span>
+                        </button>
+                      </td>
+                      <td className="admin-concurrency-cell">
+                        <button className="concurrency-value" title={t('admin.users.details')} onClick={open}>
+                          <b>{capacity}</b>
+                          {waiting > 0 && <small>{t('admin.users.waiting', { n: waiting })}</small>}
+                        </button>
                       </td>
                       <td className="font-semibold">{money(u.balance)}</td>
                       <td>{money(u.today_cost ?? 0)}</td>
@@ -116,6 +226,9 @@ export function AdminUsers({ focus, onToast }: { focus: { id: number; email: str
                       </td>
                       <td>
                         <div className="row-actions">
+                          <button className="icon-button" title={t('admin.users.details')} aria-label={t('admin.users.details')} onClick={open}>
+                            <Icon name="eye" className="size-4" />
+                          </button>
                           <button className="icon-button" title={t('admin.users.add')} aria-label={t('admin.users.add')} onClick={() => setAction({ kind: 'add', user: u })}>
                             <Icon name="plus" className="size-4" />
                           </button>
@@ -150,6 +263,14 @@ export function AdminUsers({ focus, onToast }: { focus: { id: number; email: str
           {pages > 1 && <Pager page={page} pages={pages} onPage={setPage} />}
         </section>
       </div>
+
+      {selectedUser && (
+        <UserDetailsDialog
+          user={selectedUser}
+          concurrency={concurrencyFor(selectedUser, liveConcurrency)}
+          onClose={() => setSelectedUser(null)}
+        />
+      )}
 
       {action && (action.kind === 'add' || action.kind === 'subtract') && (
         <BalanceDialog
@@ -314,6 +435,147 @@ function StatusDialog({ user, onClose, onDone }: { user: AdminUser; onClose: () 
       }
     >
       <p className="confirm-text">{t(on ? 'admin.users.disableAsk' : 'admin.users.enableAsk', { email: user.email })}</p>
+    </Dialog>
+  );
+}
+
+function recordTime(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf()) ? value : date.toLocaleString();
+}
+
+function recordTokens(record: AdminUsageRecord) {
+  return `${(record.input_tokens ?? 0).toLocaleString()} / ${(record.output_tokens ?? 0).toLocaleString()}`;
+}
+
+function UserDetailsDialog({
+  user,
+  concurrency,
+  onClose,
+}: {
+  user: AdminUser;
+  concurrency: UserConcurrencyInfo | null;
+  onClose: () => void;
+}) {
+  const { t } = useI18n();
+  const [profile, setProfile] = useState<AdminUser>(user);
+  const [records, setRecords] = useState<AdminUsageRecord[] | null>(null);
+  const [busy, setBusy] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    setBusy(true);
+    setError('');
+    void Promise.allSettled([
+      api.adminUser(user.id),
+      api.adminUsage({ user_id: user.id, page: 1, page_size: 20, sort_by: 'created_at', sort_order: 'desc' }),
+    ]).then((results) => {
+      if (!alive) return;
+      const [profileResult, usageResult] = results;
+      if (profileResult.status === 'fulfilled') setProfile(profileResult.value);
+      if (usageResult.status === 'fulfilled') setRecords(usageResult.value.items);
+      const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+      if (failures.length > 0) setError(errorText(failures[0].reason, t('common.genericError')));
+      setBusy(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [t, user.id]);
+
+  const current = concurrency?.current_in_use ?? profile.current_concurrency ?? 0;
+  const max = concurrency?.max_capacity ?? profile.concurrency;
+  const waiting = concurrency?.waiting_in_queue ?? profile.waiting_count ?? 0;
+  const load = concurrency?.load_percentage;
+  const active = profile.status === 'active';
+  const capacity = max == null || max <= 0 ? t('admin.users.unlimited') : `${current} / ${max}`;
+
+  return (
+    <Dialog
+      wide
+      title={profile.email || user.email}
+      onClose={onClose}
+      footer={
+        <button className="btn btn-quiet" onClick={onClose}>
+          {t('common.close')}
+        </button>
+      }
+    >
+      {error && <div className="usage-error user-detail-error">{error}</div>}
+      <div className="user-detail-profile">
+        <div className="user-detail-field">
+          <span>{t('admin.win.email')}</span>
+          <b title={profile.email}>{profile.email}</b>
+        </div>
+        <div className="user-detail-field">
+          <span>{t('admin.win.username')}</span>
+          <b>{profile.username || '—'}</b>
+        </div>
+        <div className="user-detail-field">
+          <span>ID</span>
+          <b>{profile.id}</b>
+        </div>
+        <div className="user-detail-field">
+          <span>{t('admin.users.balance')}</span>
+          <b>{money(profile.balance)}</b>
+        </div>
+        <div className="user-detail-field">
+          <span>{t('admin.users.status')}</span>
+          <b className={active ? 'on' : 'off'}>{active ? t('admin.users.active') : t('admin.users.disabled')}</b>
+        </div>
+        <div className="user-detail-field">
+          <span>{t('admin.users.concurrency')}</span>
+          <b>{capacity}</b>
+        </div>
+        {waiting > 0 && (
+          <div className="user-detail-field">
+            <span>{t('admin.users.waiting', { n: waiting })}</span>
+            <b>{waiting}</b>
+          </div>
+        )}
+        {load != null && (
+          <div className="user-detail-field">
+            <span>{t('admin.users.load')}</span>
+            <b>{Math.round(load)}%</b>
+          </div>
+        )}
+      </div>
+
+      <div className="user-detail-history-head">
+        <h3>{t('admin.usage')}</h3>
+        {busy && <span>{t('common.wait')}</span>}
+      </div>
+      {records === null && busy ? (
+        <p className="usage-empty">{t('common.wait')}</p>
+      ) : records?.length ? (
+        <div className="overflow-x-auto">
+          <table className="usage-table admin-user-history">
+            <thead>
+              <tr>
+                <th>{t('usage.time')}</th>
+                <th>{t('usage.model')}</th>
+                <th>{t('usage.tokens')}</th>
+                <th>{t('usage.cost')}</th>
+                <th>{t('usage.status')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {records.map((record) => (
+                <tr key={record.id}>
+                  <td>{recordTime(record.created_at)}</td>
+                  <td className="usage-model" title={record.model}>{record.model || '—'}</td>
+                  <td>{recordTokens(record)}</td>
+                  <td>{money(record.actual_cost ?? record.total_cost ?? 0)}</td>
+                  <td><span className="user-status on">{record.status || t('usage.recorded')}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="usage-empty">{t('usage.recordNone')}</p>
+      )}
     </Dialog>
   );
 }

@@ -266,6 +266,10 @@ export interface AdminUser {
   status: string;
   created_at?: string;
   last_active_at?: string | null;
+  concurrency?: number;
+  current_concurrency?: number;
+  waiting_count?: number;
+  load_rate?: number;
   /** Added by the client from the batch usage endpoint. */
   today_cost?: number;
   /** Last 30 days. */
@@ -394,6 +398,58 @@ export interface UsageSnapshot {
   models: ModelUsage[];
 }
 
+export interface UsageRecord {
+  id: number;
+  user_id?: number;
+  api_key_id?: number;
+  request_id?: string;
+  model: string;
+  request_type?: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_creation_tokens?: number;
+  cache_read_tokens?: number;
+  total_tokens?: number;
+  actual_cost?: number;
+  total_cost?: number;
+  duration_ms?: number | null;
+  first_token_ms?: number | null;
+  stream?: boolean;
+  billing_mode?: string | null;
+  created_at: string;
+  api_key?: { id?: number; name?: string } | null;
+  group?: { id?: number; name?: string } | null;
+  upstream_model?: string | null;
+  upstream_response_model?: string | null;
+  status?: string | null;
+  error?: string | null;
+}
+
+export interface AdminUsageRecord extends UsageRecord {
+  user?: { id?: number; email?: string; username?: string } | null;
+  account?: { id?: number; name?: string; provider?: string } | null;
+  channel_id?: number | null;
+  model_mapping_chain?: string | null;
+  upstream_request_id?: string | null;
+  ip_address?: string | null;
+}
+
+export interface UserConcurrencyInfo {
+  user_id: number;
+  user_email?: string;
+  username?: string;
+  current_in_use: number;
+  max_capacity: number;
+  load_percentage: number;
+  waiting_in_queue: number;
+}
+
+export interface AdminUserConcurrency {
+  enabled: boolean;
+  user: Record<string, UserConcurrencyInfo>;
+  timestamp?: string;
+}
+
 export interface UsageKey {
   id: number;
   name: string;
@@ -403,7 +459,7 @@ export interface UsageKey {
 
 export type UsageQuery = Record<string, string | number>;
 
-function usage<T>(kind: 'stats' | 'snapshot', q: UsageQuery) {
+function usage<T>(kind: 'stats' | 'snapshot' | 'records', q: UsageQuery) {
   return invoke<T>('usage', { kind, query: Object.entries(q).map(([k, v]) => [k, String(v)]) });
 }
 
@@ -477,6 +533,7 @@ export const api = {
   rates: () => invoke<Rates>('rates'),
   usageStats: (q: UsageQuery) => usage<UsageStats>('stats', q),
   usageSnapshot: (q: UsageQuery) => usage<UsageSnapshot>('snapshot', q),
+  usageRecords: (q: UsageQuery) => usage<Page<UsageRecord>>('records', q),
   usageKeys: () => invoke<UsageKey[]>('usage_keys'),
   keys: () => invoke<ApiKey[]>('keys_list'),
   keyGroups: () => invoke<Group[]>('key_groups'),
@@ -496,9 +553,11 @@ export const api = {
   redeemHistory: (page: number, pageSize: number) => invoke<Page<RedeemItem>>('redeem_history', { page, pageSize }),
   adminOverview: (today: string, start: string, timezone: string) =>
     invoke<AdminOverview>('admin_overview', { today, start, timezone }),
-  adminUsers: (page: number, pageSize: number, search: string) =>
-    invoke<Page<AdminUser>>('admin_users', { page, pageSize, search }),
+  adminUsers: (page: number, pageSize: number, search: string, sortBy = 'created_at', sortOrder: 'asc' | 'desc' = 'desc') =>
+    invoke<Page<AdminUser>>('admin_users', { page, pageSize, search, sortBy, sortOrder }),
   adminUser: (id: number) => invoke<AdminUser>('admin_user', { id }),
+  adminUsage: (q: UsageQuery) => invoke<Page<AdminUsageRecord>>('admin_usage', { query: Object.entries(q).map(([k, v]) => [k, String(v)]) }),
+  adminUserConcurrency: () => invoke<AdminUserConcurrency>('admin_user_concurrency'),
   adminUserBalance: (id: number, amount: number, add: boolean, notes: string) =>
     invoke<AdminUser>('admin_user_balance', { id, amount, add, notes }),
   adminUserStatus: (id: number, active: boolean) => invoke<AdminUser>('admin_user_status', { id, active }),

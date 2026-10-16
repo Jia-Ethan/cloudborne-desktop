@@ -14,11 +14,13 @@ import { Logo } from './Logo';
 import { Icon } from './Icon';
 import { ToolGlyph } from './ToolGlyph';
 import { UsageChart, type Metric } from './UsageChart';
+import { UsageRecordsView } from './UsageRecordsView';
 
 const RANGES: Range[] = ['today', 'week', 'month'];
 
 export function UsageView() {
   const { t } = useI18n();
+  const [tab, setTab] = useState<'summary' | 'records'>('summary');
   const [range, setRange] = useState<Range>('week');
   const [tool, setTool] = useState<ToolId | 'all'>('all');
   const [metric, setMetric] = useState<Metric>('tokens');
@@ -72,8 +74,8 @@ export function UsageView() {
   }, [query, range, t]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (tab === 'summary') void load();
+  }, [load, tab]);
 
   const trend = useMemo(() => fillTrend(snap?.trend ?? [], range), [snap, range]);
   const vendors = useMemo(() => byVendor(snap?.models ?? []), [snap]);
@@ -95,96 +97,111 @@ export function UsageView() {
     <div className="main-scroll">
       <div className="main-column">
         <div className="usage-head rise" style={{ '--i': 0 } as CSSProperties}>
-          <div className="seg" role="tablist">
-            {RANGES.map((r) => (
-              <button key={r} role="tab" aria-selected={range === r} className={range === r ? 'on' : ''} onClick={() => setRange(r)}>
-                {t(`usage.range.${r}`)}
-              </button>
-            ))}
+          <div className="usage-tabs seg" role="tablist">
+            <button role="tab" aria-selected={tab === 'summary'} className={tab === 'summary' ? 'on' : ''} onClick={() => setTab('summary')}>
+              {t('usage.summary')}
+            </button>
+            <button role="tab" aria-selected={tab === 'records'} className={tab === 'records' ? 'on' : ''} onClick={() => setTab('records')}>
+              {t('usage.records')}
+            </button>
           </div>
-          <div className="flex items-center gap-2">
-            {tools.length > 0 && (
+          {tab === 'summary' && (
+            <div className="flex items-center gap-2">
               <div className="seg" role="tablist">
-                <button role="tab" aria-selected={tool === 'all'} className={tool === 'all' ? 'on' : ''} onClick={() => setTool('all')}>
-                  {t('usage.allTools')}
-                </button>
-                {tools.map((id) => (
-                  <button
-                    key={id}
-                    role="tab"
-                    aria-selected={tool === id}
-                    className={tool === id ? 'on' : ''}
-                    title={keys.find((k) => k.tool === id)?.name}
-                    onClick={() => setTool(id)}
-                  >
-                    <ToolGlyph id={id} size="xs" />
+                {RANGES.map((r) => (
+                  <button key={r} role="tab" aria-selected={range === r} className={range === r ? 'on' : ''} onClick={() => setRange(r)}>
+                    {t(`usage.range.${r}`)}
                   </button>
                 ))}
               </div>
-            )}
-            <button className="usage-refresh" title={t('usage.refresh')} aria-label={t('usage.refresh')} disabled={busy} onClick={load}>
-              <Icon name="refresh" className={`size-[15px] ${busy ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
-        </div>
-
-        {error && <div className="usage-error rise">{error}</div>}
-
-        <div className="usage-stats rise" style={{ '--i': 1 } as CSSProperties}>
-          <Stat label={t('usage.cost')} value={stats ? money(stats.total_actual_cost) : '—'} />
-          <Stat label={t('usage.requests')} value={stats ? compact(stats.total_requests) : '—'} />
-          <Stat label={t('usage.tokens')} value={stats ? compact(stats.total_tokens) : '—'} />
-          <Stat label={t('usage.hitRate')} value={percent(hit)} />
-        </div>
-
-        <section className="card usage-card rise" style={{ '--i': 2 } as CSSProperties}>
-          <div className="usage-card-head">
-            <h2>{t('usage.trend')}</h2>
-            <div className="seg seg-sm" role="tablist">
-              {(['tokens', 'cost'] as Metric[]).map((m) => (
-                <button key={m} role="tab" aria-selected={metric === m} className={metric === m ? 'on' : ''} onClick={() => setMetric(m)}>
-                  {t(`usage.metric.${m}`)}
-                </button>
-              ))}
+              {tools.length > 0 && (
+                <div className="seg" role="tablist">
+                  <button role="tab" aria-selected={tool === 'all'} className={tool === 'all' ? 'on' : ''} onClick={() => setTool('all')}>
+                    {t('usage.allTools')}
+                  </button>
+                  {tools.map((id) => (
+                    <button
+                      key={id}
+                      role="tab"
+                      aria-selected={tool === id}
+                      className={tool === id ? 'on' : ''}
+                      title={keys.find((k) => k.tool === id)?.name}
+                      onClick={() => setTool(id)}
+                    >
+                      <ToolGlyph id={id} size="xs" />
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button className="usage-refresh" title={t('usage.refresh')} aria-label={t('usage.refresh')} disabled={busy} onClick={() => void load()}>
+                <Icon name="refresh" className={`size-[15px] ${busy ? 'animate-spin' : ''}`} />
+              </button>
             </div>
-          </div>
-          <UsageChart points={trend} metric={metric} hourly={range === 'today'} />
-        </section>
-
-        <section className="card usage-card rise" style={{ '--i': 3 } as CSSProperties}>
-          <div className="usage-card-head">
-            <h2>{t('usage.models')}</h2>
-          </div>
-          {vendors.length === 0 ? (
-            <p className="usage-empty">{busy ? t('common.wait') : t('usage.none')}</p>
-          ) : (
-            <table className="usage-table">
-              <thead>
-                <tr>
-                  <th>{t('usage.vendor')}</th>
-                  <th>{t('usage.requests')}</th>
-                  <th>{t('usage.tokens')}</th>
-                  <th>{t('usage.hitRate')}</th>
-                  <th>{t('usage.cost')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {vendors.map((v) => (
-                  <tr key={v.vendor.id}>
-                    <td className="usage-model" title={v.models.join('\n')}>
-                      <VendorName vendor={v.vendor} fallback={t('usage.otherVendor')} />
-                    </td>
-                    <td>{compact(v.requests)}</td>
-                    <td>{compact(v.total_tokens)}</td>
-                    <td>{percent(hitRate(v))}</td>
-                    <td>{money(v.actual_cost)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           )}
-        </section>
+        </div>
 
+        {tab === 'records' ? (
+          <UsageRecordsView embedded />
+        ) : (
+          <>
+            {error && <div className="usage-error rise">{error}</div>}
+
+            <div className="usage-stats rise" style={{ '--i': 1 } as CSSProperties}>
+              <Stat label={t('usage.cost')} value={stats ? money(stats.total_actual_cost) : '—'} />
+              <Stat label={t('usage.requests')} value={stats ? compact(stats.total_requests) : '—'} />
+              <Stat label={t('usage.tokens')} value={stats ? compact(stats.total_tokens) : '—'} />
+              <Stat label={t('usage.hitRate')} value={percent(hit)} />
+            </div>
+
+            <section className="card usage-card rise" style={{ '--i': 2 } as CSSProperties}>
+              <div className="usage-card-head">
+                <h2>{t('usage.trend')}</h2>
+                <div className="seg seg-sm" role="tablist">
+                  {(['tokens', 'cost'] as Metric[]).map((m) => (
+                    <button key={m} role="tab" aria-selected={metric === m} className={metric === m ? 'on' : ''} onClick={() => setMetric(m)}>
+                      {t(`usage.metric.${m}`)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <UsageChart points={trend} metric={metric} hourly={range === 'today'} />
+            </section>
+
+            <section className="card usage-card rise" style={{ '--i': 3 } as CSSProperties}>
+              <div className="usage-card-head">
+                <h2>{t('usage.models')}</h2>
+              </div>
+              {vendors.length === 0 ? (
+                <p className="usage-empty">{busy ? t('common.wait') : t('usage.none')}</p>
+              ) : (
+                <table className="usage-table">
+                  <thead>
+                    <tr>
+                      <th>{t('usage.vendor')}</th>
+                      <th>{t('usage.requests')}</th>
+                      <th>{t('usage.tokens')}</th>
+                      <th>{t('usage.hitRate')}</th>
+                      <th>{t('usage.cost')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vendors.map((v) => (
+                      <tr key={v.vendor.id}>
+                        <td className="usage-model" title={v.models.join('\n')}>
+                          <VendorName vendor={v.vendor} fallback={t('usage.otherVendor')} />
+                        </td>
+                        <td>{compact(v.requests)}</td>
+                        <td>{compact(v.total_tokens)}</td>
+                        <td>{percent(hitRate(v))}</td>
+                        <td>{money(v.actual_cost)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
+          </>
+        )}
       </div>
     </div>
   );

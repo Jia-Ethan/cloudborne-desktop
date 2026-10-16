@@ -65,6 +65,8 @@ pub fn run() {
             commands::admin_overview,
             commands::admin_users,
             commands::admin_user,
+            commands::admin_usage,
+            commands::admin_user_concurrency,
             commands::admin_user_balance,
             commands::admin_user_status,
             commands::admin_lottery_settings,

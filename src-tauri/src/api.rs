@@ -93,6 +93,7 @@ pub struct KeyCost {
 pub enum UsageKind {
     Stats,
     Snapshot,
+    Records,
 }
 
 #[derive(Debug, Serialize)]
@@ -482,6 +483,7 @@ impl Client {
         let path = match kind {
             UsageKind::Stats => "/api/v1/usage/stats",
             UsageKind::Snapshot => "/api/v1/usage/dashboard/snapshot-v2",
+            UsageKind::Records => "/api/v1/usage",
         };
         self.send(self.http.get(self.url(path)).query(query).bearer_auth(access)).await
     }

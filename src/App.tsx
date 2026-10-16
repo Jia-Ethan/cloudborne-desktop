@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
-import { api, errorText, isAdmin, type LotteryStatus, type Rates, type SavedAccount, type ToolStatus, type User } from './api';
+import { api, errorText, isAdmin, type DdzStatus, type LotteryStatus, type Rates, type SavedAccount, type ToolStatus, type User } from './api';
 import { About } from './components/About';
 import { AccountMenu } from './components/AccountMenu';
 import { DiscountBar } from './components/DiscountBar';
@@ -19,6 +19,7 @@ import { AdminOverview } from './components/AdminOverview';
 import { AdminUsers } from './components/AdminUsers';
 import { AdminLottery } from './components/AdminLottery';
 import { AdminDdz } from './components/AdminDdz';
+import { UsageRecordsView } from './components/UsageRecordsView';
 import { useI18n } from './i18n';
 import { useUpdater } from './update';
 import { useAgent } from './useAgent';
@@ -26,7 +27,7 @@ import { useDdz } from './useDdz';
 
 const usd = (n: number) => `$${n.toFixed(2)}`;
 
-type View = 'home' | 'task' | 'usage' | 'lottery' | 'ddz' | 'redeem' | 'keys' | 'status' | 'admin' | 'adminUsers' | 'adminLottery' | 'adminDdz';
+type View = 'home' | 'task' | 'usage' | 'lottery' | 'ddz' | 'redeem' | 'keys' | 'status' | 'admin' | 'adminUsers' | 'adminUsage' | 'adminLottery' | 'adminDdz';
 
 export function App() {
   const { t, lang } = useI18n();
@@ -42,6 +43,7 @@ export function App() {
   const [chests, setChests] = useState(0);
   // Shown only once the relay says the tables are open.
   const [ddzOn, setDdzOn] = useState(false);
+  const [ddzStatus, setDdzStatus] = useState<DdzStatus | null>(null);
   const [userFocus, setUserFocus] = useState<{ id: number; email: string } | null>(null);
   const [accounts, setAccounts] = useState<SavedAccount[]>([]);
   // The login page over a signed-in account (adding one, or one that needs its password again).
@@ -81,8 +83,16 @@ export function App() {
   const checkDdz = useCallback(() => {
     const g = gen.current;
     api.ddzStatus().then(
-      (s) => g === gen.current && setDdzOn(s.enabled),
-      () => g === gen.current && setDdzOn(false),
+      (s) => {
+        if (g !== gen.current) return;
+        setDdzStatus(s);
+        setDdzOn(s.enabled);
+      },
+      () => {
+        if (g !== gen.current) return;
+        setDdzStatus(null);
+        setDdzOn(false);
+      },
     );
   }, []);
 
@@ -96,6 +106,7 @@ export function App() {
       setLotteryOn(false);
       setChests(0);
       setDdzOn(false);
+      setDdzStatus(null);
       setRates(null);
       setAdding(false);
       setPrefill('');
@@ -202,6 +213,7 @@ export function App() {
           if (u) {
             loadRates();
             checkLottery();
+            checkDdz();
           }
           return;
         } catch {
@@ -336,6 +348,10 @@ export function App() {
               <Icon name="users" className="size-[17px]" />
               {t('nav.adminUsers')}
             </button>
+            <button className={`nav-item ${view === 'adminUsage' ? 'selected' : ''}`} onClick={() => setView('adminUsage')}>
+              <Icon name="chart" className="size-[17px]" />
+              {t('nav.adminUsage')}
+            </button>
             <button className={`nav-item ${view === 'adminLottery' ? 'selected' : ''}`} onClick={() => setView('adminLottery')}>
               <Icon name="dice" className="size-[17px]" />
               {t('nav.adminLottery')}
@@ -412,11 +428,13 @@ export function App() {
         ) : view === 'lottery' ? (
           <LotteryView balance={user.balance} onBalance={refetchMe} onStatus={lotteryStatus} />
         ) : view === 'ddz' ? (
-          <DdzView userId={user.id} balance={user.balance} table={ddz.table} conn={ddz.conn} send={ddz.send} />
+          <DdzView userId={user.id} balance={user.balance} table={ddz.table} conn={ddz.conn} send={ddz.send} previewStatus={ddzStatus} />
         ) : view === 'admin' && isAdmin(user) ? (
           <AdminOverview onOpenUser={openUser} onOpenLottery={() => setView('adminLottery')} />
         ) : view === 'adminUsers' && isAdmin(user) ? (
           <AdminUsers key={userFocus?.id ?? 'all'} focus={userFocus} onToast={setToast} />
+        ) : view === 'adminUsage' && isAdmin(user) ? (
+          <UsageRecordsView admin />
         ) : view === 'adminLottery' && isAdmin(user) ? (
           <AdminLottery onOpenUser={openUser} onToast={setToast} />
         ) : view === 'adminDdz' && isAdmin(user) ? (

@@ -517,10 +517,23 @@ pub async fn admin_overview(s: State<'_, Session>, today: String, start: String,
 /// One page of users, each with `today_cost` and `month_cost` (last 30 days)
 /// added from the batch usage endpoint.
 #[tauri::command]
-pub async fn admin_users(s: State<'_, Session>, page: u32, page_size: u32, search: String) -> Result<serde_json::Value> {
+pub async fn admin_users(
+    s: State<'_, Session>,
+    page: u32,
+    page_size: u32,
+    search: String,
+    sort_by: String,
+    sort_order: String,
+) -> Result<serde_json::Value> {
     let s = s.inner();
     let (page, size) = (page.max(1).to_string(), page_size.clamp(1, 100).to_string());
-    let query = q(&[("page", &page), ("page_size", &size), ("search", search.trim())]);
+    let query = q(&[
+        ("page", &page),
+        ("page_size", &size),
+        ("search", search.trim()),
+        ("sort_by", sort_by.trim()),
+        ("sort_order", sort_order.trim()),
+    ]);
     let mut list = admin_call(s, Method::Get, "/users", query, None).await?;
     let ids: Vec<i64> = list
         .get("items")
@@ -556,6 +569,16 @@ pub fn merge_user_costs(list: &mut serde_json::Value, usage: &serde_json::Value)
 #[tauri::command]
 pub async fn admin_user(s: State<'_, Session>, id: i64) -> Result<serde_json::Value> {
     admin_call(s.inner(), Method::Get, &format!("/users/{id}"), vec![], None).await
+}
+
+#[tauri::command]
+pub async fn admin_usage(s: State<'_, Session>, query: Query) -> Result<serde_json::Value> {
+    admin_call(s.inner(), Method::Get, "/usage", query, None).await
+}
+
+#[tauri::command]
+pub async fn admin_user_concurrency(s: State<'_, Session>) -> Result<serde_json::Value> {
+    admin_call(s.inner(), Method::Get, "/ops/user-concurrency", vec![], None).await
 }
 
 /// Adds to or takes from a user's balance; `amount` must be above 0.

@@ -28,7 +28,20 @@ export function useDdz(uid: number | null, wanted: boolean, onError: (message: s
     if (!live) return;
     let gone = false;
     let latest: Table | null = null;
+    let pending: Table | null | undefined;
+    let frame: number | null = null;
     const channel = new Channel<DdzEvent>();
+    const flush = () => {
+      frame = null;
+      if (gone || pending === undefined) return;
+      const next = pending;
+      pending = undefined;
+      setTable(next);
+    };
+    const schedule = () => {
+      if (frame !== null) return;
+      frame = typeof requestAnimationFrame === 'function' ? requestAnimationFrame(flush) : window.setTimeout(flush, 16);
+    };
     channel.onmessage = (e) => {
       if (gone) return;
       if (e.type === 'conn') {
@@ -43,7 +56,8 @@ export function useDdz(uid: number | null, wanted: boolean, onError: (message: s
       const t = m.table;
       if (!isNewerTable(latest,t)) return;
       latest=t;
-      setTable(t);
+      pending = t;
+      schedule();
       if (t?.result) {
         const key = `${t.id}:${t.commit}`;
         if (key !== settled.current) {
@@ -55,6 +69,12 @@ export function useDdz(uid: number | null, wanted: boolean, onError: (message: s
     invoke('ddz_connect', { channel }).catch((err) => handlers.current.onError(errorText(err, '')));
     return () => {
       gone = true;
+      if (frame !== null) {
+        if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame);
+        else window.clearTimeout(frame);
+      }
+      frame = null;
+      pending = undefined;
       invoke('ddz_close').catch(() => {});
       setConn('idle');
       setTable(null);

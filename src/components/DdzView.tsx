@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import {
   HEROES,
   HERO_NAMES, FREE_POLICY, seatName, type FeePolicy,
@@ -44,6 +44,18 @@ const BID_MS = 15000;
 const PLAY_MS = 20000;
 
 const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+const DDZ_QUALITY_KEY = 'cloudborne.ddz.quality';
+
+type DdzQuality = 'standard' | 'high';
+
+function readDdzQuality(): DdzQuality {
+  if (reducedMotion()) return 'standard';
+  try {
+    return localStorage.getItem(DDZ_QUALITY_KEY) === 'high' ? 'high' : 'standard';
+  } catch {
+    return 'standard';
+  }
+}
 
 const LOGO: Record<Hero, LogoId> = {
   gpt: 'openai',
@@ -89,7 +101,7 @@ const fmtX = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(n * 10 
  * runs the game and sends a snapshot of the table on every change; this view
  * only draws it and sends the player's actions back.
  */
-export function DdzView({ balance, table, conn, send, userId = 0, previewStatus }: { balance: number; table: Table | null; conn: DdzConn; send: (a: Action) => void; userId?: number; previewStatus?: DdzStatus }) {
+export function DdzView({ balance, table, conn, send, userId = 0, previewStatus }: { balance: number; table: Table | null; conn: DdzConn; send: (a: Action) => void; userId?: number; previewStatus?: DdzStatus | null }) {
   const { t } = useI18n();
   const [rulesFor, setRulesFor] = useState<Action | 'read' | null>(null);
   const [status, setStatus] = useState<DdzStatus | null>(previewStatus ?? null);
@@ -98,10 +110,14 @@ export function DdzView({ balance, table, conn, send, userId = 0, previewStatus 
   const busy = useRef(false);
   const acceptanceKey = (p: FeePolicy) => `${RULES_KEY}.${userId}.${RULES_VERSION}.${p.version}`;
   useEffect(() => {
-    if (previewStatus) return;
+    // The app-level prefetch only paints the lobby without a wait; the view
+    // still polls so a fee policy or switch changed later reaches this page.
+    // `null` means the prefetch has not answered yet, so ask now.
+    if (previewStatus != null) setStatus(previewStatus);
     let gone = false;
     const refresh = () => api.ddzStatus().then(s => { if (!gone) setStatus(s); }).catch(() => {});
-    void refresh(); const timer = setInterval(refresh, 15000);
+    if (previewStatus == null) void refresh();
+    const timer = setInterval(refresh, 15000);
     return () => { gone=true;clearInterval(timer); };
   }, [previewStatus]);
   const enter = async (a: Action) => {
@@ -109,7 +125,8 @@ export function DdzView({ balance, table, conn, send, userId = 0, previewStatus 
     if (busy.current) return;
     busy.current=true;setError('');
     try {
-      const st = previewStatus ?? await api.ddzStatus();setStatus(st);
+      // Always ask at the door: the relay refuses a seat under an old fee policy version.
+      const st = await api.ddzStatus();setStatus(st);
       if (!st.enabled) { setError(t('ddz.unavailable'));return; }
       const p=st.fee_policy ?? FREE_POLICY;setPolicy(p);
       const action={...a,fee_policy:p.version};
@@ -133,6 +150,7 @@ export function DdzView({ balance, table, conn, send, userId = 0, previewStatus 
 
 function Lobby({ balance, conn, onEnter, onRules, policy }: { balance: number; conn: DdzConn; onEnter: (a: Action) => void; onRules: () => void; policy?: FeePolicy }) {
   const { t } = useI18n();
+  const quality = useMemo(readDdzQuality, []);
   const affordable = (b: number) => balance >= minBalance(b);
   const [base, setBase] = useState(STAKES[0]);
   const [code, setCode] = useState('');
@@ -140,7 +158,7 @@ function Lobby({ balance, conn, onEnter, onRules, policy }: { balance: number; c
 
   return (
     <div className="main-scroll">
-      <div className="main-column ddz-lobby ddz-salon rise" style={{ '--i': 0 } as CSSProperties}>
+      <div className={`main-column ddz-lobby ddz-salon ddz-${quality} rise`} style={{ '--i': 0 } as CSSProperties}>
         <Ornaments />
         <section className="ddz-hero">
           <div className="ddz-hero-text">
@@ -382,7 +400,8 @@ function TableScene({ table, conn, send }: { table: Table; conn: DdzConn; send: 
   const myTurn = table.turn === me && (table.phase === 'bid' || table.phase === 'play');
   const mine = table.seats[me];
   const [leaving, setLeaving] = useState(false);
-  const fx = useTableFx(table);
+  const quality = useMemo(readDdzQuality, []);
+  const fx = useTableFx(table, quality);
 
   const leave = () => {
     if (table.phase === 'bid' || table.phase === 'joker' || table.phase === 'play') setLeaving(true);
@@ -390,7 +409,7 @@ function TableScene({ table, conn, send }: { table: Table; conn: DdzConn; send: 
   };
 
   return (
-    <div className={`ddz-felt ddz-table phase-${table.phase} ${fx.shake ? 'shake' : ''}`}>
+    <div className={`ddz-felt ddz-table ddz-${quality} phase-${table.phase} ${fx.shake ? 'shake' : ''}`}>
       <Ornaments />
       <canvas ref={fx.canvas} className="ddz-sparks" aria-hidden />
       <TopBar table={table} onLeave={leave} send={send} />
@@ -608,7 +627,7 @@ function Avatar({ info, seat, table, size = 'md' }: { info: SeatInfo | null; sea
   const { t } = useI18n();
   const turn = table.turn === seat && (table.phase === 'bid' || table.phase === 'play');
   const lord = table.landlord === seat;
-  const left = useCountdown(turn ? table.deadline : null);
+  const left = useCountdown(turn ? table.deadline : null, turn);
   return (
     <div className={`ddz-avatar ${size} ${turn ? 'turn' : ''} ${lord ? 'lord' : ''} ${info ? '' : 'empty'}`}>
       {info ? <HeroInfo hero={info.hero} info={info} table={table}><HeroBadge hero={info.hero} size={size === 'lg' ? 'lg' : 'md'} /></HeroInfo> : <span className="ddz-avatar-empty">?</span>}
@@ -1124,7 +1143,7 @@ function ResultSheet({ table, send }: { table: Table; send: (a: Action) => void 
 type Banner = { key: string; kind: string; text: string; hero?: Hero };
 
 /** A banner for big plays and skills; sparks and a shake for bombs. */
-function useTableFx(table: Table) {
+function useTableFx(table: Table, quality: DdzQuality) {
   const { t } = useI18n();
   const canvas = useRef<HTMLCanvasElement>(null);
   const [banner, setBanner] = useState<Banner | null>(null);
@@ -1147,7 +1166,7 @@ function useTableFx(table: Table) {
     const label = SHOWY[m.pattern.kind];
     if (!label) return;
     show({ key, kind: m.pattern.kind, text: t(label) });
-    if ((m.pattern.kind === 'bomb' || m.pattern.kind === 'rocket') && !reducedMotion()) {
+    if (quality === 'high' && (m.pattern.kind === 'bomb' || m.pattern.kind === 'rocket') && !reducedMotion()) {
       setShake(true);
       setTimeout(() => setShake(false), 450);
       const c = canvas.current;
@@ -1162,7 +1181,7 @@ function useTableFx(table: Table) {
         });
       }
     }
-  }, [table.last, show, t]);
+  }, [quality, table.last, show, t]);
 
   useEffect(() => {
     const u = table.skill;
@@ -1175,17 +1194,33 @@ function useTableFx(table: Table) {
   return { canvas, banner, shake };
 }
 
-function useNow(every: number) {
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), every);
-    return () => clearInterval(id);
-  }, [every]);
-  return now;
+let clockNow = Date.now();
+let clockTimer: ReturnType<typeof setInterval> | null = null;
+const clockListeners = new Set<() => void>();
+const noopSubscribe = () => () => {};
+const readClock = () => clockNow;
+
+/** Keep one low-frequency clock for the active seat instead of one timer per avatar. */
+function subscribeClock(listener: () => void) {
+  clockNow = Date.now();
+  clockListeners.add(listener);
+  if (clockListeners.size === 1) {
+    clockTimer = setInterval(() => {
+      clockNow = Date.now();
+      for (const notify of clockListeners) notify();
+    }, 1000);
+  }
+  return () => {
+    clockListeners.delete(listener);
+    if (clockListeners.size === 0 && clockTimer !== null) {
+      clearInterval(clockTimer);
+      clockTimer = null;
+    }
+  };
 }
 
-/** Whole seconds until deadline, or null without one. */
-function useCountdown(deadline: number | null) {
-  const now = useNow(250);
-  return deadline ? Math.max(0, Math.ceil((deadline - now) / 1000)) : null;
+/** Whole seconds until deadline, or null without an active turn. */
+function useCountdown(deadline: number | null, active: boolean) {
+  const now = useSyncExternalStore(active ? subscribeClock : noopSubscribe, readClock, readClock);
+  return active && deadline ? Math.max(0, Math.ceil((deadline - now) / 1000)) : null;
 }
