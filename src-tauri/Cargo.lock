@@ -509,7 +509,7 @@ dependencies = [
 
 [[package]]
 name = "cloudborne-desktop"
-version = "0.9.5"
+version = "0.9.6"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -535,6 +535,7 @@ dependencies = [
  "toml_edit 0.25.17+spec-1.1.0",
  "uuid",
  "windows-version",
+ "winreg",
 ]
 
 [[package]]
