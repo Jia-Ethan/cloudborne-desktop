@@ -6277,10 +6277,23 @@ html[data-glass='mica'] {
   }
   /* WebKit cannot composite a clipped badge under drop-shadow, so a badge that
      keeps scaling repaints its blur every frame: measured 14 fps on the table
-     in Safari. The turn ring and the seconds still mark whose turn it is. */
-  .ddz-standard .ddz-avatar .ddz-herob,
+     in Safari. The turn ring and the seconds still mark whose turn it is.
+     Painting such a badge even once (the lobby row, a skill banner) also left
+     every later table update with two ~100ms frames, in that WebKit process,
+     long after the badge was gone. A round box-shadow under the octagon reads
+     the same and never touches the filter path. */
+  .ddz-standard .ddz-herob,
+  .ddz-standard .ddz-avatar .ddz-herob {
+    filter: none;
+    border-radius: 50%;
+    box-shadow: 0 6px 12px rgb(0 0 0 / 0.4);
+  }
   .ddz-standard .ddz-avatar.lord .ddz-herob {
     filter: none;
+    box-shadow: 0 0 10px rgb(246 210 120 / 0.55), 0 6px 12px rgb(0 0 0 / 0.4);
+  }
+  .ddz-standard .ddz-herob.sm {
+    box-shadow: none;
   }
   .ddz-standard .ddz-avatar.turn .ddz-herob {
     animation: none;
