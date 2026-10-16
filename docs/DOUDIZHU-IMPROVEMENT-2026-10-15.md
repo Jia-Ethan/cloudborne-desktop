@@ -116,7 +116,7 @@
 
 relay 增加赢家服务费政策快照、进入收费局的版本确认、整数分向下取整、事务内毛额/费用/净额入账、重复结算读回、座位身份和名称快照，以及公开历史快照。迁移文件 `261_cloudborne_doudizhu_fees.sql` 已在生产 `schema_migrations` 中确认；默认费率为 5%，`fee_enabled` 仍关闭。
 
-本地验证：桌面端 `npm run build`、`npm test`（6 个文件、79 个测试）通过；后端 `go test -tags=unit ./internal/service ./internal/repository ./migrations -run 'TestD(dz|oudizhu)|TestCloudborneDoudizhu' -count=1` 通过。生产 `https://api.cloudborne.cn/health` 返回 `200`，未认证的 `/api/v1/ddz` 返回预期 `401`；桌面端 `latest.json` 返回 `0.9.5`。Vite 本地页已加载，因桌面运行时的 Tauri `invoke` 在纯浏览器环境不可用，无法在浏览器中建立真实牌桌；完整运行时验收仍需在 Tauri 客户端中执行。
+本地验证：桌面端 `npm run build`、`npm test`（6 个文件、79 个测试）通过；后端 `go test -tags=unit ./internal/service ./internal/repository ./migrations -run 'TestD(dz|oudizhu)|TestCloudborneDoudizhu' -count=1` 通过。生产 `https://api.cloudborne.cn/health` 返回 `200`，未认证的 `/api/v1/ddz` 返回预期 `401`；在本记录核验时桌面端 `latest.json` 返回 `0.9.5`（随后已发布 `v0.9.6`）。Vite 本地页已加载，因桌面运行时的 Tauri `invoke` 在纯浏览器环境不可用，无法在浏览器中建立真实牌桌；完整运行时验收仍需在 Tauri 客户端中执行。
 
 ## 部署记录（2026-10-15—2026-10-16）
 
