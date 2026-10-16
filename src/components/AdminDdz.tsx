@@ -20,6 +20,7 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [feeEnabled, setFeeEnabled] = useState(false);
   const [feeRate, setFeeRate] = useState('5');
+  const [minBalanceTimes, setMinBalanceTimes] = useState('20');
   const [saving, setSaving] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState('');
@@ -33,6 +34,7 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
       setEnabled(st.enabled);
       setFeeEnabled(st.fee_enabled ?? false);
       setFeeRate(String((st.fee_bps ?? 500) / 100));
+      setMinBalanceTimes(String(st.min_balance_times ?? 20));
       setError('');
     } catch (e) {
       setError(errorText(e, t('common.genericError')));
@@ -64,6 +66,16 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
       setFeeEnabled(st.fee_enabled);
       setFeeRate(String(st.fee_bps / 100));
       onToast(t('admin.ddz.feeSaved'));
+    } catch (e) { onToast(errorText(e, t('common.genericError'))); }
+    finally { setSaving(false); }
+  };
+
+  const saveBalancePolicy = async () => {
+    setSaving(true);
+    try {
+      const st = await api.adminDdzSave({ min_balance_times: Math.round(Number(minBalanceTimes)) });
+      setMinBalanceTimes(String(st.min_balance_times ?? 20));
+      onToast(t('admin.ddz.balanceSaved'));
     } catch (e) { onToast(errorText(e, t('common.genericError'))); }
     finally { setSaving(false); }
   };
@@ -112,6 +124,11 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
             <button className="btn btn-primary" disabled={busy || saving || enabled === null}>{t('admin.ddz.feeSave')}</button>
           </form>
           <p className="lot-settings-hint">{t('admin.ddz.feeHint')}</p>
+          <form className="ddz-fee-settings" onSubmit={e => {e.preventDefault();void saveBalancePolicy();}}>
+            <label>{t('admin.ddz.balanceTimes')} <input type="number" min="10" max="100" step="1" required value={minBalanceTimes} disabled={busy || saving || enabled === null} onChange={e=>setMinBalanceTimes(e.target.value)} /> ×</label>
+            <button className="btn btn-primary" disabled={busy || saving || enabled === null}>{t('admin.ddz.balanceSave')}</button>
+          </form>
+          <p className="lot-settings-hint">{t('admin.ddz.balanceHint')}</p>
         </section>
 
         <div className="lot-panels rise" style={{ '--i': 2 } as CSSProperties}>

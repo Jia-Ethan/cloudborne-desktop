@@ -6317,7 +6317,10 @@ html[data-glass='mica'] {
   .ddz-table {
     display: grid;
     grid-template-columns: 176px minmax(0, 1fr) 176px;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    /* The top stack contains bottom cards and a diamond multiplier. Reserve
+       its full height so the centre's last-play cards cannot slide underneath
+       it while the multiplier animates. */
+    grid-template-rows: 150px minmax(0, 1fr) auto;
     grid-template-areas:
       'top top top'
       'left center right'
@@ -6806,6 +6809,30 @@ html[data-glass='mica'] {
     align-items: center;
     min-height: 0;
     padding: 46px 0 8px;
+  }
+  .ddz-showdown {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    z-index: 4;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    max-width: min(92%, 560px);
+    padding: 12px 20px 16px;
+    translate: -50% -50%;
+    background: rgb(4 25 18 / 0.76);
+    border: 1px solid rgb(212 175 96 / 0.72);
+    border-radius: 10px;
+    box-shadow: 0 12px 36px rgb(0 0 0 / 0.32);
+  }
+  .ddz-showdown-title {
+    color: var(--gold-hi);
+    font-family: var(--serif-cjk);
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
   }
   .ddz-move {
     display: flex;
@@ -7826,7 +7853,7 @@ html[data-glass='mica'] {
     .ddz-guide-list, .ddz-guide-list.jokers { grid-template-columns: minmax(0, 1fr); }
     .ddz-play-row .pc-sm { --w: 40px; --h: 56px; }
     .ddz-play-row .pc + .pc { margin-left: -14px; }
-    .ddz-table { grid-template-columns: 72px minmax(0, 1fr) 72px; }
+    .ddz-table { grid-template-columns: 72px minmax(0, 1fr) 72px; grid-template-rows: 150px minmax(0, 1fr) auto; }
   }
 }
 

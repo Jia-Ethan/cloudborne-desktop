@@ -446,7 +446,12 @@ export type Table = {
   code: string | null;
   owner: Seat | null;
   base: number;
-  phase: 'waiting' | 'bid' | 'joker' | 'play' | 'over';
+  /**
+   * `showdown` is the short pause after the winning play and before the
+   * settlement snapshot.  It gives every client time to see the final cards
+   * without exposing the final money result early.
+   */
+  phase: 'waiting' | 'bid' | 'joker' | 'play' | 'showdown' | 'over';
   me: Seat;
   seats: [SeatInfo | null, SeatInfo | null, SeatInfo | null];
   hand: Card[];

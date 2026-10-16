@@ -4,7 +4,13 @@ import { invoke } from '@tauri-apps/api/core';
 export type ToolId = 'codex' | 'claude' | 'zcode' | 'grok' | 'pi';
 
 /** 小丑斗地主 lobby as the relay reports it. */
-export interface DdzSettings { enabled: boolean; fee_enabled: boolean; fee_bps: number }
+export interface DdzSettings {
+  enabled: boolean;
+  fee_enabled: boolean;
+  fee_bps: number;
+  /** Minimum balance required to enter, as a multiple of the base stake. */
+  min_balance_times: number;
+}
 export interface DdzStatus {
   fee_policy?: FeePolicy;
   enabled: boolean;

@@ -6,7 +6,7 @@ Cloudborne（栖云）中转站的桌面客户端：用中转站账号登录、�
 
 ## 状态
 
-v0.9.8 已发布（未签名）。已完成：
+v0.9.9 已发布（未签名）。已完成：
 
 - 邮箱密码登录、两步验证、令牌自动刷新。令牌和设备 ID 在 Windows 上存系统凭据管理器；在 macOS 上存应用数据目录里只有本人能读的文件（`~/Library/Application Support/cn.cloudborne.desktop/*.secret`，权限 600），不用钥匙串：应用是 ad-hoc 签名，每次更新代码哈希都变，钥匙串会在每次更新后弹窗要登录密码。注册和找回密码在中转站网页上做，客户端不提供。
 - 多账号（v0.9，v0.9.1 改进）：可以保存多个账号。左下角显示当前账号的用户名（没设用户名时用邮箱 @ 前面的部分），点开的菜单顶部是当前账号（用户名 + 邮箱，点击复制邮箱），下面「切换账号」列出其他账号，一键切换；还有添加账号、移除（悬停出现 ×，会在中转站登出并忘掉这个账号和它记住的密码）。登录时默认勾选「记住密码」：密码和令牌存在同一个地方（macOS 是应用数据目录下仅本人可读的文件，Windows/Linux 是系统凭据），条目名 `password.<user_id>`，只有 Rust 端读取，界面只拿到 `has_password`。这样账号的会话过期或被退出后，点一下仍能直接登录（用记住的密码重新登录；需要两步验证时直接进验证码页；密码已改则提示重新输入并忘掉旧密码）。「退出账号」只退出当前账号，账号留在列表里，有其他已登录账号就切过去，否则回登录页。登录页有已保存账号时先显示「选择账号」卡片（用户名、邮箱、状态：已登录 / 一键登录 / 需要密码），点卡片直接登录，「使用其他账号」进入表单；表单的邮箱框像浏览器一样弹出已保存的账号（可上下键选择），密码框可以显示/隐藏。账号列表存在 `accounts`（user_id、邮箱、用户名和当前账号），每个账号的令牌单独存在 `session.<user_id>`，因为 Windows 凭据最多 2560 字节。v0.8 的 `session` 在首次启动时接管为当前账号，拿到资料后搬到它自己的条目。刷新令牌按账号各自处理：被中转站拒绝时只把这个账号标成已登出，其他账号不受影响；「另一个进程已经换过令牌」的恢复也按账号做。设备 ID 全安装共用一个。切换后各页面状态、用量缓存、宝箱状态、管理页焦点都重置；新任务的历史按安装保留，模型列表按账号重新读取。
@@ -110,6 +110,6 @@ brand/render.sh          # 用本机 Chrome 渲染 app-icon-1024.png 和 preview
 3. CI 构建 macOS 通用包和 Windows 安装包，生成 `.app.tar.gz` / `-setup.exe` 的签名和 `latest.json`，挂到一个 draft Release 上。
 4. 检查 draft 没问题后点 Publish（不要勾 pre-release，保持 Latest）。发布那一刻起，已安装的客户端在下次检查时就会看到更新。
 
-当前公开版本：[`v0.9.8`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.8)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.8/Cloudborne-Windows-setup.exe)。
+当前公开版本：[`v0.9.9`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.9)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.9/Cloudborne-Windows-setup.exe)。
 
 更新私钥在本机 `~/.cloudborne-desktop-signing/`（权限 700），CI 里是 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 两个 secret。私钥丢了，已装的客户端就收不到后续更新，只能手动重装，所以要另外备份。0.2.0 及更早的版本没有更新功能，需要手动装一次 0.2.1。

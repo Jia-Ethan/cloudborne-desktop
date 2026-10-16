@@ -7,7 +7,6 @@ import {
   byHand,
   hints,
   judge,
-  minBalance,
   nextSeat,
   prevSeat,
   rankLabel,
@@ -136,7 +135,7 @@ export function DdzView({ balance, table, conn, send, userId = 0, previewStatus 
     finally {busy.current=false;}
   };
   let body: ReactNode;
-  if (!table) body=<Lobby balance={balance} conn={conn} onEnter={a=>void enter(a)} onRules={()=>{setPolicy(status?.fee_policy ?? FREE_POLICY);setRulesFor('read');}} policy={status?.fee_policy} />;
+  if (!table) body=<Lobby balance={balance} conn={conn} onEnter={a=>void enter(a)} onRules={()=>{setPolicy(status?.fee_policy ?? FREE_POLICY);setRulesFor('read');}} policy={status?.fee_policy} minBalanceTimes={status?.min_balance_times} />;
   else if (table.phase === 'waiting' && !table.code) body=<Matching send={send} />;
   else body=<TableScene table={table} conn={conn} send={a=>void enter(a)} />;
   return <>{error && <div className="ddz-entry-error" role="alert">{error}</div>}{body}{rulesFor && <RulesDialog policy={policy} agree={rulesFor!=='read'} onClose={()=>setRulesFor(null)} onAgree={()=>{
@@ -148,10 +147,11 @@ export function DdzView({ balance, table, conn, send, userId = 0, previewStatus 
 
 // ---------------------------------------------------------------- lobby
 
-function Lobby({ balance, conn, onEnter, onRules, policy }: { balance: number; conn: DdzConn; onEnter: (a: Action) => void; onRules: () => void; policy?: FeePolicy }) {
+function Lobby({ balance, conn, onEnter, onRules, policy, minBalanceTimes }: { balance: number; conn: DdzConn; onEnter: (a: Action) => void; onRules: () => void; policy?: FeePolicy; minBalanceTimes?: number }) {
   const { t } = useI18n();
   const quality = useMemo(readDdzQuality, []);
-  const affordable = (b: number) => balance >= minBalance(b);
+  const times = Number.isFinite(minBalanceTimes) && (minBalanceTimes ?? 0) > 0 ? minBalanceTimes! : 20;
+  const affordable = (b: number) => balance >= b * times;
   const [base, setBase] = useState(STAKES[0]);
   const [code, setCode] = useState('');
   const canPlay = affordable(base) && conn === 'open';
@@ -189,7 +189,7 @@ function Lobby({ balance, conn, onEnter, onRules, policy }: { balance: number; c
               aria-checked={base === b}
               className={`ddz-stake ${base === b ? 'on' : ''}`}
               disabled={!affordable(b)}
-              title={affordable(b) ? undefined : t('ddz.needBalance', { amount: dollars(minBalance(b)) })}
+              title={affordable(b) ? undefined : t('ddz.needBalance', { amount: dollars(b * times) })}
               onClick={() => setBase(b)}
             >
               <small>{t('ddz.base')}</small>
@@ -397,6 +397,7 @@ function JokerCard({ joker, size = 'md', onClick, picked }: { joker: Joker; size
 function TableScene({ table, conn, send }: { table: Table; conn: DdzConn; send: (a: Action) => void }) {
   const { t } = useI18n();
   const me = table.me;
+  const showdown = table.phase === 'showdown';
   const myTurn = table.turn === me && (table.phase === 'bid' || table.phase === 'play');
   const mine = table.seats[me];
   const [leaving, setLeaving] = useState(false);
@@ -404,7 +405,7 @@ function TableScene({ table, conn, send }: { table: Table; conn: DdzConn; send: 
   const fx = useTableFx(table, quality);
 
   const leave = () => {
-    if (table.phase === 'bid' || table.phase === 'joker' || table.phase === 'play') setLeaving(true);
+    if (table.phase === 'bid' || table.phase === 'joker' || table.phase === 'play' || showdown) setLeaving(true);
     else send({ type: 'leave' });
   };
 
@@ -424,17 +425,26 @@ function TableScene({ table, conn, send }: { table: Table; conn: DdzConn; send: 
 
       <div className="ddz-center">
         {table.phase === 'play' && <div className="ddz-target">{table.last?.cards?.length ? <><span>{t('ddz.target')}</span><PlayCards move={table.last} compact /></> : <span>{t('ddz.newLead')}</span>}</div>}
-        <MoveBubble table={table} seat={prevSeat(me)} side="left" />
-        <MoveBubble table={table} seat={nextSeat(me)} side="right" />
-        <div className="ddz-center-me">
-          {table.phase === 'waiting' ? (
-            <WaitingRoom table={table} send={send} />
-          ) : table.phase === 'joker' ? (
-            <JokerPick table={table} send={send} />
-          ) : (
-            !myTurn && <MoveBubble table={table} seat={me} side="me" />
-          )}
-        </div>
+        {showdown && table.last?.cards?.length ? (
+          <div className="ddz-showdown" role="status" aria-live="polite">
+            <span className="ddz-showdown-title">{t('ddz.showdown')}</span>
+            <PlayCards move={table.last} />
+          </div>
+        ) : (
+          <>
+            <MoveBubble table={table} seat={prevSeat(me)} side="left" />
+            <MoveBubble table={table} seat={nextSeat(me)} side="right" />
+            <div className="ddz-center-me">
+              {table.phase === 'waiting' ? (
+                <WaitingRoom table={table} send={send} />
+              ) : table.phase === 'joker' ? (
+                <JokerPick table={table} send={send} />
+              ) : (
+                !myTurn && <MoveBubble table={table} seat={me} side="me" />
+              )}
+            </div>
+          </>
+        )}
         {fx.banner && (
           <div key={fx.banner.key} className={`ddz-banner k-${fx.banner.kind}`}>
             {fx.banner.hero && <HeroBadge hero={fx.banner.hero} size="lg" />}
@@ -453,7 +463,7 @@ function TableScene({ table, conn, send }: { table: Table; conn: DdzConn; send: 
           </button>
         </div>
       )}
-      {table.result && <ResultSheet table={table} send={send} />}
+      {table.phase === 'over' && table.result && <ResultSheet table={table} send={send} />}
 
       {leaving && (
         <Dialog
@@ -684,7 +694,7 @@ function Opponent({ table, seat, side }: { table: Table; seat: Seat; side: 'left
   const { t } = useI18n();
   const info = table.seats[seat];
   const left = info?.left ?? 0;
-  const dealt = table.phase === 'bid' || table.phase === 'joker' || table.phase === 'play';
+  const dealt = table.phase === 'bid' || table.phase === 'joker' || table.phase === 'play' || table.phase === 'showdown';
   return (
     <aside className={`ddz-opp ${side}`}>
       <Avatar info={info} seat={seat} table={table} size="lg" />
@@ -841,7 +851,13 @@ function MyHand({ table, myTurn, send }: { table: Table; myTurn: boolean; send: 
               table={table}
               hero={mine.hero}
               ready={playing && mine.skills > 0}
-              onUse={(h) => (SKILL_AIM[h] === 'none' ? useSkill({}) : setAiming(h))}
+              onUse={(h) => {
+                // 百变 needs the selected hero in the wire payload even when
+                // that hero has no additional targeting step (Claude/GPT/etc.).
+                // SkillAim already carries `copy` for skills that do need one.
+                if (SKILL_AIM[h] === 'none') useSkill(mine.hero === 'qwen' ? { copy: h } : {});
+                else setAiming(h);
+              }}
             />
           )}
         </div>
