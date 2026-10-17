@@ -406,8 +406,34 @@ function TableScene({ table, conn, send }: { table: Table; conn: DdzConn; send: 
   const myTurn = table.turn === me && (table.phase === 'bid' || table.phase === 'play');
   const mine = table.seats[me];
   const [leaving, setLeaving] = useState(false);
+  const felt = useRef<HTMLDivElement>(null);
+  const [cardScale, setCardScale] = useState(1);
   const quality = useMemo(readDdzQuality, []);
   const fx = useTableFx(table, quality);
+
+  // Cards are drawn in CSS pixels, so a larger table used to leave the hand
+  // at the same size while only the empty felt grew around it. Keep the
+  // reference proportions but follow the actual table viewport in both
+  // directions. The bounds preserve a usable hand in compact windows and
+  // prevent oversized cards from crowding the controls on very wide ones.
+  useLayoutEffect(() => {
+    const el = felt.current;
+    if (!el) return;
+    const fit = () => {
+      const rect = el.getBoundingClientRect();
+      const widthScale = rect.width / 1100;
+      // The hand, controls and top bar use roughly 560px at the reference
+      // size; using that usable height lets a wider desktop grow the cards
+      // without waiting for the window to become proportionally taller.
+      const heightScale = rect.height / 560;
+      const next = Math.max(0.72, Math.min(1.55, Math.min(widthScale, heightScale)));
+      setCardScale((current) => (Math.abs(current - next) < 0.01 ? current : next));
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const leave = () => {
     if (table.phase === 'bid' || table.phase === 'joker' || table.phase === 'play' || showdown) setLeaving(true);
@@ -415,7 +441,19 @@ function TableScene({ table, conn, send }: { table: Table; conn: DdzConn; send: 
   };
 
   return (
-    <div className={`ddz-felt ddz-table ddz-${quality} phase-${table.phase} ${fx.shake ? 'shake' : ''}`}>
+    <div
+      ref={felt}
+      style={{
+        '--ddz-card-scale': cardScale,
+        '--ddz-lg-w': `${74 * cardScale}px`,
+        '--ddz-lg-h': `${104 * cardScale}px`,
+        '--ddz-lg-fs': `${24 * cardScale}px`,
+        '--ddz-sm-w': `${40 * cardScale}px`,
+        '--ddz-sm-h': `${56 * cardScale}px`,
+        '--ddz-sm-fs': `${15 * cardScale}px`,
+      } as CSSProperties}
+      className={`ddz-felt ddz-table ddz-${quality} phase-${table.phase} ${fx.shake ? 'shake' : ''}`}
+    >
       <Ornaments />
       <canvas ref={fx.canvas} className="ddz-sparks" aria-hidden />
       <TopBar table={table} onLeave={leave} send={send} />
@@ -459,7 +497,7 @@ function TableScene({ table, conn, send }: { table: Table; conn: DdzConn; send: 
         {table.tracker && <Tracker counts={table.tracker} />}
       </div>
 
-      {table.phase !== 'waiting' && <MyHand key={table.commit} table={table} myTurn={myTurn} send={send} />}
+      {table.phase !== 'waiting' && <MyHand key={table.commit} table={table} myTurn={myTurn} send={send} cardScale={cardScale} />}
       {mine?.auto && table.phase === 'play' && (
         <div className="ddz-auto">
           {t('ddz.autoOn')}
@@ -744,7 +782,7 @@ function MoveBubble({ table, seat, side }: { table: Table; seat: Seat; side: 'le
 
 // ---------------------------------------------------------------- my hand
 
-function MyHand({ table, myTurn, send }: { table: Table; myTurn: boolean; send: (a: Action) => void }) {
+function MyHand({ table, myTurn, send, cardScale = 1 }: { table: Table; myTurn: boolean; send: (a: Action) => void; cardScale?: number }) {
   const { t } = useI18n();
   const hand = useMemo(() => byHand(table.hand), [table.hand]);
   const [sel, setSel] = useState<Set<Card>>(() => new Set());
@@ -834,14 +872,15 @@ function MyHand({ table, myTurn, send }: { table: Table; myTurn: boolean; send: 
     if (!el) return;
     const fit = () => {
       const w = el.clientWidth - 56;
-      const card = 74;
-      setStep(Math.max(18, Math.min(44, (w - card) / Math.max(1, hand.length - 1))));
+      const card = el.querySelector<HTMLElement>('.pc')?.getBoundingClientRect().width || 74;
+      const scale = card / 74;
+      setStep(Math.max(18 * scale, Math.min(44 * scale, (w - card) / Math.max(1, hand.length - 1))));
     };
     fit();
     const ro = new ResizeObserver(fit);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [hand.length]);
+  }, [hand.length, cardScale]);
 
   const status = (() => {
     if (nudge) return { text: nudge, tone: 'warn' };

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
-import { api, errorText, type AdminUsageRecord, type AdminUser, type UserConcurrencyInfo } from '../api';
+import { api, displayName, errorText, type AdminUsageRecord, type AdminUser, type UserConcurrencyInfo } from '../api';
 import { useI18n } from '../i18n';
 import { money } from '../usage';
 import { Dialog } from './Dialog';
@@ -173,7 +173,7 @@ export function AdminUsers({ focus, onToast }: { focus: { id: number; email: str
             <table className="usage-table admin-users">
               <thead>
                 <tr>
-                  <th>{t('admin.win.email')}</th>
+                  <th>{t('admin.win.username')}</th>
                   <th>{t('admin.users.concurrency')}</th>
                   <th>{t('admin.users.balance')}</th>
                   <th>{t('keys.today')}</th>
@@ -208,7 +208,7 @@ export function AdminUsers({ focus, onToast }: { focus: { id: number; email: str
                     >
                       <td className="usage-model">
                         <button className="user-link" title={t('admin.users.details')} onClick={open}>
-                          <span className="truncate" title={u.email}>{u.email}</span>
+                          <span className="truncate" title={u.email}>{displayName(u)}</span>
                           {u.role === 'admin' && <em className="user-role">{t('admin.users.admin')}</em>}
                         </button>
                       </td>

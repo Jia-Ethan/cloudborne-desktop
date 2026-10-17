@@ -5576,14 +5576,14 @@ html[data-glass='mica'] {
     font-variant-numeric: lining-nums;
   }
   .pc-lg {
-    --w: 74px;
-    --h: 104px;
-    --fs: 24px;
+    --w: var(--ddz-lg-w, 74px);
+    --h: var(--ddz-lg-h, 104px);
+    --fs: var(--ddz-lg-fs, 24px);
   }
   .pc-sm {
-    --w: 40px;
-    --h: 56px;
-    --fs: 15px;
+    --w: var(--ddz-sm-w, 40px);
+    --h: var(--ddz-sm-h, 56px);
+    --fs: var(--ddz-sm-fs, 15px);
   }
   .pc-xs {
     --w: 24px;
