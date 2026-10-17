@@ -19,6 +19,8 @@ Use `CLOUDBORNE_HOME=<directory>` for isolated configuration tests; do not touch
 - Tool detection and configuration adapters are under `src-tauri/src/tools/`; preserve backup and atomic-write behavior when changing them.
 - Windows ZCode detection must not assume `C:` or `%LOCALAPPDATA%`; keep per-user/machine 32/64-bit registry and App Paths fallbacks covered by tests.
 - Keep credentials, updater private keys, and machine-specific configuration out of source, docs, and commits.
+- Scope DDZ state classes with `ddz-`; the chat `.turn` class changes layout spacing. Keep avatar/status slots stable across turns and fit the game to the actual pane width and height.
+- Browser simulation and release checks do not establish native Tauri live-game acceptance. DDZ behavior, evidence and rollback boundaries live in [the DDZ document](docs/DOUDIZHU-IMPROVEMENT-2026-10-15.md).
 
 ## Release checklist
 
