@@ -83,6 +83,9 @@ const TINT: Record<Hero, string> = {
 
 /** Plays worth a banner across the table. */
 const SHOWY: Partial<Record<Kind, MessageKey>> = {
+  trio: 'ddz.kind.trio',
+  trio_single: 'ddz.kind.trio_single',
+  trio_pair: 'ddz.kind.trio_pair',
   bomb: 'ddz.kind.bomb',
   rocket: 'ddz.kind.rocket',
   plane: 'ddz.kind.plane',
@@ -90,6 +93,8 @@ const SHOWY: Partial<Record<Kind, MessageKey>> = {
   plane_pairs: 'ddz.kind.plane',
   straight: 'ddz.kind.straight',
   pair_straight: 'ddz.kind.pair_straight',
+  four_singles: 'ddz.kind.four_singles',
+  four_pairs: 'ddz.kind.four_pairs',
 };
 
 const signed = (n: number) => (n > 0 ? `+${dollars(n)}` : n < 0 ? `−${dollars(-n)}` : dollars(0));
@@ -532,11 +537,18 @@ function TopBar({ table, onLeave, send }: { table: Table; onLeave: () => void; s
 
 function FieldCard({ field }: { field: Field }) {
   const { t } = useI18n();
+  const [open, setOpen] = useState(false);
   return (
-    <span className={`ddz-field f-${field}`} title={t(`ddz.field.${field}.desc` as MessageKey)}>
+    <>
+    <button type="button" className={`ddz-field ddz-field-button f-${field}`} onClick={() => setOpen(true)} aria-haspopup="dialog" aria-expanded={open}>
       <b>{t(`ddz.field.${field}` as MessageKey)}</b>
-      <span>{t(`ddz.field.${field}.desc` as MessageKey)}</span>
-    </span>
+      <Icon name="info" className="size-3.5" />
+    </button>
+    {open && <Dialog title={t(`ddz.field.${field}` as MessageKey)} onClose={() => setOpen(false)} className="ddz-sheet">
+      <p className="ddz-field-detail">{t(`ddz.field.${field}.desc` as MessageKey)}</p>
+      <p className="ddz-field-detail muted">{t('ddz.field.tapHint')}</p>
+    </Dialog>}
+    </>
   );
 }
 
@@ -717,7 +729,7 @@ function MoveBubble({ table, seat, side }: { table: Table; seat: Seat; side: 'le
   if (!move) return <div className={`ddz-move ${side} none`} />;
   if (move.cards?.length) {
     return (
-      <div className={`ddz-move ${side} cards`} key={move.cards.join()}>
+      <div className={`ddz-move ${side} cards k-${move.pattern?.kind ?? 'single'}`} key={move.cards.join()}>
         {move.trick !== undefined && table.trick !== undefined && move.trick < table.trick && <small>{t('ddz.previousTrick')}</small>}
         <PlayCards move={move} />
       </div>
@@ -1158,13 +1170,14 @@ function ResultSheet({ table, send }: { table: Table; send: (a: Action) => void 
 
 type Banner = { key: string; kind: string; text: string; hero?: Hero };
 
-/** A banner for big plays and skills; sparks and a shake for bombs. */
+/** Tiered play feedback; the relay remains the source of truth for every trigger. */
 function useTableFx(table: Table, quality: DdzQuality) {
   const { t } = useI18n();
   const canvas = useRef<HTMLCanvasElement>(null);
   const [banner, setBanner] = useState<Banner | null>(null);
   const [shake, setShake] = useState(false);
   const seen = useRef('');
+  const seenFinish = useRef('');
   const seenSkill = useRef<string | null>(null);
 
   const show = useCallback((b: Banner, ms = 1500) => {
@@ -1181,7 +1194,7 @@ function useTableFx(table: Table, quality: DdzQuality) {
     if (first || !m?.pattern) return;
     const label = SHOWY[m.pattern.kind];
     if (!label) return;
-    show({ key, kind: m.pattern.kind, text: t(label) });
+    show({ key, kind: m.pattern.kind, text: t(label), hero: table.seats[m.seat]?.hero });
     if (quality === 'high' && (m.pattern.kind === 'bomb' || m.pattern.kind === 'rocket') && !reducedMotion()) {
       setShake(true);
       setTimeout(() => setShake(false), 450);
@@ -1198,6 +1211,15 @@ function useTableFx(table: Table, quality: DdzQuality) {
       }
     }
   }, [quality, table.last, show, t]);
+
+  useEffect(() => {
+    const m = table.last;
+    if (table.phase !== 'showdown' || !m?.cards?.length) return;
+    const key = `finish:${table.commit}:${m.seat}:${m.cards.join(',')}`;
+    if (seenFinish.current === key) return;
+    seenFinish.current = key;
+    show({ key, kind: 'finish', text: t('ddz.finish'), hero: table.seats[m.seat]?.hero }, 1800);
+  }, [table.commit, table.last, table.phase, table.seats, show, t]);
 
   useEffect(() => {
     const u = table.skill;

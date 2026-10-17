@@ -5645,6 +5645,23 @@ html[data-glass='mica'] {
     font-size: calc(var(--w) * 0.5);
     line-height: 1;
   }
+  .pc-portrait { position: absolute; left: 22%; top: 25%; width: 68%; height: 67%; overflow: visible; border-radius: 45% 45% 5px 5px; background: linear-gradient(160deg, #efe4c7, #d4c39c); }
+  .pc-portrait path { stroke-linecap: round; stroke-linejoin: round; }
+  .pc-portrait .portrait-hair { fill: #302620; }
+  .pc-portrait .portrait-face { fill: #edbd91; stroke: #774f3c; stroke-width: 1; }
+  .pc-portrait .portrait-ear, .pc-portrait .portrait-neck { fill: #e7b28a; stroke: #774f3c; stroke-width: 1; }
+  .pc-portrait .portrait-feature { fill: none; stroke: #34251e; stroke-width: 1.6; }
+  .pc-portrait .portrait-cloak { fill: #9f2934; stroke: #6d2026; stroke-width: 1; }
+  .pc-portrait .portrait-collar { fill: #f6e8c9; stroke: #9b753f; stroke-width: 1; }
+  .pc-portrait .portrait-ornament { fill: #c99434; stroke: #8d6423; stroke-width: 1; }
+  .pc-portrait .portrait-beard { fill: #433126; }
+  .pc.face-j .portrait-hair { fill: #4a2c21; }
+  .pc.face-j .portrait-cloak { fill: #a8353a; }
+  .pc.face-q .portrait-hair { fill: #292b43; }
+  .pc.face-q .portrait-cloak { fill: #375b70; }
+  .pc.face-q .portrait-beard { display: none; }
+  .pc.face-k .portrait-hair { fill: #322820; }
+  .pc.face-k .portrait-cloak { fill: #4e4a35; }
   .pc-xs .pc-idx {
     top: 3px;
     left: 2px;
@@ -5652,7 +5669,9 @@ html[data-glass='mica'] {
   }
   .pc-xs .pc-idx i,
   .pc-xs .pc-pip,
-  .pc-sm .pc-pip {
+  .pc-sm .pc-pip,
+  .pc-sm .pc-portrait,
+  .pc-xs .pc-portrait {
     display: none;
   }
   .pc-sm .pc-idx {
@@ -6327,7 +6346,10 @@ html[data-glass='mica'] {
       'me me me';
   }
   .ddz-table.shake {
-    animation: ddz-shake 0.42s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+    animation: none;
+  }
+  .ddz-table.shake .ddz-center {
+    animation: ddz-impact 0.18s ease-out;
   }
   .ddz-sparks {
     position: absolute;
@@ -6447,22 +6469,25 @@ html[data-glass='mica'] {
     align-items: center;
     gap: 8px;
     height: 32px;
-    padding: 0 18px;
+    padding: 0 12px;
     color: #132119;
     background: linear-gradient(180deg, #f6e1a4, #c99a45);
     clip-path: polygon(10px 0, calc(100% - 10px) 0, 100% 50%, calc(100% - 10px) 100%, 10px 100%, 0 50%);
     font-size: 12px;
     white-space: nowrap;
-    animation: ddz-pop 0.45s cubic-bezier(0.2, 0.8, 0.3, 1.5);
+    animation: ddz-pop 0.2s ease-out;
+    cursor: pointer;
+    transition: filter 0.16s ease, transform 0.16s ease;
   }
+  .ddz-field-button:hover { filter: brightness(1.08); transform: translateY(-1px); }
+  .ddz-field-button:focus-visible { outline: 2px solid #fff0bd; outline-offset: 3px; }
+  .ddz-field-detail { margin: 0; color: #f7f2e7; font-size: 16px; line-height: 1.65; }
+  .ddz-field-detail.muted { margin-top: 14px; color: #bdb49f; font-size: 12px; }
   .ddz-field b {
     font-family: var(--serif-cjk);
     font-size: 14px;
     font-weight: 800;
     letter-spacing: 0.16em;
-  }
-  .ddz-field span {
-    color: rgb(19 33 25 / 0.7);
   }
 
   /* ---- Heroes: the vendor mark on ivory, set in a gold octagon ---- */
@@ -7337,11 +7362,11 @@ html[data-glass='mica'] {
     display: flex;
     align-items: center;
     gap: 18px;
-    padding: 14px 34px;
+    padding: 8px 22px;
     translate: -50% -50%;
     pointer-events: none;
     white-space: nowrap;
-    animation: ddz-banner 1.5s cubic-bezier(0.2, 0.8, 0.3, 1.2) forwards;
+    animation: ddz-banner 0.9s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
   }
   .ddz-banner::before,
   .ddz-banner::after {
@@ -7364,15 +7389,13 @@ html[data-glass='mica'] {
     -webkit-background-clip: text;
     background-clip: text;
     font-family: var(--serif-cjk);
-    font-size: 54px;
-    font-weight: 900;
-    letter-spacing: 0.2em;
-    text-indent: 0.2em;
-    filter: drop-shadow(0 3px 0 rgb(40 25 0 / 0.6)) drop-shadow(0 10px 24px rgb(0 0 0 / 0.5));
+    font-size: 32px;
+    font-weight: 800;
+    filter: drop-shadow(0 2px 4px rgb(0 0 0 / 0.45));
   }
   .ddz-banner.k-rocket > span,
   .ddz-banner.k-bomb > span {
-    font-size: 64px;
+    font-size: 40px;
     background-image: linear-gradient(180deg, #fff2d6 0%, #f0a84a 45%, #c23b2a 100%);
   }
   .ddz-banner.k-plane > span,
@@ -7383,15 +7406,38 @@ html[data-glass='mica'] {
   .ddz-banner.k-plane,
   .ddz-banner.k-plane_singles,
   .ddz-banner.k-plane_pairs {
-    animation-name: ddz-fly;
+    animation-name: ddz-sequence;
   }
   .ddz-banner.k-straight > span,
   .ddz-banner.k-pair_straight > span {
-    font-size: 42px;
+    font-size: 30px;
     background-image: linear-gradient(180deg, #ffffff 0%, #d3f1df 50%, #6cbf93 100%);
   }
   .ddz-banner.k-skill > span {
-    font-size: 48px;
+    font-size: 28px;
+  }
+  .ddz-banner.k-finish > span {
+    background-image: linear-gradient(180deg, #fff5cf, #e5b74f 55%, #fff0bd);
+    font-size: 42px;
+  }
+  .ddz-banner.k-finish {
+    animation-name: ddz-finish;
+  }
+  .ddz-move.cards.k-straight .ddz-play-row .pc,
+  .ddz-move.cards.k-pair_straight .ddz-play-row .pc {
+    animation: ddz-sequence 0.28s cubic-bezier(0.2, 0.8, 0.3, 1) backwards;
+    animation-delay: calc(var(--i, 0) * 18ms);
+  }
+  .ddz-move.cards.k-plane .ddz-play-row .pc,
+  .ddz-move.cards.k-plane_singles .ddz-play-row .pc,
+  .ddz-move.cards.k-plane_pairs .ddz-play-row .pc {
+    animation: ddz-plane 0.3s cubic-bezier(0.2, 0.8, 0.3, 1) backwards;
+    animation-delay: calc(var(--i, 0) * 16ms);
+  }
+  .ddz-move.cards.k-bomb .ddz-play-row .pc,
+  .ddz-move.cards.k-rocket .ddz-play-row .pc {
+    animation: ddz-impact-card 0.24s cubic-bezier(0.2, 0.8, 0.3, 1) backwards;
+    animation-delay: calc(var(--i, 0) * 22ms);
   }
 
   /* ---- Result: the multiplier climbs, then the money lands ---- */
@@ -7707,41 +7753,50 @@ html[data-glass='mica'] {
 @keyframes ddz-banner {
   0% {
     opacity: 0;
-    transform: scale(2.2);
+    transform: translateY(8px) scale(0.96);
   }
-  18% {
+  16% {
     opacity: 1;
-    transform: scale(0.94);
+    transform: translateY(0) scale(1);
   }
-  28% {
-    transform: scale(1);
-  }
-  80% {
+  68% {
     opacity: 1;
-    transform: scale(1.02);
   }
   to {
     opacity: 0;
-    transform: scale(1.08) translateY(-12px);
+    transform: translateY(-6px) scale(1.02);
   }
 }
-@keyframes ddz-fly {
+@keyframes ddz-sequence {
   0% {
-    opacity: 0;
-    transform: translateX(-60%) skewX(-12deg);
+    opacity: 0.4;
+    transform: translateY(8px);
   }
-  20% {
+  55% {
     opacity: 1;
-    transform: translateX(0) skewX(-6deg);
+    transform: translateY(-2px);
   }
-  75% {
-    opacity: 1;
-    transform: translateX(6%) skewX(-4deg);
-  }
-  to {
-    opacity: 0;
-    transform: translateX(70%) skewX(-12deg);
-  }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes ddz-plane {
+  from { opacity: 0.55; transform: translateY(10px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes ddz-impact-card {
+  0% { opacity: 0.65; transform: translateY(-5px) scale(1.04); }
+  65% { opacity: 1; transform: translateY(1px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes ddz-impact {
+  0% { transform: translateY(0); }
+  45% { transform: translateY(2px); }
+  to { transform: translateY(0); }
+}
+@keyframes ddz-finish {
+  0% { opacity: 0; transform: translateY(10px) scale(0.92); }
+  22% { opacity: 1; transform: translateY(0) scale(1.04); }
+  68% { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(-8px) scale(1.03); }
 }
 @keyframes ddz-shake {
   10%,
