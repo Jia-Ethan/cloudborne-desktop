@@ -404,7 +404,7 @@ export function App() {
       </aside>
 
       {/* Keyed by account so every page's state and caches start fresh after a switch. */}
-      <main key={user.id} className={`main-pane ${view === 'task' && agent.current?.turns.length ? 'in-session' : ''}`}>
+      <main key={user.id} className={`main-pane ${view === 'ddz' && ddz.table ? 'in-ddz-table' : ''} ${view === 'task' && agent.current?.turns.length ? 'in-session' : ''}`}>
         <div className="aurora-header" aria-hidden />
         {view === 'task' ? (
           <TaskView

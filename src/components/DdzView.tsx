@@ -408,6 +408,8 @@ function TableScene({ table, conn, send }: { table: Table; conn: DdzConn; send: 
   const [leaving, setLeaving] = useState(false);
   const felt = useRef<HTMLDivElement>(null);
   const [cardScale, setCardScale] = useState(1);
+  const [compact, setCompact] = useState(false);
+  const [short, setShort] = useState(false);
   const quality = useMemo(readDdzQuality, []);
   const fx = useTableFx(table, quality);
 
@@ -421,6 +423,8 @@ function TableScene({ table, conn, send }: { table: Table; conn: DdzConn; send: 
     if (!el) return;
     const fit = () => {
       const rect = el.getBoundingClientRect();
+      setCompact(rect.width < 760);
+      setShort(rect.height < 640);
       const widthScale = rect.width / 1100;
       // The hand, controls and top bar use roughly 560px at the reference
       // size; using that usable height lets a wider desktop grow the cards
@@ -452,7 +456,7 @@ function TableScene({ table, conn, send }: { table: Table; conn: DdzConn; send: 
         '--ddz-sm-h': `${56 * cardScale}px`,
         '--ddz-sm-fs': `${15 * cardScale}px`,
       } as CSSProperties}
-      className={`ddz-felt ddz-table ddz-${quality} phase-${table.phase} ${fx.shake ? 'shake' : ''}`}
+      className={`ddz-felt ddz-table ddz-${quality} ${compact ? 'ddz-compact' : ''} ${short ? 'ddz-short' : ''} phase-${table.phase} ${fx.shake ? 'shake' : ''}`}
     >
       <Ornaments />
       <canvas ref={fx.canvas} className="ddz-sparks" aria-hidden />
@@ -536,14 +540,16 @@ function TopBar({ table, onLeave, send }: { table: Table; onLeave: () => void; s
   const auto = table.seats[table.me]?.auto ?? false;
   return (
     <header className="ddz-top">
-      <button className="ddz-chip ddz-chip-btn" onClick={onLeave} aria-label={t('ddz.leave')}>
-        <Icon name="chevronLeft" className="size-4" />
-      </button>
-      <span className="ddz-chip">
-        {t('ddz.base')} <b>{dollars(table.base)}</b>
-        {table.fee_policy && <small>{t('ddz.feeRate',{rate:table.fee_policy.bps/100})}</small>}
-      </span>
-      {table.field && <FieldCard field={table.field} />}
+      <div className="ddz-top-start">
+        <button className="ddz-chip ddz-chip-btn" onClick={onLeave} aria-label={t('ddz.leave')}>
+          <Icon name="chevronLeft" className="size-4" />
+        </button>
+        <span className="ddz-chip">
+          {t('ddz.base')} <b>{dollars(table.base)}</b>
+          {table.fee_policy && <small>{t('ddz.feeRate',{rate:table.fee_policy.bps/100})}</small>}
+        </span>
+        {table.field && <FieldCard field={table.field} />}
+      </div>
 
       <div className="ddz-top-mid">
         {table.phase !== 'waiting' && (
@@ -689,7 +695,7 @@ function Avatar({ info, seat, table, size = 'md' }: { info: SeatInfo | null; sea
   const lord = table.landlord === seat;
   const left = useCountdown(turn ? table.deadline : null, turn);
   return (
-    <div className={`ddz-avatar ${size} ${turn ? 'turn' : ''} ${lord ? 'lord' : ''} ${info ? '' : 'empty'}`}>
+    <div className={`ddz-avatar ${size} ${turn ? 'ddz-turn' : ''} ${lord ? 'lord' : ''} ${info ? '' : 'empty'}`}>
       {info ? <HeroInfo hero={info.hero} info={info} table={table}><HeroBadge hero={info.hero} size={size === 'lg' ? 'lg' : 'md'} /></HeroInfo> : <span className="ddz-avatar-empty">?</span>}
       {turn && table.deadline && <TimerRing key={table.deadline} deadline={table.deadline} total={table.phase === 'bid' ? BID_MS : PLAY_MS} />}
       {turn && left !== null && left <= 10 && <span className="ddz-avatar-secs">{left}</span>}
@@ -749,7 +755,7 @@ function Opponent({ table, seat, side }: { table: Table; seat: Seat; side: 'left
     <aside className={`ddz-opp ${side}`}>
       <Avatar info={info} seat={seat} table={table} size="lg" />
       {info ? <SeatMeta info={info} table={table} seat={seat} /> : <span className="ddz-dim">{t('ddz.emptySeat')}</span>}
-      {table.turn === seat && table.phase === 'play' && <span className="ddz-thinking-label">{t('ddz.thinking')}</span>}
+      <span className="ddz-thinking-label">{table.turn === seat && table.phase === 'play' ? t('ddz.thinking') : null}</span>
       {dealt && !info?.shown && (
         <div className={`ddz-stack ${left > 0 && left <= 2 ? 'alarm' : ''}`}>
           <CardBack size="sm" />
@@ -892,7 +898,8 @@ function MyHand({ table, myTurn, send, cardScale = 1 }: { table: Table; myTurn: 
   })();
 
   return (
-    <div className={`ddz-me ${myTurn ? 'turn' : ''}`}>
+    // Keep game state names scoped: the chat .turn class adds a 14px gap.
+    <div className={`ddz-me ${myTurn ? 'ddz-my-turn' : ''}`}>
       <div className="ddz-bar">
         <div className="ddz-me-who">
           <Avatar info={mine} seat={table.me} table={table} />
@@ -1133,73 +1140,69 @@ function ResultSheet({ table, send }: { table: Table; send: (a: Action) => void 
   // My share: a farmer has one, the landlord sees the larger of its two.
   const share = me === table.landlord ? [...r.shares].sort((a, b) => b.mult - a.mult)[0] : r.shares.find((s) => s.farmer === me)!;
   const steps = share.steps;
-  const [shown, setShown] = useState(reducedMotion() ? steps.length : 0);
-  useEffect(() => {
-    if (shown >= steps.length) return;
-    const id = setTimeout(() => setShown((n) => n + 1), shown === 0 ? 450 : 380);
-    return () => clearTimeout(id);
-  }, [shown, steps.length]);
-  let running = 1;
-  for (const st of steps.slice(0, shown)) running = st.add ? running + st.add : running * (st.times ?? 1);
-  const done = shown >= steps.length;
   const order: Seat[] = [me, nextSeat(me), prevSeat(me)];
 
   return (
     <div className="ddz-result-wrap">
-      <div className={`ddz-result ${won ? 'won' : 'lost'} ${done ? 'done' : ''}`} role="dialog" aria-label={t(won ? 'ddz.won' : 'ddz.lost')}>
-        <div className="ddz-result-head">
-          <span className="ddz-result-badge">{t(lordWon ? 'ddz.lordWins' : 'ddz.farmersWin')}</span>
-          <div className="ddz-climb">
-            <span className="ddz-climb-base">{dollars(table.base)}</span>
-            <span className="ddz-climb-x">×</span>
-            <b key={running} className="ddz-climb-mult">
-              {fmtX(running)}
-            </b>
+      <div className={`ddz-result ${won ? 'won' : 'lost'}`} role="dialog" aria-modal="true" aria-label={t(won ? 'ddz.won' : 'ddz.lost')}>
+        <div className="ddz-result-body">
+          <div className="ddz-result-head">
+            <span className="ddz-result-badge">{t(lordWon ? 'ddz.lordWins' : 'ddz.farmersWin')}</span>
+            <b className="ddz-result-amount">{signed(r.delta[me])}</b>
+            <span className="ddz-result-caption">{t('ddz.net')}</span>
+            <div className="ddz-climb">
+              <span className="ddz-climb-base">{dollars(table.base)}</span>
+              <span className="ddz-climb-x">×</span>
+              <b className="ddz-climb-mult">{fmtX(share.mult)}</b>
+            </div>
           </div>
-          <ul className="ddz-steps">
-            {steps.slice(0, shown).map((st, i) => {
-              const { label, hero } = stepLabel(st, table, t);
+          {r.gross_delta && (
+            <dl className="ddz-fee-breakdown">
+              <div><dt>{t('ddz.gross')}</dt><dd>{signed(r.gross_delta[me])}</dd></div>
+              <div><dt>{t('ddz.feeRate', { rate: (r.fee_policy?.bps ?? 0) / 100 })}</dt><dd>−{dollars(r.fee?.[me] ?? 0)}</dd></div>
+              <div><dt>{t('ddz.net')}</dt><dd>{signed(r.delta[me])}</dd></div>
+            </dl>
+          )}
+          {steps.length > 0 && (
+            <details className="ddz-result-details">
+              <summary>{t('ddz.resultDetails')}</summary>
+              <ul className="ddz-steps">
+                {steps.map((st, i) => {
+                  const { label, hero } = stepLabel(st, table, t);
+                  return (
+                    <li key={i} className={st.add ? 'add' : 'times'}>
+                      {hero && <HeroBadge hero={hero} size="sm" />}
+                      <span>{label}</span>
+                      <b>{st.add ? `+${fmtX(st.add)}` : `×${fmtX(st.times ?? 1)}`}</b>
+                    </li>
+                  );
+                })}
+              </ul>
+            </details>
+          )}
+          <ul className="ddz-result-rows">
+            {order.map((s) => {
+              const info = table.seats[s];
               return (
-                <li key={i} className={st.add ? 'add' : 'times'}>
-                  {hero && <HeroBadge hero={hero} size="sm" />}
-                  <span>{label}</span>
-                  <b>{st.add ? `+${fmtX(st.add)}` : `×${fmtX(st.times ?? 1)}`}</b>
+                <li key={s} className={s === me ? 'me' : ''}>
+                  <span className="ddz-result-who">
+                    {info && <HeroBadge hero={info.hero} size="sm" />}
+                    <span className="truncate" title={info ? seatName(info) : ''}>{info ? seatName(info) : ''}</span>
+                    {table.landlord === s && <Icon name="crown" className="size-3.5" />}
+                  </span>
+                  <span className="ddz-result-left" tabIndex={r.hands[s].length > 0 ? 0 : undefined} role={r.hands[s].length > 0 ? 'region' : undefined} aria-label={t('ddz.remainingCards')}>
+                    {r.hands[s].length > 0 && <CardRow cards={byHand(r.hands[s])} size="xs" />}
+                  </span>
+                  <b className={r.delta[s] >= 0 ? 'up' : 'down'}>{signed(r.delta[s])}</b>
                 </li>
               );
             })}
           </ul>
-          <b className="ddz-result-amount">{done ? signed(r.delta[me]) : ' '}</b>
-          {done && r.gross_delta && <dl className="ddz-fee-breakdown"><div><dt>{t('ddz.gross')}</dt><dd>{signed(r.gross_delta[me])}</dd></div><div><dt>{t('ddz.feeRate',{rate:(r.fee_policy?.bps ?? 0)/100})}</dt><dd>−{dollars(r.fee?.[me] ?? 0)}</dd></div><div><dt>{t('ddz.net')}</dt><dd>{signed(r.delta[me])}</dd></div></dl>}
         </div>
-
-        {done && (
-          <>
-            <ul className="ddz-result-rows">
-              {order.map((s) => {
-                const info = table.seats[s];
-                return (
-                  <li key={s} className={s === me ? 'me' : ''}>
-                    <span className="ddz-result-who">
-                      {info && <HeroBadge hero={info.hero} size="sm" />}
-                      {info ? seatName(info) : ''}
-                      {table.landlord === s && <Icon name="crown" className="size-3.5" />}
-                    </span>
-                    <span className="ddz-result-left">{r.hands[s].length > 0 && <CardRow cards={byHand(r.hands[s])} size="xs" />}</span>
-                    <b className={r.delta[s] >= 0 ? 'up' : 'down'}>{signed(r.delta[s])}</b>
-                  </li>
-                );
-              })}
-            </ul>
-            <div className="ddz-result-actions">
-              <button className="btn ddz-glass-btn" onClick={() => send({ type: 'leave' })}>
-                {t('ddz.leave')}
-              </button>
-              <button className="btn btn-gold" autoFocus onClick={() => send({ type: 'ready' })}>
-                {t('ddz.again')}
-              </button>
-            </div>
-          </>
-        )}
+        <div className="ddz-result-actions">
+          <button className="btn ddz-glass-btn" onClick={() => send({ type: 'leave' })}>{t('ddz.leave')}</button>
+          <button className="btn btn-gold" autoFocus onClick={() => send({ type: 'ready' })}>{t('ddz.again')}</button>
+        </div>
       </div>
     </div>
   );

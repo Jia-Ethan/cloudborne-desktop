@@ -5813,6 +5813,8 @@ html[data-glass='mica'] {
     rotate: -90deg;
   }
   /* On the table the top bar sits in the upper corners. */
+  .ddz-table .ddz-orn::before,
+  .ddz-table .ddz-orn::after,
   .ddz-table .ddz-orn .tl,
   .ddz-table .ddz-orn .tr {
     display: none;
@@ -6259,21 +6261,22 @@ html[data-glass='mica'] {
     border: 0;
   }
 
+  /* The game fills the main pane; the native drag strip stays above it. */
+  .main-pane.in-ddz-table { background: #0a3126; }
+  .main-pane.in-ddz-table > .aurora-header { display: none; }
+
   /* ---- The felt ---- */
   .ddz-felt {
     position: relative;
     flex: 1;
     min-height: 0;
-    margin: 40px 14px 14px;
+    margin: 0;
     color: var(--ink);
     background:
       repeating-linear-gradient(90deg, rgb(255 255 255 / 0.012) 0 1px, transparent 1px 3px),
       radial-gradient(65% 55% at 50% 42%, #14513f 0%, #0a3126 55%, #041912 100%);
-    border-radius: 22px;
-    box-shadow:
-      0 0 0 1px rgb(0 0 0 / 0.35),
-      inset 0 0 120px rgb(0 0 0 / 0.35),
-      0 18px 50px rgb(4 25 18 / 0.3);
+    border-radius: 0;
+    box-shadow: none;
     overflow: hidden;
     isolation: isolate;
   }
@@ -6314,7 +6317,7 @@ html[data-glass='mica'] {
   .ddz-standard .ddz-herob.sm {
     box-shadow: none;
   }
-  .ddz-standard .ddz-avatar.turn .ddz-herob {
+  .ddz-standard .ddz-avatar.ddz-turn .ddz-herob {
     animation: none;
   }
   .ddz-standard .ddz-bottom-cards .pc.fresh {
@@ -6334,12 +6337,13 @@ html[data-glass='mica'] {
     animation: none;
   }
   .ddz-table {
+    box-shadow: none;
     display: grid;
-    grid-template-columns: 176px minmax(0, 1fr) 176px;
+    grid-template-columns: 132px minmax(0, 1fr) 132px;
     /* The top stack contains bottom cards and a diamond multiplier. Reserve
        its full height so the centre's last-play cards cannot slide underneath
        it while the multiplier animates. */
-    grid-template-rows: 150px minmax(0, 1fr) auto;
+    grid-template-rows: max(150px, calc(var(--ddz-sm-h, 56px) + 110px)) minmax(0, 1fr) auto;
     grid-template-areas:
       'top top top'
       'left center right'
@@ -6370,11 +6374,21 @@ html[data-glass='mica'] {
     grid-area: top;
     position: relative;
     z-index: 3;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 22px 26px 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: start;
+    gap: 16px;
+    padding: 40px 24px 0;
   }
+  .ddz-top-start, .ddz-top-end {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .ddz-top-end { justify-content: flex-end; }
+  .ddz-top-start > .ddz-field { max-width: 100%; }
   .ddz-chip {
     display: inline-flex;
     align-items: center;
@@ -6412,17 +6426,11 @@ html[data-glass='mica'] {
   .ddz-code-sm {
     letter-spacing: 0.16em !important;
   }
-  /* Centred on the table, not between the chips, so it lines up with the sunburst. */
+  /* Equal side columns keep the bottom cards centred independently of labels. */
   .ddz-top-mid {
-    position: absolute;
-    left: 50%;
-    top: 22px;
+    position: relative;
     display: flex;
     justify-content: center;
-    translate: -50% 0;
-  }
-  .ddz-top-end {
-    margin-left: auto;
   }
   .ddz-bottom-cards {
     display: flex;
@@ -6647,10 +6655,16 @@ html[data-glass='mica'] {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 9px;
-    padding: 8px;
+    min-width: 0;
+    min-height: 0;
+    padding: 20px 8px 0;
   }
+  /* Reserve metadata and status slots; changes must never recenter the avatar. */
+  .ddz-opp > .ddz-meta { height: 62px; flex: none; overflow-y: auto; }
+  .ddz-opp > .ddz-thinking-label { height: 18px; line-height: 18px; flex: none; }
+  .ddz-opp > .ddz-shown { max-height: 96px; overflow: auto; }
   .ddz-opp.left {
     grid-area: left;
   }
@@ -6690,8 +6704,8 @@ html[data-glass='mica'] {
     background: #0a2e24;
     clip-path: var(--oct);
   }
-  .ddz-avatar.turn .ddz-herob {
-    animation: ddz-breathe 1.6s ease-in-out infinite;
+  .ddz-avatar.ddz-turn .ddz-herob {
+    animation: none;
   }
   .ddz-avatar.lord .ddz-herob {
     filter: drop-shadow(0 0 10px rgb(246 210 120 / 0.55)) drop-shadow(0 6px 12px rgb(0 0 0 / 0.4));
@@ -6754,6 +6768,7 @@ html[data-glass='mica'] {
     font-size: 14px;
   }
   .ddz-meta > b {
+    flex: none;
     font-family: var(--serif-cjk);
     font-weight: 600;
     letter-spacing: 0.16em;
@@ -6762,6 +6777,7 @@ html[data-glass='mica'] {
     align-items: flex-start;
   }
   .ddz-tags {
+    flex: none;
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
@@ -7022,22 +7038,33 @@ html[data-glass='mica'] {
   }
   .ddz-bar {
     display: grid;
-    grid-template-columns: 1fr auto 1fr;
-    align-items: center;
+    position: relative;
+    grid-template-columns: minmax(0, 1fr) 332px;
+    align-items: start;
     gap: 12px;
-    min-height: 60px;
+    height: 88px;
+    padding-top: 12px;
   }
   .ddz-me-who {
-    display: flex;
-    align-items: center;
-    gap: 12px;
+    position: relative;
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 10px;
     min-width: 0;
   }
+  .ddz-me-who .ddz-meta { min-width: 0; max-height: 60px; overflow-y: auto; }
+  .ddz-me-who .ddz-tags { justify-content: flex-start; }
+  .ddz-me-who .ddz-skill-wrap { align-self: start; }
   .ddz-actions {
     display: flex;
+    justify-content: flex-end;
     align-items: center;
     gap: 10px;
+    min-height: 48px;
+    min-width: 0;
   }
+  .ddz-actions > .ddz-dim { text-align: right; }
   .ddz-actions .btn {
     min-width: 104px;
     height: 42px;
@@ -7045,8 +7072,14 @@ html[data-glass='mica'] {
     animation: ddz-from-below 0.24s cubic-bezier(0.2, 0.8, 0.3, 1.1);
   }
   .ddz-status {
+    position: absolute;
+    right: 0;
+    bottom: 0;
     display: flex;
     justify-content: flex-end;
+    max-width: 60%;
+    height: 22px;
+    overflow: hidden;
   }
   .ddz-verdict {
     padding: 2px 4px;
@@ -7065,6 +7098,8 @@ html[data-glass='mica'] {
     --mid: calc((var(--n) - 1) / 2);
     display: flex;
     justify-content: center;
+    height: calc(var(--ddz-lg-h, 104px) + 56px);
+    flex: none;
     padding: 26px 28px 30px;
     touch-action: none;
   }
@@ -7440,20 +7475,25 @@ html[data-glass='mica'] {
     animation-delay: calc(var(--i, 0) * 22ms);
   }
 
-  /* ---- Result: the multiplier climbs, then the money lands ---- */
+  /* ---- Result: stable summary with scrollable details and pinned actions ---- */
   .ddz-result-wrap {
     position: absolute;
     inset: 0;
     z-index: 8;
     display: grid;
     place-items: center;
+    padding: 32px 16px 16px;
     background: rgb(2 14 10 / 0.6);
     backdrop-filter: blur(4px);
     animation: ddz-fade 0.3s ease;
   }
   .ddz-result {
-    width: min(470px, calc(100% - 40px));
-    padding: 30px 30px 24px;
+    display: flex;
+    flex-direction: column;
+    width: min(600px, 100%);
+    height: min(590px, 100%);
+    min-height: 0;
+    padding: 22px 24px 20px;
     color: var(--ink);
     background:
       radial-gradient(90% 50% at 50% 0%, #14513f 0%, transparent 70%),
@@ -7464,13 +7504,17 @@ html[data-glass='mica'] {
       inset 0 0 0 5px #0b3127,
       inset 0 0 0 6px rgb(212 175 96 / 0.3),
       0 30px 70px rgb(0 0 0 / 0.55);
-    animation: ddz-result-in 0.48s cubic-bezier(0.2, 0.8, 0.3, 1.25);
+    animation: ddz-fade 0.2s ease;
   }
+  .ddz-result-body { min-height: 0; flex: 1; overflow-y: auto; padding: 0 4px; }
+  .ddz-result-details { margin: 12px 0; font-size: 13px; color: var(--ink-2); }
+  .ddz-result-details summary { cursor: pointer; padding: 6px 0; color: var(--gold-hi); }
+  .ddz-result-caption { color: var(--ink-2); font-size: 12px; }
   .ddz-result-head {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 12px;
+    gap: 4px;
     padding-bottom: 8px;
   }
   .ddz-result-badge {
@@ -7486,12 +7530,12 @@ html[data-glass='mica'] {
     gap: 12px;
   }
   .ddz-climb-base {
-    padding: 4px 14px;
+    padding: 2px 10px;
     color: var(--gold-hi);
     border-top: 1px solid rgb(212 175 96 / 0.7);
     border-bottom: 1px solid rgb(212 175 96 / 0.7);
     font-family: var(--serif);
-    font-size: 26px;
+    font-size: 20px;
     font-variant-numeric: lining-nums;
   }
   .ddz-climb-x {
@@ -7502,13 +7546,13 @@ html[data-glass='mica'] {
   .ddz-climb-mult {
     display: grid;
     place-items: center;
-    width: 76px;
-    height: 76px;
+    width: 40px;
+    height: 40px;
     color: #132119;
     background: var(--gold-fill);
     clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
     font-family: var(--serif);
-    font-size: 24px;
+    font-size: 18px;
     font-weight: 700;
     font-variant-numeric: lining-nums;
     animation: ddz-bump 0.32s cubic-bezier(0.2, 0.8, 0.3, 1.8);
@@ -7555,9 +7599,6 @@ html[data-glass='mica'] {
     letter-spacing: 0.01em;
     font-variant-numeric: lining-nums;
   }
-  .ddz-result.done .ddz-result-amount {
-    animation: ddz-land 0.4s cubic-bezier(0.2, 0.8, 0.3, 1.4);
-  }
   .ddz-result.won .ddz-result-amount {
     color: transparent;
     background: var(--gold-text);
@@ -7576,7 +7617,7 @@ html[data-glass='mica'] {
   }
   .ddz-result-rows li {
     display: grid;
-    grid-template-columns: 116px 1fr auto;
+    grid-template-columns: 132px minmax(0, 1fr) minmax(72px, auto);
     align-items: center;
     gap: 10px;
     padding: 7px 8px;
@@ -7593,14 +7634,17 @@ html[data-glass='mica'] {
     min-width: 0;
     font-weight: 600;
   }
-  .ddz-result-who > svg {
-    color: var(--gold-hi);
-  }
+  .ddz-result-who > svg { color: var(--gold-hi); flex: none; }
+  .ddz-result-who > .ddz-herob { flex: none; }
+  .ddz-result-rows li > b { text-align: right; white-space: nowrap; }
+  .ddz-result-left > .pc-row { flex: none; }
+  .ddz-result-left:focus-visible { outline: 1px solid var(--gold-hi); outline-offset: -1px; }
   .ddz-result-left {
     display: flex;
     justify-content: flex-start;
     min-width: 0;
-    overflow: hidden;
+    overflow-x: auto;
+    padding: 3px 0;
   }
   .ddz-result-rows b {
     font-family: var(--serif);
@@ -7617,16 +7661,16 @@ html[data-glass='mica'] {
     display: grid;
     grid-template-columns: 1fr 1.5fr;
     gap: 10px;
-    margin-top: 16px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+    flex: none;
   }
   .ddz-result-actions .btn {
     height: 44px;
   }
 
   @media (max-width: 980px) {
-    .ddz-table {
-      grid-template-columns: 132px minmax(0, 1fr) 132px;
-    }
     .ddz-field span {
       display: none;
     }
@@ -7893,22 +7937,19 @@ html[data-glass='mica'] {
   .ddz-history { display: flex; flex-direction: column; gap: 16px; }
   .ddz-history li { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid #b89a5b55; }
   .ddz-history .reverted > strong { color: #ffb5a5; }
-  .ddz-fee-breakdown { margin: 12px auto 0; width: min(320px, 100%); font-size: 14px; color: #f7f2e7; }
+  .ddz-fee-breakdown { margin: 8px auto 0; width: 100%; font-size: 14px; color: #f7f2e7; }
   .ddz-fee-breakdown > div { display: flex; justify-content: space-between; gap: 16px; margin: 6px 0; }
   .ddz-fee-settings { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 18px; }
   .ddz-fee-settings input[type='number'] { width: 90px; }
   .ddz-top { flex-wrap: wrap; }
   .ddz-top-mid { pointer-events: none; }
   @media (max-width: 1200px) {
-    .ddz-table { grid-template-columns: 100px minmax(0, 1fr) 100px; }
-    .ddz-top { padding: 16px 20px 0; gap: 6px; }
     .ddz-guide-list.jokers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
   @media (max-width: 800px) {
     .ddz-guide-list, .ddz-guide-list.jokers { grid-template-columns: minmax(0, 1fr); }
     .ddz-play-row .pc-sm { --w: 40px; --h: 56px; }
     .ddz-play-row .pc + .pc { margin-left: -14px; }
-    .ddz-table { grid-template-columns: 72px minmax(0, 1fr) 72px; grid-template-rows: 150px minmax(0, 1fr) auto; }
   }
 }
 
@@ -7917,3 +7958,47 @@ html[data-glass='mica'] {
 .ddz-fee-settings input[type="number"] { width:85px; padding:6px 10px; border:1px solid var(--line); border-radius:6px; }
 .ddz-admin-seat { flex-wrap:wrap; }
 .ddz-admin-seat small { flex-basis:100%; font-size:10px; color:var(--ink-3); }
+
+/* ResizeObserver uses the actual game pane, including height, on Safari 15. */
+@layer components {
+  .ddz-compact { grid-template-columns: 96px minmax(0, 1fr) 96px; grid-template-rows: 166px minmax(0, 1fr) auto; }
+  .ddz-compact .ddz-top { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto 64px; padding: 32px 16px 0; gap: 8px; }
+  .ddz-compact .ddz-top-mid { grid-row: 2; grid-column: 1 / -1; align-items: center; gap: 12px; align-self: start; }
+  .ddz-compact .ddz-top-end { grid-column: 2; grid-row: 1; }
+  .ddz-compact .ddz-mult { position: static; translate: none; width: 44px; height: 44px; }
+  .ddz-compact .ddz-field span { display: none; }
+  .ddz-compact .ddz-chip { padding: 0 8px; gap: 5px; letter-spacing: 0; font-size: 12px; }
+  .ddz-compact .ddz-chip small { display: none; }
+  .ddz-compact .ddz-top-start, .ddz-compact .ddz-top-end { gap: 4px; }
+  .ddz-compact .ddz-me { padding: 0 16px; }
+  .ddz-compact .ddz-bar { grid-template-columns: minmax(0, 1fr) 254px; gap: 8px; }
+  .ddz-compact .ddz-me-who { column-gap: 8px; grid-template-columns: 48px minmax(0, 1fr); }
+  .ddz-compact .ddz-me-who .ddz-skill-wrap { position: absolute; top: 48px; left: 56px; }
+  .ddz-compact .ddz-me-who .ddz-meta { max-height: 44px; }
+  .ddz-compact .ddz-actions { gap: 7px; }
+  .ddz-compact .ddz-actions .btn { min-width: 80px; padding: 0 10px; font-size: 13px; }
+  .ddz-compact .ddz-center { column-gap: 6px; }
+  .ddz-compact .ddz-play-row .pc-sm { --w: 32px; --h: 45px; --fs: 13px; }
+  .ddz-compact .ddz-play-row .pc + .pc { margin-left: -18px; }
+  .ddz-compact .ddz-play-label { max-width: 140px; overflow-wrap: anywhere; }
+  .ddz-compact .ddz-result { padding: 18px; }
+  .ddz-compact .ddz-result-rows li { grid-template-columns: 116px minmax(0, 1fr) minmax(68px, auto); gap: 8px; padding-inline: 4px; }
+  .ddz-short.ddz-compact { grid-template-rows: 154px minmax(0, 1fr) auto; }
+  .ddz-short .ddz-opp { padding-top: 4px; gap: 4px; }
+  .ddz-short .ddz-opp > .ddz-meta { height: 42px; }
+  .ddz-short .ddz-center-me { min-height: 36px; }
+  .ddz-short .ddz-center { padding-top: 52px; grid-template-rows: minmax(0, 1fr) 36px; align-items: start; }
+  .ddz-short .ddz-center .ddz-play-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
+  .ddz-short .ddz-target .ddz-play-label { max-width: 100%; }
+  .ddz-short .ddz-move.me .ddz-play-row { display: none; }
+  .ddz-short .ddz-result-head { gap: 2px; }
+  .ddz-short .ddz-result-amount { font-size: 40px; min-height: 46px; }
+  .ddz-short .ddz-result-rows li { padding-block: 4px; }
+  .ddz-short .ddz-climb-mult { width: 32px; height: 32px; }
+  .ddz-short .ddz-fee-breakdown { font-size: 13px; }
+  .ddz-short .ddz-fee-breakdown > div { margin: 4px 0; }
+  .ddz-short .ddz-result-details { margin: 6px 0; }
+  .ddz-short .ddz-result-details summary { padding: 4px 0; }
+  .ddz-short .ddz-result-rows { padding-top: 8px; }
+  .ddz-short .ddz-result-actions { margin-top: 8px; padding-top: 8px; }
+}
