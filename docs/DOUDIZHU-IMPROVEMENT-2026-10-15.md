@@ -166,4 +166,4 @@ relay 增加赢家服务费政策快照、进入收费局的版本确认、整�
 
 去掉墨绿底板、金框和角花，大厅改为主栏里的三张 `.card`（介绍、角色、底分与入口），按钮改用客户端的 `btn-primary` / `btn-quiet`，规则与结算改用客户端的 sheet。牌桌直接使用主面板背景和极光头部，中间加一层淡玻璃椭圆作为台面；深色模式随系统切换。牌面保持象牙白，金色只用于倍数、场地、小丑和地主标记，强调色为 `--ddz-accent`。牌背改为应用图标的晨光渐变。
 
-浏览器模拟（Vite + `SimTable`）在 800×560、1080×720、1440×900 下各采样 6 个回合，三座位头像坐标不变；构建与 79 个前端测试通过。Rust 测试 70 个通过（2 个忽略）。尚未在 Tauri 客户端实机验收。本次只改客户端样式，未改 relay、牌局协议或结算账务。
+浏览器模拟（Vite + `SimTable`）在 800×560、1080×720、1440×900 下各采样 6 个回合，三座位头像坐标不变；构建与 79 个前端测试通过。Rust 测试 70 个通过（2 个忽略）。[v0.9.13 Release](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.13) 已公开并设为 Latest，[CI](https://github.com/Jia-Ethan/cloudborne-desktop/actions/runs/39094441675) 的 macOS / Windows 测试与打包成功；安装包签名、公共下载与更新清单核验记录在 suite 的 `releases/ddz-native-v0.9.13-20261018/`。尚未在 Tauri 客户端实机验收。本次只改客户端样式，未改 relay、牌局协议或结算账务。
