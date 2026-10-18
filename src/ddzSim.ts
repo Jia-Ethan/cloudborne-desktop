@@ -297,7 +297,8 @@ export class SimTable {
           const l = this.log.find((x) => x.move.seq === m.seq);
           if (l) l.move = { ...l.move, reverted: true };
         }
-        this.trick = [];
+        // 拒绝 takes back only the last play; what it beat stays on the table.
+        this.trick = hero === 'gpt' ? [] : this.trick.filter((m) => m !== last && m.seq !== last.seq);
         t.last = null;
         t.moves = [null, null, null];
         this.passes = 0;

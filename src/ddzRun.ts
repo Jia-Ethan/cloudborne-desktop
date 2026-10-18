@@ -3,7 +3,7 @@
 // score of at least the target; between deals the shop sells jokers that last
 // the whole run, upgrades to how much each kind of play scores, and changes
 // to the deal. Nothing here touches the balance; nothing is saved but the best
-// result. See docs/DOUDIZHU-ROGUELIKE-2026-10-18.md.
+// result. See docs/DOUDIZHU-IMPROVEMENT-2026-10-15.md (v0.9.15).
 
 import { HEROES, R_2, R_BIG, R_SMALL, rankOf, type Card, type Hero, type Kind, type Move, type Seat } from './ddz';
 import type { SimLog, SimRun } from './ddzSim';
