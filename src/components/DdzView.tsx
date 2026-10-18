@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import {
+  BIG_JOKER,
   HEROES,
   HERO_NAMES, FREE_POLICY, seatName, type FeePolicy,
   SKILL_AIM,
@@ -163,77 +164,90 @@ function Lobby({ balance, conn, onEnter, onRules, policy, minBalanceTimes }: { b
 
   return (
     <div className="main-scroll">
-      <div className={`main-column ddz-lobby ddz-salon ddz-${quality} rise`} style={{ '--i': 0 } as CSSProperties}>
-        <Ornaments />
-        <section className="ddz-hero">
-          <div className="ddz-hero-text">
+      <div className={`main-column ddz-lobby ddz-${quality}`}>
+        <section className="card ddz-intro rise" style={{ '--i': 0 } as CSSProperties}>
+          <div className="ddz-intro-text">
             <h1>{t('ddz.title')}</h1>
             <p>{t('ddz.tagline')}</p>
-            <button className="ddz-hero-rules" onClick={onRules}>
+            <button className="text-link ddz-rules-link" onClick={onRules}>
               {t('ddz.rulesRead')}
               <Icon name="chevronRight" className="size-3.5" />
             </button>
           </div>
-          <div className="ddz-hero-heroes">
-            {HEROES.map((h, i) => (
-              <HeroInfo key={h} hero={h}><HeroBadge hero={h} style={{ '--i': i } as CSSProperties} /></HeroInfo>
+          <div className="ddz-intro-fan" aria-hidden>
+            {FAN.map((c, i) => (
+              <PlayingCard key={c} card={c} size="md" style={{ '--i': i } as CSSProperties} />
             ))}
           </div>
         </section>
 
-        <p className="ddz-avatar-hint">{t('ddz.avatarHint')}</p>
-        <div className="ddz-rule-line" aria-hidden>
-          <i />
-        </div>
-
-        <section className="ddz-stake-row" role="radiogroup" aria-label={t('ddz.base')}>
-          {STAKES.map((b) => (
-            <button
-              key={b}
-              role="radio"
-              aria-checked={base === b}
-              className={`ddz-stake ${base === b ? 'on' : ''}`}
-              disabled={!affordable(b)}
-              title={affordable(b) ? undefined : t('ddz.needBalance', { amount: dollars(b * times) })}
-              onClick={() => setBase(b)}
-            >
-              <small>{t('ddz.base')}</small>
-              <b>{dollars(b)}</b>
-            </button>
-          ))}
+        <section className="card ddz-roster rise" style={{ '--i': 1 } as CSSProperties}>
+          <div className="ddz-section-head">
+            <h2>{t('ddz.guide.heroes')}</h2>
+            <span>{t('ddz.avatarHint')}</span>
+          </div>
+          <div className="ddz-roster-row">
+            {HEROES.map((h) => (
+              <div key={h} className="ddz-roster-item">
+                <HeroInfo hero={h}><HeroBadge hero={h} /></HeroInfo>
+                <span>{NAME[h]}</span>
+              </div>
+            ))}
+          </div>
         </section>
 
-        <p className="ddz-fee-note">{policy ? t(policy.bps > 0 ? 'ddz.feeNotice' : 'ddz.feeFree', {rate: policy.bps/100}) : t('common.wait')}</p>
-        <div className="ddz-entries">
-          <button className="ddz-go" disabled={!canPlay} onClick={() => onEnter({ type: 'match', base })}>
-            <Icon name="bolt" className="size-5" />
-            {t('ddz.quick')}
-          </button>
-          <button className="ddz-go quiet" disabled={!canPlay} onClick={() => onEnter({ type: 'create', base })}>
-            <Icon name="plus" className="size-5" />
-            {t('ddz.create')}
-          </button>
-          <form
-            className="ddz-join"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (code.length === 6) onEnter({ type: 'join', code });
-            }}
-          >
-            <input
-              className="field ddz-code-input"
-              inputMode="numeric"
-              maxLength={6}
-              placeholder={t('ddz.codePlaceholder')}
-              aria-label={t('ddz.codePlaceholder')}
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-            />
-            <button className="btn ddz-glass-btn" disabled={code.length !== 6 || conn !== 'open'}>
-              {t('ddz.join')}
+        <section className="card ddz-play rise" style={{ '--i': 2 } as CSSProperties}>
+          <div className="ddz-section-head">
+            <h2>{t('ddz.base')}</h2>
+            <span>{policy ? t(policy.bps > 0 ? 'ddz.feeNotice' : 'ddz.feeFree', { rate: policy.bps / 100 }) : t('common.wait')}</span>
+          </div>
+          <div className="ddz-stake-row" role="radiogroup" aria-label={t('ddz.base')}>
+            {STAKES.map((b) => (
+              <button
+                key={b}
+                role="radio"
+                aria-checked={base === b}
+                className={`ddz-stake ${base === b ? 'on' : ''}`}
+                disabled={!affordable(b)}
+                title={affordable(b) ? undefined : t('ddz.needBalance', { amount: dollars(b * times) })}
+                onClick={() => setBase(b)}
+              >
+                <b>{dollars(b)}</b>
+                <small>{t('ddz.needBalance', { amount: dollars(b * times) })}</small>
+              </button>
+            ))}
+          </div>
+          <div className="ddz-entries">
+            <button className="btn btn-primary ddz-go" disabled={!canPlay} onClick={() => onEnter({ type: 'match', base })}>
+              <Icon name="bolt" className="size-4" />
+              {t('ddz.quick')}
             </button>
-          </form>
-        </div>
+            <button className="btn btn-quiet ddz-go" disabled={!canPlay} onClick={() => onEnter({ type: 'create', base })}>
+              <Icon name="plus" className="size-4" />
+              {t('ddz.create')}
+            </button>
+            <form
+              className="ddz-join"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (code.length === 6) onEnter({ type: 'join', code });
+              }}
+            >
+              <input
+                className="field ddz-code-input"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder={t('ddz.codePlaceholder')}
+                aria-label={t('ddz.codePlaceholder')}
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              />
+              <button className="btn btn-quiet" disabled={code.length !== 6 || conn !== 'open'}>
+                {t('ddz.join')}
+              </button>
+            </form>
+          </div>
+        </section>
         {conn !== 'open' && conn !== 'idle' && (
           <p className="ddz-lobby-note" role="status">
             {t(conn === 'auth' ? 'ddz.signedOut' : conn === 'unavailable' ? 'ddz.unavailable' : 'ddz.reconnecting')}
@@ -243,6 +257,9 @@ function Lobby({ balance, conn, onEnter, onRules, policy, minBalanceTimes }: { b
     </div>
   );
 }
+
+/** The lobby's fanned cards: a joker over the top of a hand. */
+const FAN: Card[] = [51, 41, 44, BIG_JOKER];
 
 function RulesDialog({ agree, onClose, onAgree, policy }: { agree: boolean; onClose: () => void; onAgree: () => void; policy: FeePolicy }) {
   const { t } = useI18n();
@@ -256,15 +273,15 @@ function RulesDialog({ agree, onClose, onAgree, policy }: { agree: boolean; onCl
       footer={
         agree ? (
           <>
-            <button className="btn ddz-glass-btn" onClick={onClose}>
+            <button className="btn btn-quiet" onClick={onClose}>
               {t('common.cancel')}
             </button>
-            <button className="btn btn-gold" autoFocus onClick={onAgree}>
+            <button className="btn btn-primary" autoFocus onClick={onAgree}>
               {t('ddz.rulesAgree')}
             </button>
           </>
         ) : (
-          <button className="btn btn-gold" autoFocus onClick={onClose}>
+          <button className="btn btn-primary" autoFocus onClick={onClose}>
             {t('common.close')}
           </button>
         )
@@ -338,14 +355,13 @@ function Matching({ send }: { send: (a: Action) => void }) {
   const { t } = useI18n();
   return (
     <div className="ddz-felt ddz-matching">
-      <Ornaments />
       <div className="ddz-shuffle" aria-hidden>
         {[0, 1, 2].map((i) => (
           <CardBack key={i} size="md" style={{ '--i': i } as CSSProperties} />
         ))}
       </div>
       <h2>{t('ddz.matching')}</h2>
-      <button className="btn ddz-glass-btn" onClick={() => send({ type: 'cancel' })}>
+      <button className="btn btn-quiet" onClick={() => send({ type: 'cancel' })}>
         {t('common.cancel')}
       </button>
     </div>
@@ -353,19 +369,6 @@ function Matching({ send }: { send: (a: Action) => void }) {
 }
 
 // ---------------------------------------------------------------- pieces
-
-/** The table's dress: a double gold rule, fans in the corners, a sunburst behind the play. */
-function Ornaments() {
-  return (
-    <div className="ddz-orn" aria-hidden>
-      <span className="ddz-orn-sun" />
-      <i className="tl" />
-      <i className="tr" />
-      <i className="bl" />
-      <i className="br" />
-    </div>
-  );
-}
 
 function HeroBadge({ hero, size = 'md', style }: { hero: Hero; size?: 'sm' | 'md' | 'lg'; style?: CSSProperties }) {
   return (
@@ -458,7 +461,6 @@ function TableScene({ table, conn, send }: { table: Table; conn: DdzConn; send: 
       } as CSSProperties}
       className={`ddz-felt ddz-table ddz-${quality} ${compact ? 'ddz-compact' : ''} ${short ? 'ddz-short' : ''} phase-${table.phase} ${fx.shake ? 'shake' : ''}`}
     >
-      <Ornaments />
       <canvas ref={fx.canvas} className="ddz-sparks" aria-hidden />
       <TopBar table={table} onLeave={leave} send={send} />
       {conn !== 'open' && (
@@ -495,7 +497,7 @@ function TableScene({ table, conn, send }: { table: Table; conn: DdzConn; send: 
         {fx.banner && (
           <div key={fx.banner.key} className={`ddz-banner k-${fx.banner.kind}`}>
             {fx.banner.hero && <HeroBadge hero={fx.banner.hero} size="lg" />}
-            <span>{fx.banner.text}</span>
+            <span className="ddz-banner-text">{fx.banner.text}</span>
           </div>
         )}
         {table.tracker && <Tracker counts={table.tracker} />}
@@ -505,7 +507,7 @@ function TableScene({ table, conn, send }: { table: Table; conn: DdzConn; send: 
       {mine?.auto && table.phase === 'play' && (
         <div className="ddz-auto">
           {t('ddz.autoOn')}
-          <button className="btn btn-gold" onClick={() => send({ type: 'auto', on: false })}>
+          <button className="btn btn-primary" onClick={() => send({ type: 'auto', on: false })}>
             {t('ddz.autoOff')}
           </button>
         </div>
@@ -620,7 +622,7 @@ function RoomCode({ code, base, compact }: { code: string; base: number; compact
           <span key={i}>{d}</span>
         ))}
       </div>
-      <button className="btn ddz-glass-btn" onClick={copy}>
+      <button className="btn btn-quiet" onClick={copy}>
         <Icon name={copied ? 'check' : 'copy'} className="size-4" />
         {copied ? t('common.copied') : t('ddz.copyInvite')}
       </button>
@@ -638,12 +640,12 @@ function WaitingRoom({ table, send }: { table: Table; send: (a: Action) => void 
       {table.code && <RoomCode code={table.code} base={table.base} />}
       <div className="ddz-room-actions">
         {owner && empty > 0 && (
-          <button className="btn ddz-glass-btn" onClick={() => send({ type: 'bots' })}>
+          <button className="btn btn-quiet" onClick={() => send({ type: 'bots' })}>
             <Icon name="sparkle" className="size-4" />
             {t('ddz.fillBots')}
           </button>
         )}
-        <button className={`btn ${me?.ready ? 'ddz-glass-btn' : 'btn-gold'}`} onClick={() => send({ type: 'ready' })}>
+        <button className={`btn ${me?.ready ? 'btn-quiet' : 'btn-primary'}`} onClick={() => send({ type: 'ready' })}>
           {me?.ready ? t('ddz.unready') : t('ddz.ready')}
         </button>
       </div>
@@ -713,8 +715,10 @@ function TimerRing({ deadline, total }: { deadline: number; total: number }) {
   const left = Math.min(total, Math.max(0, deadline - Date.now()));
   return (
     <svg className="ddz-ring" viewBox="0 0 44 44" aria-hidden>
-      <polygon
-        points="13.8,1.5 30.2,1.5 42.5,13.8 42.5,30.2 30.2,42.5 13.8,42.5 1.5,30.2 1.5,13.8"
+      <circle
+        cx="22"
+        cy="22"
+        r="20.5"
         pathLength="100"
         style={{ animationDuration: `${total}ms`, animationDelay: `${left - total}ms` }}
       />
@@ -923,23 +927,23 @@ function MyHand({ table, myTurn, send, cardScale = 1 }: { table: Table; myTurn: 
         <div className="ddz-actions">
           {bidding && (
             <>
-              <button className="btn ddz-glass-btn" onClick={() => send({ type: 'bid', want: false })}>
+              <button className="btn btn-quiet" onClick={() => send({ type: 'bid', want: false })}>
                 {t(table.rob ? 'ddz.bid.norob' : 'ddz.bid.pass')}
               </button>
-              <button className="btn btn-gold" onClick={() => send({ type: 'bid', want: true })}>
+              <button className="btn btn-primary" onClick={() => send({ type: 'bid', want: true })}>
                 {t(table.rob ? 'ddz.bid.rob' : 'ddz.bid.call')}
               </button>
             </>
           )}
           {playing && (
             <>
-              <button className="btn ddz-glass-btn" disabled={leading} onClick={pass}>
+              <button className="btn btn-quiet" disabled={leading} onClick={pass}>
                 {t('ddz.pass')}
               </button>
-              <button className="btn ddz-glass-btn" onClick={hint}>
+              <button className="btn btn-quiet" onClick={hint}>
                 {t('ddz.hint')}
               </button>
-              <button className="btn btn-gold" disabled={verdict.verdict !== 'ok'} onClick={play}>
+              <button className="btn btn-primary" disabled={verdict.verdict !== 'ok'} onClick={play}>
                 {t('ddz.play')}
               </button>
             </>
@@ -1074,7 +1078,7 @@ function SkillAim({
         </>
       )}
       {aim === 'cards-hand' && (
-        <button className="btn btn-gold" disabled={picked.length === 0 || picked.length > maxCards} onClick={() => onUse({ cards: picked, copy })}>
+        <button className="btn btn-primary" disabled={picked.length === 0 || picked.length > maxCards} onClick={() => onUse({ cards: picked, copy })}>
           {t('ddz.aim.drop', { n: picked.length })}
         </button>
       )}
@@ -1101,7 +1105,7 @@ function GeminiAim({ table, give, max, onUse }: { table: Table; give: Card[]; ma
           </button>
         ))}
       </div>
-      <button className="btn btn-gold" disabled={take.length === 0 || take.length !== give.length} onClick={() => onUse(take)}>
+      <button className="btn btn-primary" disabled={take.length === 0 || take.length !== give.length} onClick={() => onUse(take)}>
         {t('ddz.aim.swap', { n: take.length })}
       </button>
     </>
@@ -1200,8 +1204,8 @@ function ResultSheet({ table, send }: { table: Table; send: (a: Action) => void 
           </ul>
         </div>
         <div className="ddz-result-actions">
-          <button className="btn ddz-glass-btn" onClick={() => send({ type: 'leave' })}>{t('ddz.leave')}</button>
-          <button className="btn btn-gold" autoFocus onClick={() => send({ type: 'ready' })}>{t('ddz.again')}</button>
+          <button className="btn btn-quiet" onClick={() => send({ type: 'leave' })}>{t('ddz.leave')}</button>
+          <button className="btn btn-primary" autoFocus onClick={() => send({ type: 'ready' })}>{t('ddz.again')}</button>
         </div>
       </div>
     </div>
