@@ -1,6 +1,6 @@
 [package]
 name = "cloudborne-desktop"
-version = "0.9.14"
+version = "0.9.15"
 description = "Cloudborne relay desktop client"
 edition = "2021"
 license = "MIT"

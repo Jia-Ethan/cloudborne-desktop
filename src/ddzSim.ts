@@ -1,6 +1,7 @@
-// A stand-in for the relay's table, for the UI preview only: it deals, runs
-// the turns, and plays the other two seats with the hint list. Skills and
-// scoring are rough approximations of the relay's; the relay is the referee.
+// A stand-in for the relay's table, for the UI preview and the local 闯关
+// prototype: it deals, runs the turns, and plays the other two seats with the
+// hint list. Skills and scoring are rough approximations of the relay's; at a
+// money table the relay is the referee.
 
 import {
   HEROES,
@@ -38,6 +39,18 @@ const shuffle = <T>(xs: T[]) => {
   return a;
 };
 
+/** 闯关: I am always the landlord; the run sets skill uses and fixes the deal. */
+export type SimRun = {
+  skills: number;
+  /** 先手 boss: the farmers lead. */
+  farmersFirst?: boolean;
+  /** Called on the dealt hands (mine with the bottom in it) before play starts. */
+  setup?: (hands: [Card[], Card[], Card[]], me: Seat) => void;
+};
+
+/** One entry of the deal's log, with what the seat held after it. */
+export type SimLog = { move: Move; left: number };
+
 const seat = (name: string, hero: Hero, bot: boolean): SeatInfo => ({
   name: bot ? HERO_NAMES[hero] : name,
   bot,
@@ -64,11 +77,16 @@ export class SimTable {
   /** 开源互换: the seat my DeepSeek looked at. */
   private peek: number | null = null;
   private trick: Move[] = [];
+  private trickNo = 0;
+  /** 蜂群: plays left that stand unopposed. */
+  private swarm: [number, number, number] = [0, 0, 0];
+  /** Every play and pass this deal, in order. */
+  log: SimLog[] = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private onChange: (t: Table) => void,
-    private opts: { delay: number; base: number; turnMs: number; code?: string | null; autoMe?: boolean; hero?: Hero },
+    private opts: { delay: number; base: number; turnMs: number; code?: string | null; autoMe?: boolean; hero?: Hero; run?: SimRun },
   ) {
     const heroes = shuffle(HEROES);
     this.table = {
@@ -109,6 +127,7 @@ export class SimTable {
       s ? { ...s, left: this.hands[i].length, shown: s.shown ? [...this.hands[i]] : null, peeked: this.peek === i && !s.shown ? [...this.hands[i]] : undefined } : s,
     ) as Table['seats'];
     t.mult = 2 ** (this.rob + this.bombs) * (t.field === 'double' ? 2 : 1);
+    t.history = this.log.map((l) => l.move);
     this.onChange(structuredClone(t));
   }
 
@@ -130,9 +149,10 @@ export class SimTable {
     const deck = shuffle(Array.from({ length: 54 }, (_, i) => i));
     this.hands = [deck.slice(0, 17), deck.slice(17, 34), deck.slice(34, 51)];
     this.bottom = deck.slice(51);
+    const run = this.opts.run;
     Object.assign(this.table, {
       phase: 'bid',
-      field: shuffle(FIELDS)[0],
+      field: run ? null : shuffle(FIELDS)[0],
       offers: null,
       bottom: null,
       landlord: null,
@@ -146,18 +166,32 @@ export class SimTable {
       commit: '9f2c4e…a71b',
       result: null,
     } satisfies Partial<Table>);
-    this.table.seats.forEach((s) => s && Object.assign(s, { joker: null, skills: 1, shown: null }));
+    this.table.seats.forEach((s, i) => s && Object.assign(s, { joker: null, skills: run && i === this.table.me ? run.skills : 1, shown: null }));
     this.peek = null;
     this.caller = null;
-    this.bidTurns = this.rob = this.bombs = 0;
+    this.bidTurns = this.rob = this.bombs = this.trickNo = 0;
     this.plays = [0, 0, 0];
+    this.swarm = [0, 0, 0];
     this.trick = [];
+    this.log = [];
+    if (run) return this.runStart(run);
+    this.arm();
+    this.emit();
+  }
+
+  /** 闯关: no bidding and no joker pick; I take the bottom and play. */
+  private runStart(run: SimRun) {
+    const t = this.table;
+    const me = t.me;
+    this.hands[me] = [...this.hands[me], ...this.bottom];
+    run.setup?.(this.hands, me);
+    Object.assign(t, { phase: 'play', landlord: me, bottom: this.bottom, turn: run.farmersFirst ? nextSeat(me) : me } satisfies Partial<Table>);
     this.arm();
     this.emit();
   }
 
   private arm() {
-    this.table.deadline = Date.now() + this.opts.turnMs;
+    this.table.deadline = this.opts.turnMs ? Date.now() + this.opts.turnMs : null;
     const turn = this.table.turn;
     if (turn !== null && (turn !== this.table.me || this.opts.autoMe)) this.later(() => this.botMove(turn));
   }
@@ -167,6 +201,7 @@ export class SimTable {
     const t = this.table;
     switch (a.type) {
       case 'ready':
+        if (this.opts.run) return this.deal(0);
         this.seat();
         this.later(() => this.deal(0), 400);
         return;
@@ -217,7 +252,7 @@ export class SimTable {
       phase: 'joker',
       bottom: this.bottom,
       turn: null,
-      deadline: Date.now() + 15000,
+      deadline: this.opts.turnMs ? Date.now() + 20000 : null,
       offers: offers.slice(0, 3),
       moves: [null, null, null],
     } satisfies Partial<Table>);
@@ -257,7 +292,11 @@ export class SimTable {
       case 'gpt':
         if (!last?.cards) return;
         target = last.seat;
-        for (const m of hero === 'gpt' ? this.trick : [last]) this.hands[m.seat].push(...(m.cards ?? []));
+        for (const m of hero === 'gpt' ? this.trick : [last]) {
+          this.hands[m.seat].push(...(m.cards ?? []));
+          const l = this.log.find((x) => x.move.seq === m.seq);
+          if (l) l.move = { ...l.move, reverted: true };
+        }
         this.trick = [];
         t.last = null;
         t.moves = [null, null, null];
@@ -276,13 +315,70 @@ export class SimTable {
         this.peek = args.target;
         break;
       }
-      case 'gemini':
-        t.tracker = [4, 4, 4, 3, 2, 4, 4, 1, 2, 4, 3, 2, 1, 1, 0];
+      case 'gemini': {
+        // 长记忆: as many cards back from finished tricks as are thrown away.
+        const take = args.cards ?? [];
+        const give = args.give ?? [];
+        if (take.length === 0 || take.length > 3 || take.length !== give.length || !take.every((c) => t.played.includes(c)) || !give.every((c) => this.hands[s].includes(c))) return;
+        this.hands[s] = [...this.hands[s].filter((c) => !give.includes(c)), ...take];
+        t.played = t.played.filter((c) => !take.includes(c));
+        if (s === t.me) t.tracker = this.tracker();
         break;
+      }
+      case 'grok': {
+        // 求证: a true count; if any, one of them for my lowest card.
+        if (args.target === undefined || args.target === s || args.rank === undefined) return;
+        target = args.target;
+        const theirs = this.hands[target].filter((c) => rankOf(c) === args.rank);
+        info.skills--;
+        t.skill = { seat: s, hero: info.hero, skill: hero, target, rank: args.rank, count: theirs.length };
+        if (theirs.length) {
+          const gave = Math.min(...this.hands[s]);
+          this.hands[s] = [...this.hands[s].filter((c) => c !== gave), theirs[0]];
+          this.hands[target] = [...this.hands[target].filter((c) => c !== theirs[0]), gave];
+        }
+        return this.emit();
+      }
+      case 'glm': {
+        // 协作: throw away up to 3 (4 as landlord); a farmer's mate drops a single.
+        const drop = args.cards ?? [];
+        if (drop.length === 0 || drop.length > (s === t.landlord ? 4 : 3) || drop.length >= this.hands[s].length || !drop.every((c) => this.hands[s].includes(c))) return;
+        this.hands[s] = this.hands[s].filter((c) => !drop.includes(c));
+        if (s !== t.landlord && t.landlord !== null) {
+          const mate = (3 - s - t.landlord) as Seat;
+          if (this.hands[mate].length > 1) this.hands[mate] = this.hands[mate].slice().sort((a, b) => a - b).slice(1);
+          target = mate;
+        }
+        break;
+      }
+      case 'kimi':
+        // 蜂群: my next two plays stand unopposed.
+        if (this.swarm[s]) return;
+        this.swarm[s] = 2;
+        break;
+      default:
+        return;
     }
     info.skills--;
     t.skill = { seat: s, hero: info.hero, skill: hero, target };
     this.emit();
+  }
+
+  /** 记牌器: how many of each rank are not in my hand or played yet. */
+  private tracker(): number[] {
+    const out = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 1, 1];
+    for (const c of [...this.hands[this.table.me], ...this.table.played]) out[rankOf(c)]--;
+    return out;
+  }
+
+  private endTrick() {
+    const t = this.table;
+    t.played.push(...this.trick.flatMap((m) => m.cards ?? []));
+    t.last = null;
+    this.passes = 0;
+    this.trick = [];
+    this.trickNo++;
+    if (t.tracker) t.tracker = this.tracker();
   }
 
   private play(s: Seat, cards: Card[], wild?: Move['wild']) {
@@ -290,23 +386,21 @@ export class SimTable {
     if (cards.length === 0) {
       if (!t.last) return;
       t.moves[s] = { seat: s };
+      this.log.push({ move: { seat: s, seq: this.log.length + 1, trick: this.trickNo }, left: this.hands[s].length });
       this.passes++;
       t.turn = nextSeat(s);
-      if (this.passes === 2) {
-        t.played.push(...this.trick.flatMap((m) => m.cards ?? []));
-        t.last = null;
-        this.passes = 0;
-        this.trick = [];
-      }
+      if (this.passes === 2) this.endTrick();
       this.arm();
       this.emit();
       return;
     }
     const pattern = wild ? wildPattern(cards, wild.card, wild.as) : t.last?.pattern ? follow(cards, t.last.pattern) : classify(cards);
     if (!pattern) return;
-    const move: Move = { seat: s, cards: [...cards], pattern, ...(wild ? { wild } : {}) };
+    if (!cards.every((c) => this.hands[s].includes(c))) return;
+    const move: Move = { seat: s, cards: [...cards], pattern, seq: this.log.length + 1, trick: this.trickNo, ...(wild ? { wild } : {}) };
     if (!t.last) t.moves = [null, null, null];
     this.hands[s] = this.hands[s].filter((c) => !cards.includes(c));
+    this.log.push({ move, left: this.hands[s].length });
     if (pattern.kind === 'bomb' || pattern.kind === 'rocket') this.bombs++;
     this.plays[s]++;
     t.last = move;
@@ -314,6 +408,17 @@ export class SimTable {
     this.passes = 0;
     t.moves[s] = move;
     if (this.hands[s].length === 0) return this.finish(s);
+    if (this.swarm[s] > 0) {
+      // 蜂群: nobody answers; I lead again.
+      this.swarm[s]--;
+      this.endTrick();
+      t.moves = [null, null, null];
+      t.moves[s] = move;
+      t.turn = s;
+      this.arm();
+      this.emit();
+      return;
+    }
     t.turn = nextSeat(s);
     t.moves[t.turn] = null;
     this.arm();
