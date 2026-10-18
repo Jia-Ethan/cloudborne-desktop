@@ -10,7 +10,9 @@ import {
   hints,
   nextSeat,
   rankOf,
+  wildPattern,
   type Action,
+  type SkillArgs,
   type Card,
   type Field,
   type Hero,
@@ -59,6 +61,8 @@ export class SimTable {
   private rob = 0;
   private bombs = 0;
   private plays: [number, number, number] = [0, 0, 0];
+  /** 开源互换: the seat my DeepSeek looked at. */
+  private peek: number | null = null;
   private trick: Move[] = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -101,7 +105,9 @@ export class SimTable {
   private emit() {
     const t = this.table;
     t.hand = [...this.hands[0]];
-    t.seats = t.seats.map((s, i) => (s ? { ...s, left: this.hands[i].length, shown: s.shown ? [...this.hands[i]] : null } : s)) as Table['seats'];
+    t.seats = t.seats.map((s, i) =>
+      s ? { ...s, left: this.hands[i].length, shown: s.shown ? [...this.hands[i]] : null, peeked: this.peek === i && !s.shown ? [...this.hands[i]] : undefined } : s,
+    ) as Table['seats'];
     t.mult = 2 ** (this.rob + this.bombs) * (t.field === 'double' ? 2 : 1);
     this.onChange(structuredClone(t));
   }
@@ -141,6 +147,7 @@ export class SimTable {
       result: null,
     } satisfies Partial<Table>);
     this.table.seats.forEach((s) => s && Object.assign(s, { joker: null, skills: 1, shown: null }));
+    this.peek = null;
     this.caller = null;
     this.bidTurns = this.rob = this.bombs = 0;
     this.plays = [0, 0, 0];
@@ -170,7 +177,7 @@ export class SimTable {
         if (t.phase === 'joker' && t.offers) this.pick(me, t.offers[a.index]);
         return;
       case 'skill':
-        if (t.turn === me) this.skill(me, a.args.copy ?? t.seats[me]!.hero);
+        if (t.turn === me) this.skill(me, a.args.copy ?? t.seats[me]!.hero, a.args);
         return;
       case 'play':
         if (t.turn === me) this.play(me, a.cards);
@@ -230,10 +237,19 @@ export class SimTable {
     this.emit();
   }
 
-  private skill(s: Seat, hero: Hero) {
+  private skill(s: Seat, hero: Hero, args: SkillArgs = {}) {
     const t = this.table;
     const info = t.seats[s]!;
     if (info.skills <= 0) return;
+    if (hero === 'minimax') {
+      // 混合专家 is a lead: the skill banner, then the play itself.
+      const p = !t.last && args.cards && args.wild !== undefined && args.rank !== undefined ? wildPattern(args.cards, args.wild, args.rank) : null;
+      if (!p) return;
+      info.skills--;
+      t.skill = { seat: s, hero: info.hero, skill: hero, target: null, rank: args.rank, cards: [args.wild!] };
+      this.play(s, args.cards!, { card: args.wild!, as: args.rank! });
+      return;
+    }
     const last = t.last;
     let target: Seat | null = null;
     switch (hero) {
@@ -247,9 +263,19 @@ export class SimTable {
         t.moves = [null, null, null];
         this.passes = 0;
         break;
-      case 'deepseek':
+      case 'deepseek': {
+        if (args.target === undefined || (args.give?.length ?? 0) > 1) return;
+        target = args.target;
+        const give = args.give?.[0];
+        const theirs = this.hands[target].filter((c) => rankOf(c) < 13).sort((a, b) => b - a)[0];
+        if (give !== undefined && theirs !== undefined && this.hands[s].includes(give)) {
+          this.hands[s] = [...this.hands[s].filter((c) => c !== give), theirs];
+          this.hands[target] = [...this.hands[target].filter((c) => c !== theirs), give];
+        }
         info.shown = [];
+        this.peek = args.target;
         break;
+      }
       case 'gemini':
         t.tracker = [4, 4, 4, 3, 2, 4, 4, 1, 2, 4, 3, 2, 1, 1, 0];
         break;
@@ -259,7 +285,7 @@ export class SimTable {
     this.emit();
   }
 
-  private play(s: Seat, cards: Card[]) {
+  private play(s: Seat, cards: Card[], wild?: Move['wild']) {
     const t = this.table;
     if (cards.length === 0) {
       if (!t.last) return;
@@ -276,9 +302,9 @@ export class SimTable {
       this.emit();
       return;
     }
-    const pattern = t.last?.pattern ? follow(cards, t.last.pattern) : classify(cards);
+    const pattern = wild ? wildPattern(cards, wild.card, wild.as) : t.last?.pattern ? follow(cards, t.last.pattern) : classify(cards);
     if (!pattern) return;
-    const move: Move = { seat: s, cards: [...cards], pattern };
+    const move: Move = { seat: s, cards: [...cards], pattern, ...(wild ? { wild } : {}) };
     if (!t.last) t.moves = [null, null, null];
     this.hands[s] = this.hands[s].filter((c) => !cards.includes(c));
     if (pattern.kind === 'bomb' || pattern.kind === 'rocket') this.bombs++;
@@ -310,7 +336,6 @@ export class SimTable {
       for (let i = 0; i < this.bombs; i++) steps.push({ source: 'bomb', seat: null, times: t.field === 'blast' ? 3 : 2 });
       if (spring) steps.push({ source: lordWon ? 'spring' : 'anti_spring', seat: null, times: t.field === 'spring' ? 4 : 2 });
       if (t.seats[win]?.joker === 'speed' && this.plays[win] <= 6) steps.push({ source: 'speed', seat: win, times: 2 });
-      for (const s of [lord, f]) if (t.seats[s]?.shown) steps.push({ source: 'deepseek', seat: s as Seat, times: 2.5 });
       let mult = 1;
       for (const st of steps) mult = st.add ? mult + st.add : mult * (st.times ?? 1);
       return { farmer: f, steps, mult: Math.round(mult * 100) / 100 };

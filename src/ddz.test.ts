@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BIG_JOKER, SMALL_JOKER, beats, byPlay, classify, follow, hints, judge, multiplier, patterns, rankOf, type Card } from './ddz';
+import { BIG_JOKER, SMALL_JOKER, beats, byPlay, classify, follow, hints, judge, multiplier, patterns, rankOf, wildPattern, type Card } from './ddz';
 
 const NAMES = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2'];
 
@@ -119,5 +119,23 @@ describe('layout helpers', () => {
   it('caps the multiplier', () => {
     expect(multiplier({ rob: 1, bombs: 1, spring: true })).toBe(8);
     expect(multiplier({ rob: 3, bombs: 3, spring: true })).toBe(16);
+  });
+});
+
+describe('wildPattern (混合专家)', () => {
+  // Cards by rank and suit: rank*4+suit.
+  const c = (rank: number, suit = 0) => rank * 4 + suit;
+  it('finishes a straight with one stand-in, mirroring the relay', () => {
+    expect(wildPattern([c(0), c(1), c(2), c(3), c(6)], c(6), 4)).toEqual({ kind: 'straight', rank: 0, len: 5 });
+  });
+  it('makes a full house but never a bomb', () => {
+    expect(wildPattern([c(2), c(2, 1), c(2, 2), c(0), c(6)], c(0), 6)).toEqual({ kind: 'trio_pair', rank: 2, len: 1 });
+    expect(wildPattern([c(2), c(2, 1), c(2, 2), c(6), c(6, 1)], c(6), 2)).toBeNull();
+  });
+  it('refuses short plays, jokers, ranks above 10 and the same rank', () => {
+    expect(wildPattern([c(0), c(1), c(2), c(3)], c(3), 4)).toBeNull();
+    expect(wildPattern([c(0), c(1), c(2), c(3), 52], 52, 4)).toBeNull();
+    expect(wildPattern([c(4), c(5), c(6), c(7), c(9)], c(9), 8)).toBeNull();
+    expect(wildPattern([c(0), c(1), c(2), c(3), c(4)], c(4), 4)).toBeNull();
   });
 });

@@ -159,6 +159,21 @@ export function patterns(cards: Card[]): Pattern[] {
   });
 }
 
+/** 混合专家: the fewest cards in the play, and the highest rank the wild card may stand in for (10). Mirrors the relay. */
+export const MIN_WILD = 5;
+export const MAX_WILD = 7;
+
+/**
+ * 混合专家: how a lead reads when `wild` counts as rank `as`, or null when it
+ * is no play, a bomb, or too short. Mirrors the relay.
+ */
+export function wildPattern(cards: Card[], wild: Card, as: number): Pattern | null {
+  if (cards.length < MIN_WILD || !cards.includes(wild) || rankOf(wild) >= R_SMALL || as > MAX_WILD || as === rankOf(wild)) return null;
+  // Stand a card of rank `as` in for the wild one; suits never matter.
+  const stand = cards.map((c) => (c === wild ? as * 4 : c));
+  return patterns(stand).find((p) => !isBomb(p)) ?? null;
+}
+
 /** How cards read when led, or null when they are no play. */
 export function classify(cards: Card[]): Pattern | null {
   return patterns(cards)[0] ?? null;
@@ -379,8 +394,10 @@ export type SeatInfo = {
   skills: number;
   skill_total?: number;
   effects?: string[];
-  /** 开源: the hand, face up, for everyone. */
+  /** 开源互换: the hand, face up, for everyone. */
   shown: Card[] | null;
+  /** 开源互换: this opponent's hand, sent only to the seat that looked. */
+  peeked?: Card[];
   /** Cards still in hand. */
   left: number;
   /** Disconnected or timed out twice: the relay plays for them. */
@@ -391,6 +408,8 @@ export type SeatInfo = {
 
 /** The seat's latest move this trick: a bid, a pass, or cards. */
 export type Move = {
+  /** 混合专家: the card played as another rank. */
+  wild?: { card: Card; as: number };
   seq?: number;
   trick?: number;
   reverted?: boolean;
@@ -414,6 +433,8 @@ export type SkillUse = {
   rank?: number;
   count?: number;
   cards?: Card[];
+  /** 开源互换: the card taken, told only to the two seats. */
+  got?: Card[];
 };
 
 /** One line of the multiplier: adds, or multiplies. */
@@ -483,7 +504,7 @@ export type Table = {
   result: Result | null;
 };
 
-export type SkillArgs = { target?: Seat; rank?: number; cards?: Card[]; give?: Card[]; copy?: Hero };
+export type SkillArgs = { target?: Seat; rank?: number; cards?: Card[]; give?: Card[]; copy?: Hero; wild?: Card };
 
 /** What the player asks the relay to do. */
 export type Action = ({ fee_policy?: string }) & (
@@ -507,16 +528,16 @@ export const STAKES = [0.1, 0.5, 1, 2];
 export const minBalance = (base: number) => base * 20;
 
 /** What a skill needs from the player before it can be sent. */
-export type SkillAim = 'none' | 'opponent-rank' | 'cards-played' | 'cards-hand' | 'copy';
+export type SkillAim = 'none' | 'opponent' | 'opponent-rank' | 'cards-played' | 'cards-hand' | 'wild' | 'copy';
 export const SKILL_AIM: Record<Hero, SkillAim> = {
   gpt: 'none',
   claude: 'none',
   gemini: 'cards-played',
   grok: 'opponent-rank',
-  deepseek: 'none',
+  deepseek: 'opponent',
   kimi: 'none',
   glm: 'cards-hand',
-  minimax: 'none',
+  minimax: 'wild',
   qwen: 'copy',
 };
 

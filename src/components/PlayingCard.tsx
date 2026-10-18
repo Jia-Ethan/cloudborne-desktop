@@ -1,4 +1,4 @@
-import type { CSSProperties, PointerEventHandler } from 'react';
+import { useId, type CSSProperties, type PointerEventHandler } from 'react';
 import { BIG_JOKER, SUITS, isRed, rankLabel, rankOf, suitOf, type Card } from '../ddz';
 
 export type CardSize = 'lg' | 'md' | 'sm' | 'xs';
@@ -14,6 +14,7 @@ export function PlayingCard({
   selected,
   fresh,
   dim,
+  wildAs,
   className = '',
   style,
   onPointerDown,
@@ -24,6 +25,8 @@ export function PlayingCard({
   selected?: boolean;
   fresh?: boolean;
   dim?: boolean;
+  /** 混合专家: the rank this card was played as. */
+  wildAs?: string;
   className?: string;
   style?: CSSProperties;
   onPointerDown?: PointerEventHandler<HTMLDivElement>;
@@ -39,6 +42,7 @@ export function PlayingCard({
     selected ? 'selected' : '',
     fresh ? 'fresh' : '',
     dim ? 'dim' : '',
+    wildAs ? 'ddz-wild' : '',
     faceRank ? `face face-${rankLabel(card).toLowerCase()}` : '',
     className,
   ]
@@ -47,6 +51,7 @@ export function PlayingCard({
   return (
     <div className={cls} style={style} onPointerDown={onPointerDown} onPointerEnter={onPointerEnter} data-card={card}>
       <span className="pc-frame" aria-hidden />
+      {wildAs && <span className="ddz-wild-as">{wildAs}</span>}
       {joker ? (
         <>
           <span className="pc-joker">JOKER</span>
@@ -60,25 +65,66 @@ export function PlayingCard({
             <b>{rankLabel(card)}</b>
             <i>{SUITS[suitOf(card)]}</i>
           </span>
-          {faceRank && (
-            <svg className="pc-portrait" viewBox="0 0 56 64" aria-hidden="true">
-              <path className="portrait-hair" d="M11 26c-2-12 5-21 17-21s19 9 17 21l-4 9H15z" />
-              <path className="portrait-face" d="M17 22c0-9 4-14 11-14s11 5 11 14v8c0 9-6 15-11 15s-11-6-11-15z" />
-              <path className="portrait-ear" d="M16 25c-5-3-7 1-4 7l6 3m22-10c5-3 7 1 4 7l-6 3" />
-              <path className="portrait-feature" d="M22 27h1m10 0h1m-7 7 1 2 1-2m-6 6c3 2 7 2 10 0" />
-              <path className="portrait-neck" d="M23 42v7h10v-7" />
-              <path className="portrait-cloak" d="M7 64c1-12 8-17 16-19l5 7 5-7c8 2 15 7 16 19z" />
-              <path className="portrait-collar" d="m19 46 9 12 9-12-4-2-5 7-5-7z" />
-              <path className="portrait-ornament" d="M12 17 7 9l8 3m29 5 5-8-8 3M21 8l2-5 5 4 5-4 3 5" />
-              <path className="portrait-beard" d="M18 36c2 8 5 12 10 13 5-1 8-5 10-13-3 3-6 4-10 4s-7-1-10-4" />
-            </svg>
+          {faceRank && <CourtFace card={card} />}
+          {!faceRank && (
+            <span className="pc-pip" aria-hidden>
+              {SUITS[suitOf(card)]}
+            </span>
           )}
-          <span className="pc-pip" aria-hidden>
-            {SUITS[suitOf(card)]}
-          </span>
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * J, Q and K in the card back's dawn: a tall panel washed sky to apricot, a
+ * figure built from a head and a white shoulder arc, and one mark per rank —
+ * a cap and feather for J, a halo for Q, a crown for K.
+ */
+function CourtFace({ card }: { card: Card }) {
+  const id = useId().replace(/:/g, '');
+  const r = rankLabel(card);
+  const ink = isRed(card) ? '#c63a4e' : '#2a2d36';
+  const gear =
+    r === 'K' ? (
+      <path className="pc-court-gear" d="M36 41 38 29 42 36 48 26 54 36 58 29 60 41Z" />
+    ) : r === 'Q' ? (
+      <>
+        <circle className="pc-court-halo" cx="48" cy="52" r="13" />
+        <circle className="pc-court-gear" cx="48" cy="38.5" r="2.4" />
+      </>
+    ) : (
+      <>
+        <path className="pc-court-gear" d="M36 46 59 37 61 42.5 38 51.5Z" />
+        <path className="pc-court-plume" d="M57 38Q63 28 67 29" />
+      </>
+    );
+  return (
+    <svg className="pc-portrait" viewBox="0 0 74 104" aria-hidden="true">
+      <defs>
+        <linearGradient id={`${id}g`} x1="0" y1="0" x2=".4" y2="1">
+          <stop offset="0" stopColor="#dbe2ff" />
+          <stop offset=".6" stopColor="#ffd0df" />
+          <stop offset="1" stopColor="#ffd8c2" />
+        </linearGradient>
+        <clipPath id={`${id}c`}>
+          <rect x="29" y="8" width="38" height="88" rx="6" />
+        </clipPath>
+      </defs>
+      <rect x="29" y="8" width="38" height="88" rx="6" fill={`url(#${id}g)`} />
+      <g clipPath={`url(#${id}c)`}>
+        <path className="pc-court-arc" d="M27 98V78Q48 58 69 78V98Z" />
+        <circle cx="48" cy="52" r="8.5" fill={ink} />
+        {gear}
+        <text className="pc-court-rank" x="48" y="91" textAnchor="middle" fill={ink}>
+          {r}
+        </text>
+      </g>
+      <text className="pc-court-suit" x="61" y="17" textAnchor="middle" fill={ink}>
+        {SUITS[suitOf(card)]}
+      </text>
+    </svg>
   );
 }
 

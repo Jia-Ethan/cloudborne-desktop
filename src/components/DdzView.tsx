@@ -3,6 +3,8 @@ import {
   BIG_JOKER,
   HEROES,
   HERO_NAMES, FREE_POLICY, seatName, type FeePolicy,
+  MAX_WILD,
+  MIN_WILD,
   SKILL_AIM,
   STAKES,
   byHand,
@@ -11,6 +13,8 @@ import {
   nextSeat,
   prevSeat,
   rankLabel,
+  rankOf,
+  wildPattern,
   type Action,
   type Card,
   type Field,
@@ -31,6 +35,7 @@ import { api, errorText, type DdzStatus } from '../api';
 import { HeroInfo, PlayHistory, PlayCards } from './DdzDetails';
 import { Dialog } from './Dialog';
 import { burst } from './fx';
+import { climbTick, cue, playSound, setSoundOn, useSoundOn } from '../ddzSound';
 import { Icon } from './Icon';
 import { Logo, type LogoId } from './Logo';
 import { CardBack, CardRow, PlayingCard } from './PlayingCard';
@@ -459,9 +464,10 @@ function TableScene({ table, conn, send }: { table: Table; conn: DdzConn; send: 
         '--ddz-sm-h': `${56 * cardScale}px`,
         '--ddz-sm-fs': `${15 * cardScale}px`,
       } as CSSProperties}
-      className={`ddz-felt ddz-table ddz-${quality} ${compact ? 'ddz-compact' : ''} ${short ? 'ddz-short' : ''} phase-${table.phase} ${fx.shake ? 'shake' : ''}`}
+      className={`ddz-felt ddz-table ddz-${quality} ${compact ? 'ddz-compact' : ''} ${short ? 'ddz-short' : ''} phase-${table.phase} ${fx.shake} ${fx.impact ? `hit-${fx.impact.kind} hit-from-${fx.impact.from}` : ''}`}
     >
       <canvas ref={fx.canvas} className="ddz-sparks" aria-hidden />
+      {fx.impact && <ImpactLayer fx={fx.impact} quality={quality} />}
       <TopBar table={table} onLeave={leave} send={send} />
       {conn !== 'open' && (
         <div className="ddz-conn" role="status">
@@ -569,6 +575,7 @@ function TopBar({ table, onLeave, send }: { table: Table; onLeave: () => void; s
       </div>
 
       <div className="ddz-top-end">
+        <SoundToggle />
         <PlayHistory table={table} />
         {table.code && <RoomCode code={table.code} base={table.base} compact />}
         {playing && (
@@ -578,6 +585,25 @@ function TopBar({ table, onLeave, send }: { table: Table; onLeave: () => void; s
         )}
       </div>
     </header>
+  );
+}
+
+function SoundToggle() {
+  const { t } = useI18n();
+  const on = useSoundOn();
+  return (
+    <button
+      className={`ddz-chip ddz-chip-btn ddz-sound ${on ? '' : 'off'}`}
+      onClick={() => setSoundOn(!on)}
+      aria-pressed={on}
+      aria-label={t(on ? 'ddz.soundOff' : 'ddz.soundOn')}
+      title={t(on ? 'ddz.soundOff' : 'ddz.soundOn')}
+    >
+      <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" />
+        {on ? <path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" /> : <path d="m16 9.5 5 5M21 9.5l-5 5" />}
+      </svg>
+    </button>
   );
 }
 
@@ -696,8 +722,9 @@ function Avatar({ info, seat, table, size = 'md' }: { info: SeatInfo | null; sea
   const turn = table.turn === seat && (table.phase === 'bid' || table.phase === 'play');
   const lord = table.landlord === seat;
   const left = useCountdown(turn ? table.deadline : null, turn);
+  const low = !!info && info.left > 0 && info.left <= 2 && (table.phase === 'play' || table.phase === 'showdown');
   return (
-    <div className={`ddz-avatar ${size} ${turn ? 'ddz-turn' : ''} ${lord ? 'lord' : ''} ${info ? '' : 'empty'}`}>
+    <div className={`ddz-avatar ${size} ${turn ? 'ddz-turn' : ''} ${lord ? 'lord' : ''} ${low ? 'ddz-low' : ''} ${info ? '' : 'empty'}`}>
       {info ? <HeroInfo hero={info.hero} info={info} table={table}><HeroBadge hero={info.hero} size={size === 'lg' ? 'lg' : 'md'} /></HeroInfo> : <span className="ddz-avatar-empty">?</span>}
       {turn && table.deadline && <TimerRing key={table.deadline} deadline={table.deadline} total={table.phase === 'bid' ? BID_MS : PLAY_MS} />}
       {turn && left !== null && left <= 10 && <span className="ddz-avatar-secs">{left}</span>}
@@ -760,13 +787,19 @@ function Opponent({ table, seat, side }: { table: Table; seat: Seat; side: 'left
       <Avatar info={info} seat={seat} table={table} size="lg" />
       {info ? <SeatMeta info={info} table={table} seat={seat} /> : <span className="ddz-dim">{t('ddz.emptySeat')}</span>}
       <span className="ddz-thinking-label">{table.turn === seat && table.phase === 'play' ? t('ddz.thinking') : null}</span>
-      {dealt && !info?.shown && (
+      {dealt && !info?.shown && !info?.peeked && (
         <div className={`ddz-stack ${left > 0 && left <= 2 ? 'alarm' : ''}`}>
           <CardBack size="sm" />
           <b>{left}</b>
         </div>
       )}
       {info?.shown && <CardRow cards={byHand(info.shown)} size="xs" className="ddz-shown" />}
+      {info?.peeked && (
+        <div className="ddz-peeked" title={t('ddz.peeked')}>
+          <small>{t('ddz.peeked')}</small>
+          <CardRow cards={byHand(info.peeked)} size="xs" className="ddz-shown" />
+        </div>
+      )}
     </aside>
   );
 }
@@ -1083,7 +1116,60 @@ function SkillAim({
         </button>
       )}
       {aim === 'cards-played' && <GeminiAim table={table} give={picked} max={maxCards} onUse={(cards) => onUse({ cards, give: picked, copy })} />}
+      {aim === 'opponent' && (
+        <>
+          <div className="ddz-aim-row">
+            {enemies.map((s) => (
+              <button
+                key={s}
+                disabled={picked.length > 1 || (picked.length === 1 && picked.length >= table.hand.length)}
+                onClick={() => onUse({ target: s, give: picked.slice(0, 1), copy })}
+              >
+                {table.seats[s] && <HeroBadge hero={table.seats[s]!.hero} size="sm" />}
+                {table.seats[s] ? seatName(table.seats[s]!) : ''}
+              </button>
+            ))}
+          </div>
+          <p className="ddz-aim-note">{t(picked.length === 1 ? 'ddz.aim.swapOne' : picked.length > 1 ? 'ddz.aim.swapTooMany' : 'ddz.aim.swapNone')}</p>
+        </>
+      )}
+      {aim === 'wild' && <WildAim table={table} picked={picked} onUse={(a) => onUse({ ...a, copy })} />}
     </div>
+  );
+}
+
+/**
+ * 混合专家: select the play in hand, tap the card to stand in, then the rank
+ * it counts as. Only readings the relay would take are offered.
+ */
+function WildAim({ table, picked, onUse }: { table: Table; picked: Card[]; onUse: (a: SkillArgs) => void }) {
+  const { t } = useI18n();
+  const [wild, setWild] = useState<Card | null>(null);
+  const cards = useMemo(() => byHand(picked).filter((c) => rankOf(c) < 13), [picked]);
+  const w = wild !== null && picked.includes(wild) ? wild : null;
+  const ranks = Array.from({ length: MAX_WILD + 1 }, (_, r) => MAX_WILD - r);
+  if (table.last) return <p className="ddz-aim-note">{t('ddz.aim.wildLead')}</p>;
+  if (picked.length < MIN_WILD) return <p className="ddz-aim-note">{t('ddz.aim.wildPick', { n: MIN_WILD })}</p>;
+  return (
+    <>
+      <div className="ddz-aim-pool">
+        {cards.map((c) => (
+          <button key={c} className={w === c ? 'on' : ''} onClick={() => setWild(c)}>
+            <PlayingCard card={c} size="sm" />
+          </button>
+        ))}
+      </div>
+      <div className="ddz-aim-ranks">
+        {ranks.map((r) => {
+          const p = w !== null ? wildPattern(picked, w, r) : null;
+          return (
+            <button key={r} disabled={!p} title={p ? t(`ddz.kind.${p.kind}` as MessageKey) : undefined} onClick={() => p && w !== null && onUse({ cards: picked, wild: w, rank: r })}>
+              {rankLabel(r * 4)}
+            </button>
+          );
+        })}
+      </div>
+    </>
   );
 }
 
@@ -1154,11 +1240,7 @@ function ResultSheet({ table, send }: { table: Table; send: (a: Action) => void 
             <span className="ddz-result-badge">{t(lordWon ? 'ddz.lordWins' : 'ddz.farmersWin')}</span>
             <b className="ddz-result-amount">{signed(r.delta[me])}</b>
             <span className="ddz-result-caption">{t('ddz.net')}</span>
-            <div className="ddz-climb">
-              <span className="ddz-climb-base">{dollars(table.base)}</span>
-              <span className="ddz-climb-x">×</span>
-              <b className="ddz-climb-mult">{fmtX(share.mult)}</b>
-            </div>
+            <ResultClimb key={table.commit} table={table} steps={steps} mult={share.mult} won={won} />
           </div>
           {r.gross_delta && (
             <dl className="ddz-fee-breakdown">
@@ -1212,24 +1294,75 @@ function ResultSheet({ table, send }: { table: Table; send: (a: Action) => void 
   );
 }
 
+/**
+ * Base × multiplier, the multiplier climbing one step at a time with a tick
+ * that rises in pitch, the step that moved it named underneath.
+ */
+function ResultClimb({ table, steps, mult, won }: { table: Table; steps: Step[]; mult: number; won: boolean }) {
+  const { t } = useI18n();
+  const still = reducedMotion();
+  const [at, setAt] = useState(still ? steps.length : 0);
+  useEffect(() => {
+    cue(won ? 'win' : 'lose');
+    if (still || steps.length === 0) return;
+    let i = 0;
+    const id = setInterval(() => {
+      climbTick(i, !steps[i].add);
+      i++;
+      setAt(i);
+      if (i >= steps.length) clearInterval(id);
+    }, Math.max(140, Math.min(320, 1800 / steps.length)));
+    return () => clearInterval(id);
+  }, []);
+  let m = 1;
+  for (const st of steps.slice(0, at)) m = st.add ? m + st.add : m * (st.times ?? 1);
+  const value = at >= steps.length ? mult : Math.round(m * 100) / 100;
+  const cur = at > 0 && at <= steps.length ? steps[at - 1] : null;
+  const label = cur ? stepLabel(cur, table, t).label : '';
+  return (
+    <div className="ddz-climb-wrap">
+      <div className="ddz-climb">
+        <span className="ddz-climb-base">{dollars(table.base)}</span>
+        <span className="ddz-climb-x">×</span>
+        <b className="ddz-climb-mult" key={at}>{fmtX(value)}</b>
+      </div>
+      <span className="ddz-climb-step" key={`s${at}`} aria-hidden>
+        {cur ? `${label} ${cur.add ? `+${fmtX(cur.add)}` : `×${fmtX(cur.times ?? 1)}`}` : '\u00a0'}
+      </span>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- effects and clocks
 
 type Banner = { key: string; kind: string; text: string; hero?: Hero };
+
+/** How hard a play lands: drives the table's class, the overlay and the sound. */
+type Impact = { key: string; kind: 'bomb' | 'rocket' | 'plane'; from: 'left' | 'right' | 'me'; times: number };
+
+const PLANES: Kind[] = ['plane', 'plane_singles', 'plane_pairs'];
 
 /** Tiered play feedback; the relay remains the source of truth for every trigger. */
 function useTableFx(table: Table, quality: DdzQuality) {
   const { t } = useI18n();
   const canvas = useRef<HTMLCanvasElement>(null);
   const [banner, setBanner] = useState<Banner | null>(null);
-  const [shake, setShake] = useState(false);
+  const [impact, setImpact] = useState<Impact | null>(null);
+  const [shake, setShake] = useState<'' | 'shake' | 'shake-hard'>('');
   const seen = useRef('');
   const seenFinish = useRef('');
   const seenSkill = useRef<string | null>(null);
+  const seenPass = useRef('');
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(() => () => timers.current.forEach(clearTimeout), []);
+  const later = useCallback((ms: number, f: () => void) => {
+    timers.current.push(setTimeout(f, ms));
+  }, []);
 
   const show = useCallback((b: Banner, ms = 1500) => {
     setBanner(b);
-    setTimeout(() => setBanner((cur) => (cur?.key === b.key ? null : cur)), ms);
-  }, []);
+    later(ms, () => setBanner((cur) => (cur?.key === b.key ? null : cur)));
+  }, [later]);
 
   useEffect(() => {
     const m: Move | null = table.last;
@@ -1238,25 +1371,55 @@ function useTableFx(table: Table, quality: DdzQuality) {
     const first = seen.current === '';
     seen.current = key;
     if (first || !m?.pattern) return;
-    const label = SHOWY[m.pattern.kind];
-    if (!label) return;
-    show({ key, kind: m.pattern.kind, text: t(label), hero: table.seats[m.seat]?.hero });
-    if (quality === 'high' && (m.pattern.kind === 'bomb' || m.pattern.kind === 'rocket') && !reducedMotion()) {
-      setShake(true);
-      setTimeout(() => setShake(false), 450);
+    const kind = m.pattern.kind;
+    playSound(kind, m.cards!.length);
+    const from = m.seat === table.me ? 'me' : m.seat === prevSeat(table.me) ? 'left' : 'right';
+    const label = SHOWY[kind];
+    const still = reducedMotion();
+    const heavy = kind === 'bomb' || kind === 'rocket';
+    if (heavy || PLANES.includes(kind)) {
+      const times = table.field === 'blast' ? (kind === 'rocket' ? 4 : 3) : 2;
+      const fx: Impact = { key, kind: heavy ? (kind as 'bomb' | 'rocket') : 'plane', from, times };
+      setImpact(fx);
+      later(kind === 'rocket' ? 1300 : 1000, () => setImpact((cur) => (cur?.key === key ? null : cur)));
+    }
+    // A bomb holds the frame for a beat before it lands: banner, shake and
+    // sparks all start after the hitstop.
+    const hold = heavy && !still ? (kind === 'rocket' ? 420 : 90) : 0;
+    later(hold, () => {
+      if (label) show({ key, kind, text: t(label), hero: table.seats[m.seat]?.hero });
+      if (!heavy || still) return;
+      setShake(kind === 'rocket' ? 'shake-hard' : 'shake');
+      later(kind === 'rocket' ? 620 : 480, () => setShake(''));
       const c = canvas.current;
-      if (c) {
+      if (quality === 'high' && c) {
         const { width, height } = c.getBoundingClientRect();
         burst(c, {
           x: width / 2,
           y: height * 0.42,
-          colors: m.pattern.kind === 'rocket' ? ['#ffd36e', '#ff5d73', '#ffffff', '#ff9d3c'] : ['#ffd36e', '#ff9d3c', '#ffffff'],
-          count: m.pattern.kind === 'rocket' ? 140 : 90,
-          power: m.pattern.kind === 'rocket' ? 9 : 7,
+          colors: kind === 'rocket' ? ['#ffd36e', '#ff5d73', '#ffffff', '#ff9d3c'] : ['#ffd36e', '#ff9d3c', '#ffffff'],
+          count: kind === 'rocket' ? 160 : 100,
+          power: kind === 'rocket' ? 10 : 7.5,
         });
       }
-    }
-  }, [quality, table.last, show, t]);
+    });
+  }, [quality, table.last, table.me, table.seats, table.field, show, later, t]);
+
+  // A pass is quiet but still heard.
+  useEffect(() => {
+    if (table.phase !== 'play') return;
+    const passes = table.moves.map((m, s) => (m && !m.cards?.length && !m.bid ? `${s}:${m.trick ?? ''}` : '')).join('|');
+    if (passes === seenPass.current) return;
+    const before = seenPass.current;
+    seenPass.current = passes;
+    if (before && passes.split('|').some((p, i) => p && p !== before.split('|')[i])) cue('pass');
+  }, [table.moves, table.phase]);
+
+  // My turn: a soft ping.
+  const myTurn = table.turn === table.me && (table.phase === 'play' || table.phase === 'bid');
+  useEffect(() => {
+    if (myTurn) cue('turn');
+  }, [myTurn, table.version]);
 
   useEffect(() => {
     const m = table.last;
@@ -1272,10 +1435,35 @@ function useTableFx(table: Table, quality: DdzQuality) {
     const key = u ? `${table.commit}:${u.n ?? table.moves.map((m) => m?.cards?.join() ?? '').join('|')}:${u.seat}:${u.skill}` : null;
     if (!u || key === seenSkill.current) return;
     seenSkill.current = key;
+    cue('skill');
     show({ key: `skill-${key}`, kind: 'skill', text: t(`ddz.skill.${u.skill}` as MessageKey), hero: u.hero }, 1700);
   }, [table.skill, table.moves, show, t]);
 
-  return { canvas, banner, shake };
+  return { canvas, banner, shake, impact };
+}
+
+/**
+ * The overlay a big play draws over the felt: a bomb's shockwave and a ×2
+ * flying up to the multiplier, a rocket's dim, flash and trail, a plane's
+ * contrail across the table. Pure CSS; the table removes it when it is done.
+ */
+function ImpactLayer({ fx, quality }: { fx: Impact; quality: DdzQuality }) {
+  if (reducedMotion()) return null;
+  return (
+    <div key={fx.key} className={`ddz-impact ddz-impact-${fx.kind} from-${fx.from} q-${quality}`} aria-hidden>
+      {fx.kind === 'plane' ? (
+        <span className="ddz-contrail" />
+      ) : (
+        <>
+          {fx.kind === 'rocket' && <span className="ddz-flash" />}
+          {fx.kind === 'rocket' && <span className="ddz-trail" />}
+          <span className="ddz-wave" />
+          {quality === 'high' && <span className="ddz-wave ddz-wave-2" />}
+          <b className="ddz-x2">×{fx.times}</b>
+        </>
+      )}
+    </div>
+  );
 }
 
 let clockNow = Date.now();

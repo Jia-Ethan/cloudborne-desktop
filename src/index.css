@@ -5629,6 +5629,7 @@ html[data-glass='mica'] {
   }
   .pc-idx {
     position: absolute;
+    z-index: 1;
     top: calc(var(--fs) * 0.34);
     left: calc(var(--fs) * 0.3);
     display: flex;
@@ -5655,23 +5656,40 @@ html[data-glass='mica'] {
     font-size: calc(var(--w) * 0.5);
     line-height: 1;
   }
-  .pc-portrait { position: absolute; left: 22%; top: 25%; width: 68%; height: 67%; overflow: visible; border-radius: 45% 45% 5px 5px; background: linear-gradient(160deg, #efe4c7, #d4c39c); }
-  .pc-portrait path { stroke-linecap: round; stroke-linejoin: round; }
-  .pc-portrait .portrait-hair { fill: #302620; }
-  .pc-portrait .portrait-face { fill: #edbd91; stroke: #774f3c; stroke-width: 1; }
-  .pc-portrait .portrait-ear, .pc-portrait .portrait-neck { fill: #e7b28a; stroke: #774f3c; stroke-width: 1; }
-  .pc-portrait .portrait-feature { fill: none; stroke: #34251e; stroke-width: 1.6; }
-  .pc-portrait .portrait-cloak { fill: #9f2934; stroke: #6d2026; stroke-width: 1; }
-  .pc-portrait .portrait-collar { fill: #f6e8c9; stroke: #9b753f; stroke-width: 1; }
-  .pc-portrait .portrait-ornament { fill: #c99434; stroke: #8d6423; stroke-width: 1; }
-  .pc-portrait .portrait-beard { fill: #433126; }
-  .pc.face-j .portrait-hair { fill: #4a2c21; }
-  .pc.face-j .portrait-cloak { fill: #a8353a; }
-  .pc.face-q .portrait-hair { fill: #292b43; }
-  .pc.face-q .portrait-cloak { fill: #375b70; }
-  .pc.face-q .portrait-beard { display: none; }
-  .pc.face-k .portrait-hair { fill: #322820; }
-  .pc.face-k .portrait-cloak { fill: #4e4a35; }
+  /* J, Q, K: the card back's dawn with a figure in shapes; the whole face
+     is one SVG in the card's own 74×104 proportions. */
+  .pc-portrait {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+  .pc-court-arc {
+    fill: #fff;
+    fill-opacity: 0.92;
+  }
+  .pc-court-gear {
+    fill: var(--ddz-accent, #d9822b);
+  }
+  .pc-court-halo {
+    fill: none;
+    stroke: var(--ddz-accent, #d9822b);
+    stroke-width: 2.4;
+  }
+  .pc-court-plume {
+    fill: none;
+    stroke: var(--ddz-accent, #d9822b);
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+  .pc-court-rank {
+    font-family: var(--serif, Georgia, serif);
+    font-size: 15px;
+  }
+  .pc-court-suit {
+    font-size: 7px;
+  }
   .pc-xs .pc-idx {
     top: 3px;
     left: 2px;
@@ -6132,8 +6150,24 @@ html[data-glass='mica'] {
       'left center right'
       'me me me';
   }
-  .ddz-table.shake .ddz-center {
-    animation: ddz-impact 0.18s ease-out;
+  /* Bombs shake the whole table, not the window: every block but the canvas
+     and the overlay moves with the individual translate property, so the
+     slot positions underneath never change. */
+  .ddz-table {
+    --ddz-quake: 1;
+  }
+  .ddz-table.ddz-standard {
+    --ddz-quake: 0.6;
+  }
+  .ddz-table.shake > :is(.ddz-top, .ddz-opp, .ddz-center, .ddz-me) {
+    animation: ddz-quake 0.46s cubic-bezier(0.3, 0.7, 0.4, 1);
+  }
+  .ddz-table.shake-hard > :is(.ddz-top, .ddz-opp, .ddz-center, .ddz-me) {
+    --ddz-quake: 1.7;
+    animation: ddz-quake 0.6s cubic-bezier(0.3, 0.7, 0.4, 1);
+  }
+  .ddz-table.ddz-standard.shake-hard > :is(.ddz-top, .ddz-opp, .ddz-center, .ddz-me) {
+    --ddz-quake: 1;
   }
   .ddz-sparks {
     position: absolute;
@@ -6606,6 +6640,64 @@ html[data-glass='mica'] {
     max-width: 150px;
     flex-wrap: wrap;
     row-gap: 4px;
+  }
+  /* 开源互换: the opponent's hand only I can see, under a dashed rule. */
+  .ddz-peeked {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 8px;
+    border: 1px dashed color-mix(in srgb, #4d6bfe 55%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, #4d6bfe 7%, transparent);
+  }
+  .ddz-peeked > small {
+    color: var(--ink-3);
+    font-size: 11px;
+  }
+  .ddz-opp > .ddz-peeked {
+    max-height: 150px;
+    overflow: auto;
+  }
+  .ddz-peeked > .ddz-shown {
+    max-width: 128px;
+  }
+  .ddz-peeked .pc-row-xs > .pc + .pc {
+    margin-left: -12px;
+  }
+  .ddz-peeked .pc-row-xs > .pc {
+    margin-left: -12px;
+  }
+  .ddz-peeked .pc-row-xs {
+    padding-left: 12px;
+  }
+  /* 混合专家: the wild card glows in MiniMax's colour and wears its new rank. */
+  .pc.ddz-wild {
+    box-shadow:
+      0 0 0 2px #fe603c,
+      0 0 14px rgb(254 96 60 / 0.45),
+      var(--ddz-card-shadow);
+  }
+  .ddz-wild-as {
+    position: absolute;
+    z-index: 2;
+    right: 2px;
+    bottom: 2px;
+    min-width: 18px;
+    padding: 1px 4px;
+    border-radius: 999px;
+    background: #fe603c;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 14px;
+    text-align: center;
+  }
+  .ddz-aim-note {
+    margin: 0;
+    color: var(--ink-3);
+    font-size: 13px;
   }
   .ddz-thinking-label {
     color: var(--ink-3);
@@ -7200,22 +7292,6 @@ html[data-glass='mica'] {
   .ddz-banner.k-finish {
     animation-name: ddz-finish;
   }
-  .ddz-move.cards.k-straight .ddz-play-row .pc,
-  .ddz-move.cards.k-pair_straight .ddz-play-row .pc {
-    animation: ddz-sequence 0.28s cubic-bezier(0.2, 0.8, 0.3, 1) backwards;
-    animation-delay: calc(var(--i, 0) * 18ms);
-  }
-  .ddz-move.cards.k-plane .ddz-play-row .pc,
-  .ddz-move.cards.k-plane_singles .ddz-play-row .pc,
-  .ddz-move.cards.k-plane_pairs .ddz-play-row .pc {
-    animation: ddz-plane 0.3s cubic-bezier(0.2, 0.8, 0.3, 1) backwards;
-    animation-delay: calc(var(--i, 0) * 16ms);
-  }
-  .ddz-move.cards.k-bomb .ddz-play-row .pc,
-  .ddz-move.cards.k-rocket .ddz-play-row .pc {
-    animation: ddz-impact-card 0.24s cubic-bezier(0.2, 0.8, 0.3, 1) backwards;
-    animation-delay: calc(var(--i, 0) * 22ms);
-  }
 
   /* ---- Result: the app's sheet, a stable summary with pinned actions ---- */
   .ddz-result-wrap {
@@ -7657,6 +7733,200 @@ html[data-glass='mica'] {
       margin-left: -14px;
     }
   }
+  /* ---- Impact: what a bomb, a rocket or a plane draws over the felt ---- */
+  .ddz-impact {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .ddz-wave {
+    position: absolute;
+    left: 50%;
+    top: 44%;
+    width: 64px;
+    height: 64px;
+    translate: -50% -50%;
+    border: 3px solid var(--ddz-accent);
+    border-radius: 50%;
+    opacity: 0;
+    animation: ddz-wave 0.72s cubic-bezier(0.15, 0.7, 0.3, 1) 0.09s forwards;
+  }
+  .q-high .ddz-wave {
+    box-shadow:
+      0 0 18px color-mix(in srgb, var(--ddz-accent) 55%, transparent),
+      inset 0 0 18px color-mix(in srgb, var(--ddz-accent) 40%, transparent);
+  }
+  .ddz-wave-2 {
+    border-color: #ff6b5b;
+    border-width: 2px;
+    animation-delay: 0.2s;
+  }
+  .ddz-impact-rocket .ddz-wave {
+    animation-delay: 0.42s;
+  }
+  .ddz-impact-rocket .ddz-wave-2 {
+    animation-delay: 0.52s;
+  }
+  /* ×2 pops where the bomb landed, then flies up to the multiplier. */
+  .ddz-x2 {
+    position: absolute;
+    left: 50%;
+    top: 60%;
+    padding: 2px 14px;
+    translate: -50% -50%;
+    color: var(--ddz-on-gold);
+    background: var(--ddz-gold-fill);
+    border-radius: 999px;
+    box-shadow: 0 6px 20px rgb(217 130 43 / 0.35);
+    font-size: 26px;
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+    opacity: 0;
+    animation: ddz-x2 0.9s cubic-bezier(0.5, 0, 0.3, 1) 0.12s forwards;
+  }
+  .ddz-impact-rocket .ddz-x2 {
+    animation-delay: 0.46s;
+  }
+  .ddz-compact .ddz-x2 {
+    animation-name: ddz-x2-compact;
+  }
+  .hit-bomb .ddz-mult,
+  .hit-rocket .ddz-mult {
+    animation: ddz-mult-hit 0.45s cubic-bezier(0.2, 0.8, 0.3, 1.6) 0.62s;
+  }
+  .hit-rocket .ddz-mult {
+    animation-delay: 0.96s;
+  }
+  /* The rocket: the table dims while it climbs, then a white flash. */
+  .ddz-impact-rocket::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgb(18 14 30 / 0.32);
+    animation: ddz-dim 1.25s ease-out forwards;
+  }
+  .ddz-flash {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 50% 44%, #fff 0%, rgb(255 236 200 / 0.85) 30%, rgb(255 255 255 / 0) 70%);
+    opacity: 0;
+    animation: ddz-flash 0.5s ease-out 0.4s forwards;
+  }
+  .ddz-trail {
+    position: absolute;
+    left: 50%;
+    bottom: 20%;
+    width: 10px;
+    height: 38%;
+    translate: -50% 0;
+    background: linear-gradient(to top, rgb(255 157 60 / 0), #ff9d3c 55%, #fff6d8);
+    border-radius: 999px;
+    transform-origin: 50% 100%;
+    opacity: 0;
+    animation: ddz-trail 0.5s cubic-bezier(0.5, 0, 0.7, 1) forwards;
+  }
+  .q-high .ddz-trail {
+    box-shadow: 0 0 22px 6px rgb(255 157 60 / 0.45);
+  }
+  .from-left .ddz-trail {
+    left: 22%;
+    rotate: 28deg;
+  }
+  .from-right .ddz-trail {
+    left: 78%;
+    rotate: -28deg;
+  }
+  /* A plane leaves a contrail across the table in the direction it flew. */
+  .ddz-contrail {
+    position: absolute;
+    left: 0;
+    top: 40%;
+    width: 70%;
+    height: 3px;
+    background: linear-gradient(90deg, rgb(148 177 255 / 0), #94b1ff 70%, #fff);
+    border-radius: 999px;
+    opacity: 0;
+    animation: ddz-contrail 0.85s cubic-bezier(0.3, 0.6, 0.3, 1) forwards;
+  }
+  .q-high .ddz-contrail {
+    box-shadow: 0 0 12px rgb(148 177 255 / 0.7);
+  }
+  .ddz-impact-plane.from-right {
+    scale: -1 1;
+  }
+  .ddz-impact-plane.from-me .ddz-contrail {
+    top: 56%;
+  }
+  /* Everyone the bomb did not come from flinches. */
+  :is(.hit-bomb, .hit-rocket):not(.hit-from-left) .ddz-opp.left .ddz-herob,
+  :is(.hit-bomb, .hit-rocket):not(.hit-from-right) .ddz-opp.right .ddz-herob,
+  :is(.hit-bomb, .hit-rocket):not(.hit-from-me) .ddz-me-who .ddz-herob {
+    animation: ddz-flinch 0.5s cubic-bezier(0.3, 0.7, 0.4, 1) 0.09s;
+  }
+  .hit-rocket :is(.ddz-opp, .ddz-me-who) .ddz-herob {
+    animation-delay: 0.42s;
+  }
+  /* Cards that land: straights fall like dominoes, planes sweep in as a
+     formation from the side they came from, bombs slam down. */
+  .ddz-move.cards.k-straight .ddz-play-row .pc,
+  .ddz-move.cards.k-pair_straight .ddz-play-row .pc {
+    transform-origin: 0 100%;
+    animation: ddz-domino 0.34s cubic-bezier(0.3, 0.8, 0.4, 1.2) backwards;
+    animation-delay: calc(var(--i, 0) * 45ms);
+  }
+  .ddz-move.cards:is(.k-plane, .k-plane_singles, .k-plane_pairs) .ddz-play-row .pc {
+    animation: ddz-sweep-left 0.46s cubic-bezier(0.2, 0.8, 0.3, 1) backwards;
+    animation-delay: calc(var(--i, 0) * 30ms);
+  }
+  .ddz-move.cards.right:is(.k-plane, .k-plane_singles, .k-plane_pairs) .ddz-play-row .pc {
+    animation-name: ddz-sweep-right;
+  }
+  .ddz-move.cards:is(.k-bomb, .k-rocket) .ddz-play-row .pc {
+    animation: ddz-slam 0.3s cubic-bezier(0.5, 0, 0.6, 1.4) backwards;
+    animation-delay: calc(var(--i, 0) * 18ms);
+  }
+  /* Down to one or two cards: the avatar rings red. The ring pulses on its
+     own layer on the high setting only. */
+  .ddz-avatar.ddz-low .ddz-herob {
+    box-shadow:
+      0 0 0 2px var(--ddz-warn),
+      0 4px 14px color-mix(in srgb, var(--ddz-warn) 30%, transparent);
+  }
+  .ddz-avatar.ddz-low::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    z-index: 1;
+    border: 2px solid var(--ddz-warn);
+    border-radius: 50%;
+    pointer-events: none;
+    animation: ddz-low 1.2s ease-out infinite;
+  }
+  .ddz-standard .ddz-avatar.ddz-low::after {
+    animation: none;
+    opacity: 0;
+  }
+  /* The sound chip stays a plain chip either way; off is only quieter. */
+  .ddz-chip-btn.ddz-sound {
+    color: var(--ink);
+  }
+  .ddz-chip-btn.ddz-sound.off {
+    color: var(--ink-3);
+  }
+  .ddz-climb-wrap {
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+  }
+  .ddz-climb-step {
+    min-height: 1.3em;
+    color: var(--ink-3);
+    font-size: 12px;
+    font-weight: 600;
+    animation: ddz-fade 0.24s ease-out;
+  }
   @media (prefers-reduced-motion: reduce) {
     .ddz-felt *,
     .ddz-lobby * {
@@ -7792,44 +8062,93 @@ html[data-glass='mica'] {
   }
   to { opacity: 1; transform: translateY(0); }
 }
-@keyframes ddz-plane {
-  from { opacity: 0.55; transform: translateY(10px) scale(0.96); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-@keyframes ddz-impact-card {
-  0% { opacity: 0.65; transform: translateY(-5px) scale(1.04); }
-  65% { opacity: 1; transform: translateY(1px) scale(0.99); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-@keyframes ddz-impact {
-  0% { transform: translateY(0); }
-  45% { transform: translateY(2px); }
-  to { transform: translateY(0); }
-}
 @keyframes ddz-finish {
   0% { opacity: 0; transform: translateY(10px) scale(0.92); }
   22% { opacity: 1; transform: translateY(0) scale(1.04); }
   68% { opacity: 1; transform: translateY(0) scale(1); }
   to { opacity: 0; transform: translateY(-8px) scale(1.03); }
 }
-@keyframes ddz-shake {
-  10%,
-  90% {
-    transform: translate(-2px, 1px);
-  }
-  20%,
-  80% {
-    transform: translate(4px, -2px);
-  }
-  30%,
-  50%,
-  70% {
-    transform: translate(-6px, 2px);
-  }
-  40%,
-  60% {
-    transform: translate(6px, -1px);
-  }
+@keyframes ddz-quake {
+  0% { translate: 0 0; }
+  12% { translate: calc(var(--ddz-quake) * -7px) calc(var(--ddz-quake) * 3px); }
+  26% { translate: calc(var(--ddz-quake) * 6px) calc(var(--ddz-quake) * -4px); }
+  40% { translate: calc(var(--ddz-quake) * -5px) calc(var(--ddz-quake) * 2px); }
+  56% { translate: calc(var(--ddz-quake) * 4px) calc(var(--ddz-quake) * -1px); }
+  72% { translate: calc(var(--ddz-quake) * -2px) calc(var(--ddz-quake) * 1px); }
+  to { translate: 0 0; }
+}
+@keyframes ddz-wave {
+  0% { opacity: 0.95; scale: 0.2; }
+  to { opacity: 0; scale: 9; }
+}
+@keyframes ddz-x2 {
+  0% { opacity: 0; scale: 0.3; }
+  18% { opacity: 1; scale: 1.25; }
+  40% { opacity: 1; scale: 1; top: 60%; }
+  88% { opacity: 1; scale: 0.6; top: 92px; }
+  to { opacity: 0; scale: 0.5; top: 92px; }
+}
+@keyframes ddz-x2-compact {
+  0% { opacity: 0; scale: 0.3; }
+  18% { opacity: 1; scale: 1.2; }
+  60% { opacity: 1; scale: 1; }
+  to { opacity: 0; scale: 0.8; top: 30%; }
+}
+@keyframes ddz-mult-hit {
+  40% { scale: 1.3; }
+  to { scale: 1; }
+}
+@keyframes ddz-dim {
+  0% { opacity: 0; }
+  20%, 45% { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes ddz-flash {
+  0% { opacity: 0; }
+  20% { opacity: 0.9; }
+  to { opacity: 0; }
+}
+@keyframes ddz-trail {
+  0% { opacity: 0; scale: 1 0.1; translate: -50% 40%; }
+  30% { opacity: 1; }
+  80% { opacity: 1; scale: 1 1; translate: -50% -30%; }
+  to { opacity: 0; scale: 0.6 0.4; translate: -50% -70%; }
+}
+@keyframes ddz-contrail {
+  0% { opacity: 0; translate: -100% 0; scale: 0.4 1; }
+  25% { opacity: 1; }
+  70% { opacity: 0.9; translate: 30% 0; scale: 1 1; }
+  to { opacity: 0; translate: 60% 0; scale: 1 0.4; }
+}
+@keyframes ddz-flinch {
+  0% { scale: 1; rotate: 0deg; }
+  25% { scale: 0.86; rotate: -7deg; }
+  50% { scale: 1.04; rotate: 4deg; }
+  to { scale: 1; rotate: 0deg; }
+}
+@keyframes ddz-domino {
+  0% { opacity: 0; transform: translateY(-18px) rotate(-62deg); }
+  60% { opacity: 1; transform: translateY(0) rotate(5deg); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ddz-sweep-left {
+  0% { opacity: 0; transform: translate(-160px, -26px) rotate(-10deg); }
+  65% { opacity: 1; transform: translate(6px, 2px) rotate(1deg); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ddz-sweep-right {
+  0% { opacity: 0; transform: translate(160px, -26px) rotate(10deg); }
+  65% { opacity: 1; transform: translate(-6px, 2px) rotate(-1deg); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ddz-slam {
+  0% { opacity: 0; transform: translateY(-34px) scale(1.55); }
+  65% { opacity: 1; transform: translateY(2px) scale(0.94); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ddz-low {
+  0% { opacity: 0.9; scale: 1; }
+  to { opacity: 0; scale: 1.35; }
 }
 @keyframes ddz-shuffle {
   0%,

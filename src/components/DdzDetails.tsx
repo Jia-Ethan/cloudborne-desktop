@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { byPlay, HERO_NAMES, rankLabel, seatName, type Hero, type Move, type SeatInfo, type Table } from '../ddz';
 import { useI18n, type MessageKey } from '../i18n';
@@ -47,12 +47,14 @@ export function PlayCards({ move, compact = false, expand = true }: { move: Move
   const [open,setOpen]=useState(false);
   const cards=byPlay(move.cards ?? []);
   const ranks=cards.map(c=>c===52?t('ddz.smallJoker'):c===53?t('ddz.bigJoker'):rankLabel(c)).join(' ');
-  const label=`${move.pattern ? t(`ddz.kind.${move.pattern.kind}` as MessageKey) : ''} · ${ranks}`;
+  const wild=move.wild ? ` · ${t('ddz.skill.minimax')} ${rankLabel(move.wild.card)}→${rankLabel(move.wild.as*4)}` : '';
+  const label=`${move.pattern ? t(`ddz.kind.${move.pattern.kind}` as MessageKey) : ''} · ${ranks}${wild}`;
+  const mark=(c:number)=>move.wild?.card===c ? {wildAs:rankLabel(move.wild.as*4)} : {};
   const rows = Array.from({length:Math.ceil(cards.length/8)},(_,i)=>cards.slice(i*8,i*8+8));
   return <><button type="button" className={`ddz-play-cards ${compact?'compact':''}`} onClick={()=>expand && setOpen(true)} aria-label={t('ddz.expandPlay',{cards:label})}>
-    {!compact && rows.map((row,i)=><span className="ddz-play-row" key={i}>{row.map(c=><PlayingCard key={c} card={c} size="sm" />)}</span>)}
+    {!compact && rows.map((row,i)=><span className="ddz-play-row" key={i}>{row.map((c,j)=><PlayingCard key={c} card={c} size="sm" {...mark(c)} style={{'--i':move.pattern?.kind==='pair_straight'?Math.floor((i*8+j)/2):i*8+j} as CSSProperties} />)}</span>)}
     <span className="ddz-play-label">{label}</span>
-  </button>{open && <Dialog title={label} onClose={()=>setOpen(false)} className="ddz-sheet" wide><div className="ddz-expanded-cards">{cards.map(c=><PlayingCard key={c} card={c} size="md" />)}</div></Dialog>}</>;
+  </button>{open && <Dialog title={label} onClose={()=>setOpen(false)} className="ddz-sheet" wide><div className="ddz-expanded-cards">{cards.map(c=><PlayingCard key={c} card={c} size="md" {...mark(c)} />)}</div></Dialog>}</>;
 }
 
 export function PlayHistory({ table }: { table: Table }) {
