@@ -6,8 +6,9 @@ Cloudborne（栖云）中转站的桌面客户端：用中转站账号登录、�
 
 ## 状态
 
-v0.9.15 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
+v0.9.16 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
 
+- 转账、邀请链接和分组并发（v0.9.16）：「兑换」页可以按邮箱或用户名把余额转给其他用户（至少 $1、最多两位小数，确认时输入登录密码，转出不可撤回，双方记录里各有一条「转账转出 / 转入」）；管理员允许的用户在同一页生成一次性邀请链接（7 天过期，同时最多 3 条，可撤回）。管理端用户详情去掉最近使用记录，改为每 5 秒刷新的分组并发，并可开关该用户的邀请权限。需要 relay `0.2.8-cloudborne.42-transfer-invite`。
 - 斗地主闯关试玩版与更长思考时间（v0.9.15）：大厅新增「闯关 · 试玩版」，当地主一打二连闯 3 幕 9 关，得分 = 筹码 × 倍率，小丑整局保留、关间进商店构筑、每幕末有首领；完全在本机运行，不连 relay、不用余额。叫地主和选小丑改为 20 秒、出牌改为 30 秒，需要 relay `0.2.8-cloudborne.26-ddz-clock`。
 - 斗地主技能重做与手感（v0.9.14）：MiniMax 改为「混合专家」（领出 5 张以上时一张牌当万能牌），DeepSeek 改为「开源互换」（亮牌、看一名对手并换走他一张大牌）；J/Q/K 新牌面、默认开启的音效，以及炸弹、王炸、飞机、顺子的打击效果。需要 relay `0.2.8-cloudborne.25-ddz-skills`。
 - 斗地主融入客户端风格（v0.9.13）：去掉墨绿底板和金框，大厅改为主栏卡片，牌桌直接用主面板背景加淡玻璃台面，按钮、弹窗和结算面板沿用客户端样式，深色模式随系统切换；牌面保持象牙白，金色只用于倍数、场地、小丑和地主标记。
@@ -118,6 +119,6 @@ brand/render.sh          # 用本机 Chrome 渲染 app-icon-1024.png 和 preview
 3. CI 构建 macOS 通用包和 Windows 安装包，生成 `.app.tar.gz` / `-setup.exe` 的签名和 `latest.json`，挂到一个 draft Release 上。
 4. 检查 draft 没问题后点 Publish（不要勾 pre-release，保持 Latest）。发布那一刻起，已安装的客户端在下次检查时就会看到更新。
 
-当前公开版本：[`v0.9.15`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.15)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.15/Cloudborne-Windows-setup.exe)。
+当前公开版本：[`v0.9.16`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.16)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.16/Cloudborne-Windows-setup.exe)。
 
 更新私钥在本机 `~/.cloudborne-desktop-signing/`（权限 700），CI 里是 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 两个 secret。私钥丢了，已装的客户端就收不到后续更新，只能手动重装，所以要另外备份。0.2.0 及更早的版本没有更新功能，需要手动装一次 0.2.1。
