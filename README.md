@@ -6,7 +6,9 @@ Cloudborne（栖云）中转站的桌面客户端：用中转站账号登录、�
 
 ## 状态
 
-v0.9.17 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
+v0.9.18 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
+
+- 限时额度（v0.9.18）：「兑换」页兑换码下方新增「限时额度」卡片，每个 token 包一条进度条，显示分组、剩余 / 总量和到期时间，用完或过期的变灰，只留最近两个；没有就不显示。兑换结果和记录能认出限时额度码和宝箱码。需要 relay `0.2.8-cloudborne.44` 及以上。
 
 - 一键接入 DSH（v0.9.17）：首页新增 DeepSeek Harness 卡片，可一键安装（npm，要 Node.js 22.19 以上）和连接 Cloudborne；连接时选 DeepSeek、GLM、Kimi 或 MiniMax 分组，默认模型 DeepSeek Flash、思考 high，DSH 里原有的模型服务保留，改了什么见下面「连接时改了什么」。
 - 转账、邀请链接和分组并发（v0.9.16）：「兑换」页可以按邮箱或用户名把余额转给其他用户（至少 $1、最多两位小数，确认时输入登录密码，转出不可撤回，双方记录里各有一条「转账转出 / 转入」）；管理员允许的用户在同一页生成一次性邀请链接（7 天过期，同时最多 3 条，可撤回）。管理端用户详情去掉最近使用记录，改为每 5 秒刷新的分组并发，并可开关该用户的邀请权限。需要 relay `0.2.8-cloudborne.42-transfer-invite`。
@@ -121,6 +123,6 @@ brand/render.sh          # 用本机 Chrome 渲染 app-icon-1024.png 和 preview
 3. CI 构建 macOS 通用包和 Windows 安装包，生成 `.app.tar.gz` / `-setup.exe` 的签名和 `latest.json`，挂到一个 draft Release 上。
 4. 检查 draft 没问题后点 Publish（不要勾 pre-release，保持 Latest）。发布那一刻起，已安装的客户端在下次检查时就会看到更新。
 
-当前公开版本：[`v0.9.17`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.17)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.17/Cloudborne-Windows-setup.exe)。
+当前公开版本：[`v0.9.18`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.18)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.18/Cloudborne-Windows-setup.exe)。
 
 更新私钥在本机 `~/.cloudborne-desktop-signing/`（权限 700），CI 里是 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 两个 secret。私钥丢了，已装的客户端就收不到后续更新，只能手动重装，所以要另外备份。0.2.0 及更早的版本没有更新功能，需要手动装一次 0.2.1。
