@@ -1,7 +1,7 @@
 import type { FeePolicy } from './ddz';
 import { invoke } from '@tauri-apps/api/core';
 
-export type ToolId = 'codex' | 'claude' | 'zcode' | 'grok' | 'pi';
+export type ToolId = 'codex' | 'claude' | 'zcode' | 'grok' | 'pi' | 'dsh';
 
 /** 小丑斗地主 lobby as the relay reports it. */
 export interface DdzSettings {

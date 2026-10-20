@@ -223,6 +223,7 @@ pub fn locate(tool: ToolId, home: &Path) -> Option<PathBuf> {
         ToolId::Claude => find_binary(home, "claude"),
         ToolId::Grok => find_binary(home, "grok"),
         ToolId::Pi => find_binary(home, "pi"),
+        ToolId::Dsh => find_binary(home, "dsh"),
         ToolId::Zcode => zcode_app(home),
     }
 }

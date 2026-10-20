@@ -18,6 +18,8 @@ const GROK_PS: &str = "irm https://x.ai/cli/install.ps1 | iex";
 const PI_SH: &str = "curl -fsSL https://pi.dev/install.sh | sh";
 const PI_PS: &str = "irm https://pi.dev/install.ps1 | iex";
 const CODEX_NPM: &str = "npm install -g @openai/codex --registry=https://registry.npmmirror.com";
+// DSH needs Node.js 22.19 or newer; npm reports an older one before installing.
+const DSH_NPM: &str = "npm install -g @deepseek-ai/dsh --registry=https://registry.npmmirror.com";
 const NODE_DOWNLOAD: &str = "https://nodejs.org/zh-cn/download";
 const ZCODE_PAGE: &str = "https://zcode.z.ai/cn";
 const ZCODE_CDN: &str = "https://cdn-zcode.z.ai/zcode/electron/releases";
@@ -52,6 +54,7 @@ fn script_for(tool: ToolId) -> Option<&'static str> {
         (ToolId::Pi, false) => Some(PI_SH),
         (ToolId::Pi, true) => Some(PI_PS),
         (ToolId::Codex, _) => Some(CODEX_NPM),
+        (ToolId::Dsh, _) => Some(DSH_NPM),
         (ToolId::Zcode, _) => None,
     }
 }
@@ -62,7 +65,7 @@ pub async fn install(tool: ToolId, home: &Path) -> Result<InstallStarted> {
         open_path(&path)?;
         return Ok(InstallStarted::Package { path: path.display().to_string() });
     }
-    if tool == ToolId::Codex && crate::tools::detect::find_binary(home, "npm").is_none() {
+    if matches!(tool, ToolId::Codex | ToolId::Dsh) && crate::tools::detect::find_binary(home, "npm").is_none() {
         open_url(NODE_DOWNLOAD)?;
         return Ok(InstallStarted::NeedsNode);
     }

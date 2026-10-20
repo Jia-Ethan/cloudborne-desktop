@@ -1,6 +1,6 @@
 # Cloudborne Desktop
 
-Cloudborne（栖云）中转站的桌面客户端：用中转站账号登录、看余额，一键把 Codex、Claude Code、ZCode、Grok Build 和 Pi 接到 Cloudborne，没装的工具可以一键安装。支持 macOS 和 Windows。
+Cloudborne（栖云）中转站的桌面客户端：用中转站账号登录、看余额，一键把 Codex、Claude Code、ZCode、Grok Build、Pi 和 DSH（DeepSeek Harness）接到 Cloudborne，没装的工具可以一键安装。支持 macOS 和 Windows。
 
 产品形态参照 TeamoRouter 桌面端（首页是客户端卡片列表，每张卡片一个「连接」按钮）。只参照交互，不复用对方的代码、素材或图形。
 
@@ -38,7 +38,7 @@ v0.9.16 已发布（未做 Apple 公证和 Windows 代码签名；应用内更�
 - 工具图标用各家官方 logo（矢量来自 [lobe-icons](https://github.com/lobehub/lobe-icons)，MIT），见 `src/components/Logo.tsx`。
 - 五个工具的检测、连接、断开。每个工具在中转站上用一把专用密钥，名字是 `Cloudborne Desktop · <工具名>`。
 - Windows 上的 ZCode 检测不再假定安装在 C: 或 `%LOCALAPPDATA%`：会查询当前用户和计算机的 32/64 位卸载注册表及 App Paths，识别安装到 D: 等其他磁盘的 `ZCode.exe`。
-- 一键安装：Claude Code、Grok Build、Pi 在可见的终端里跑官方脚本；Codex 用 npm（没有 Node.js 时打开 Node.js 下载页）；ZCode 从官方 CDN 下载安装包并打开。
+- 一键安装：Claude Code、Grok Build、Pi 在可见的终端里跑官方脚本；Codex 和 DSH 用 npm（没有 Node.js 时打开 Node.js 下载页；DSH 要 Node.js 22.19 以上）；ZCode 从官方 CDN 下载安装包并打开。
 
 方案和边界见 [`docs/PLAN.md`](docs/PLAN.md)。
 
@@ -62,11 +62,12 @@ v0.9.16 已发布（未做 Apple 公证和 Windows 代码签名；应用内更�
 | ZCode | `~/.zcode/v2/config.json`、`~/.zcode/cli/config.json` | `provider.cloudborne`（OpenAI 兼容） | 只删 `provider.cloudborne` |
 | Grok Build | `~/.grok/config.toml` | 文件末尾一段带标记的 `[model."cloudborne/<模型>"]` | 删掉这段 |
 | Pi | `~/.pi/agent/models.json`、`~/.pi/agent/settings.json`（设了 `PI_CODING_AGENT_DIR` 时在那里） | `providers.cloudborne`，协议跟着分组走：GPT、Grok 用 Responses，Claude 用 Messages，国产模型用 Chat Completions；`defaultProvider` / `defaultModel` 改成它 | 只删 `providers.cloudborne`；默认模型还是我们设的就改回原值，用户自己换过就不动 |
+| DSH | 每个基于 `dsh-base` 的 `~/.dsh/profiles/<profile>/cordis.patch.yml`（DSH 还没建的 `web`、`headless` 先建好补丁文件），`~/.dsh/.env`（设了 `DSH_HOME` 时在那里） | 补丁文件末尾一段带标记的 `llm-pi-ai` 行（用户自己 `llm-pi-ai` 行里的 provider 原样带上，再加 `providers.cloudborne`，Chat Completions；DeepSeek 模型声明 1M 上下文和 off/high/max 思考）和 `agent-default-model` 行（默认 DeepSeek Flash，思考 high）；`.env` 里一段带标记的 `CLOUDBORNE_DSH_API_KEY` | 删掉两段标记；DSH 设置页写进标记段的改动（换的模型、新加的 provider、其他设置行）挪到标记段外保留 |
 
 - 每次写之前把原文件复制成 `<文件名>.cloudborne-backup-<时间>`，写入是原子替换，写完重新读一遍校验，校验失败就恢复备份。
 - 原文件解析不了时直接报错，不会去改它。
 - Claude Code 和 Pi 被覆盖前的原值记在 `~/.cloudborne-desktop/state.json`。
-- 用本机真实的 Codex、Claude Code、ZCode、Grok 配置文件副本做过「连接 + 断开」，五个文件都和原来逐字节一致。
+- 用本机真实的 Codex、Claude Code、ZCode、Grok 配置文件副本做过「连接 + 断开」，五个文件都和原来逐字节一致；DSH 的 web profile 补丁文件副本也一样。
 
 ## 开发
 
@@ -88,7 +89,7 @@ CI（`.github/workflows/ci.yml`）在 macOS 和 Windows 上跑测试，并打包
 ## 目录
 
 - `src/`：界面（React + Tailwind）。
-- `src-tauri/src/`：`api.rs` 中转站接口，`session.rs` 登录、令牌存储和刷新，`accounts.rs` 已保存账号的列表，`tools/` 四个工具的读写，`install.rs` 一键安装，`fsx.rs` 备份、原子写入和标记段。
+- `src-tauri/src/`：`api.rs` 中转站接口，`session.rs` 登录、令牌存储和刷新，`accounts.rs` 已保存账号的列表，`tools/` 各工具的读写，`install.rs` 一键安装，`fsx.rs` 备份、原子写入和标记段。
 - `brand/`：图标和 logo，全部从 `brand/build.mjs` 里的几何参数生成，不手改 SVG。
 - `docs/PLAN.md`：v0.1 的范围、技术栈和接口。
 - `docs/DOUDIZHU-IMPROVEMENT-2026-10-15.md`：斗地主设计、布局修复、发布证据与回滚边界。

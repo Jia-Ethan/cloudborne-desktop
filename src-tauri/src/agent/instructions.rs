@@ -45,6 +45,9 @@ ANTHROPIC_* take precedence and are a common cause of problems. Skills live in ~
 - Grok Build: ~/.grok/config.toml.
 - Pi: ~/.pi/agent/models.json (provider `cloudborne`) and ~/.pi/agent/settings.json \
 (`defaultProvider`, `defaultModel`); `PI_CODING_AGENT_DIR` moves both. Skills live in ~/.pi/agent/skills.
+- DSH (DeepSeek Harness): a marked block at the end of ~/.dsh/profiles/<profile>/cordis.patch.yml \
+(an `llm-pi-ai` row with provider `cloudborne` and an `agent-default-model` row) and the key \
+`CLOUDBORNE_DSH_API_KEY` in a marked block of ~/.dsh/.env; `DSH_HOME` moves ~/.dsh.
 
 Current state:
 {tools}

@@ -211,7 +211,7 @@ pub async fn connect_tool(s: State<'_, Session>, tool: ToolId, group_id: i64) ->
     let models = match tool {
         // Codex and Claude Code choose models themselves.
         ToolId::Codex | ToolId::Claude => vec![],
-        ToolId::Zcode | ToolId::Grok | ToolId::Pi => s.client.models(&key.key).await?,
+        ToolId::Zcode | ToolId::Grok | ToolId::Pi | ToolId::Dsh => s.client.models(&key.key).await?,
     };
     let platform = if tool == ToolId::Pi { group_platform(s.inner(), group_id).await? } else { String::new() };
     let conn = Connection { origin: s.client.origin().to_string(), api_key: key.key, models, platform };

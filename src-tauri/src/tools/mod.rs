@@ -5,6 +5,7 @@
 pub mod claude;
 pub mod codex;
 pub mod detect;
+pub mod dsh;
 pub mod grok;
 pub mod pi;
 pub mod zcode;
@@ -32,10 +33,11 @@ pub enum ToolId {
     Zcode,
     Grok,
     Pi,
+    Dsh,
 }
 
 impl ToolId {
-    pub const ALL: [ToolId; 5] = [ToolId::Codex, ToolId::Claude, ToolId::Zcode, ToolId::Grok, ToolId::Pi];
+    pub const ALL: [ToolId; 6] = [ToolId::Codex, ToolId::Claude, ToolId::Zcode, ToolId::Grok, ToolId::Pi, ToolId::Dsh];
 
     pub fn display_name(self) -> &'static str {
         match self {
@@ -44,6 +46,7 @@ impl ToolId {
             ToolId::Zcode => "ZCode",
             ToolId::Grok => "Grok Build",
             ToolId::Pi => "Pi",
+            ToolId::Dsh => "DSH",
         }
     }
 
@@ -57,6 +60,8 @@ impl ToolId {
             ToolId::Grok => &["grok"],
             // Pi speaks every protocol the relay does.
             ToolId::Pi => &["openai", "anthropic", "grok", "zhipu", "deepseek", "kimi", "minimax"],
+            // DeepSeek's own harness; other domestic groups also speak Chat Completions.
+            ToolId::Dsh => &["deepseek", "zhipu", "kimi", "minimax"],
         }
     }
 }
@@ -97,6 +102,7 @@ pub fn is_connected(tool: ToolId, home: &Path) -> Result<bool> {
         ToolId::Zcode => zcode::is_connected(home),
         ToolId::Grok => grok::is_connected(home),
         ToolId::Pi => pi::is_connected(home),
+        ToolId::Dsh => dsh::is_connected(home),
     }
 }
 
@@ -107,6 +113,7 @@ pub fn connect(tool: ToolId, home: &Path, conn: &Connection) -> Result<Vec<PathB
         ToolId::Zcode => zcode::connect(home, conn),
         ToolId::Grok => grok::connect(home, conn),
         ToolId::Pi => pi::connect(home, conn),
+        ToolId::Dsh => dsh::connect(home, conn),
     }
 }
 
@@ -117,6 +124,7 @@ pub fn disconnect(tool: ToolId, home: &Path) -> Result<Vec<PathBuf>> {
         ToolId::Zcode => zcode::disconnect(home),
         ToolId::Grok => grok::disconnect(home),
         ToolId::Pi => pi::disconnect(home),
+        ToolId::Dsh => dsh::disconnect(home),
     }
 }
 

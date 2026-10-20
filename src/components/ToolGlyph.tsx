@@ -8,6 +8,7 @@ const LOGO: Record<ToolId, LogoId> = {
   zcode: 'zai',
   grok: 'grok',
   pi: 'pi',
+  dsh: 'deepseek',
 };
 
 const BOX = { xs: 'size-5 rounded-[6px]', sm: 'size-6 rounded-[7px]', md: 'size-12 rounded-[14px]' };
