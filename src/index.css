@@ -5156,6 +5156,46 @@ html[data-glass='mica'] {
     color: var(--ink);
     background: var(--quiet-hover);
   }
+  .pack-list {
+    display: grid;
+    gap: 12px;
+  }
+  .pack-row {
+    display: grid;
+    gap: 6px;
+  }
+  .pack-row.done {
+    opacity: 0.55;
+  }
+  .pack-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 13.5px;
+  }
+  .pack-head b {
+    font-weight: 650;
+  }
+  .pack-head span,
+  .pack-left {
+    color: var(--ink-3);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .pack-bar {
+    height: 8px;
+    overflow: hidden;
+    background: var(--quiet);
+    border-radius: 99px;
+  }
+  .pack-bar i {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, #ff8d5c, #ff6a3d);
+    border-radius: inherit;
+    transition: width 0.5s cubic-bezier(0.2, 0.7, 0.3, 1);
+  }
   .redeem-note {
     display: flex;
     align-items: center;

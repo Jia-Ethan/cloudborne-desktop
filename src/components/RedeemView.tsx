@@ -5,18 +5,20 @@ import { dollars } from '../lottery';
 import { direction, historyTitle, historyValue, redeemedText } from '../redeem';
 import { Icon } from './Icon';
 import { InviteCard } from './InviteCard';
+import { TokenPackCard } from './TokenPackCard';
 import { TransferCard } from './TransferCard';
 import { when } from './WinnerSheet';
 
 const PAGE = 20;
 
-/** Redeem codes: balance on top, the code field, transfers and invites, then every balance change, newest first. */
+/** Redeem codes: balance on top, the code field, time-limited token packs, transfers and invites, then every balance change, newest first. */
 export function RedeemView({ balance, onRedeemed, onToast }: { balance: number; onRedeemed: () => void; onToast: (m: string) => void }) {
   const { t } = useI18n();
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState<{ text: string; key: number } | null>(null);
+  const [packsVersion, setPacksVersion] = useState(0);
   const [items, setItems] = useState<RedeemItem[] | null>(null);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -67,6 +69,7 @@ export function RedeemView({ balance, onRedeemed, onToast }: { balance: number; 
       setCode('');
       onRedeemed();
       load(1);
+      if (r.type === 'token_pack') setPacksVersion((v) => v + 1);
     } catch (err) {
       setError(errorText(err, t('common.genericError')));
       input.current?.select();
@@ -131,6 +134,8 @@ export function RedeemView({ balance, onRedeemed, onToast }: { balance: number; 
             <p className="redeem-note">{t('redeem.hint')}</p>
           )}
         </form>
+
+        <TokenPackCard reload={packsVersion} />
 
         <TransferCard
           balance={balance}

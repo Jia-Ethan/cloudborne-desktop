@@ -481,6 +481,13 @@ pub async fn redeem_history(s: State<'_, Session>, page: u32, page_size: u32) ->
     s.authed(|a| async move { c.redeem_history(&a, page, page_size).await }).await
 }
 
+/// This account's time-limited token packs (active, used up and expired), newest first.
+#[tauri::command]
+pub async fn token_packs(s: State<'_, Session>) -> Result<serde_json::Value> {
+    let c = &s.client;
+    s.authed(|a| async move { c.token_packs(&a).await }).await
+}
+
 // ---- Transfers and invites ----
 
 /// Sends `amount` of this account's balance to another account; returns

@@ -10,31 +10,36 @@ export function direction(item: Pick<RedeemItem, 'type' | 'value'>): 'in' | 'out
 }
 
 export function historyTitle(item: Pick<RedeemItem, 'type' | 'value'>, t: T): string {
-  const key: MessageKey =
-    item.type === 'balance'
-      ? 'redeem.type.balance'
-      : item.type === 'concurrency'
-        ? 'redeem.type.concurrency'
-        : item.type === 'subscription'
-          ? 'redeem.type.subscription'
-          : item.type === 'admin_balance'
-            ? item.value >= 0
-              ? 'redeem.type.adminAdd'
-              : 'redeem.type.adminDeduct'
-            : item.type === 'admin_concurrency'
-              ? 'redeem.type.adminConcurrency'
-              : item.type === 'affiliate_balance'
-                ? 'redeem.type.affiliate'
-                : item.type === 'lottery'
-                  ? 'redeem.type.lottery'
-                  : item.type === 'doudizhu'
-                    ? 'redeem.type.ddz'
-                    : item.type === 'transfer'
-                      ? item.value >= 0
-                        ? 'redeem.type.transferIn'
-                        : 'redeem.type.transferOut'
-                      : 'redeem.type.other';
-  return t(key);
+  return t(historyKey(item));
+}
+
+function historyKey(item: Pick<RedeemItem, 'type' | 'value'>): MessageKey {
+  switch (item.type) {
+    case 'balance':
+      return 'redeem.type.balance';
+    case 'concurrency':
+      return 'redeem.type.concurrency';
+    case 'subscription':
+      return 'redeem.type.subscription';
+    case 'token_pack':
+      return 'redeem.type.tokenPack';
+    case 'chest':
+      return 'redeem.type.chest';
+    case 'admin_balance':
+      return item.value >= 0 ? 'redeem.type.adminAdd' : 'redeem.type.adminDeduct';
+    case 'admin_concurrency':
+      return 'redeem.type.adminConcurrency';
+    case 'affiliate_balance':
+      return 'redeem.type.affiliate';
+    case 'lottery':
+      return 'redeem.type.lottery';
+    case 'doudizhu':
+      return 'redeem.type.ddz';
+    case 'transfer':
+      return item.value >= 0 ? 'redeem.type.transferIn' : 'redeem.type.transferOut';
+    default:
+      return 'redeem.type.other';
+  }
 }
 
 /** `+$5.00`, `−$1.20`, `+2 并发`, `30 天 · 分组`. */
@@ -43,6 +48,11 @@ export function historyValue(item: Pick<RedeemItem, 'type' | 'value' | 'validity
     const days = t('redeem.days', { days: item.validity_days || Math.round(item.value) });
     return item.group?.name ? `${days} · ${item.group.name}` : days;
   }
+  if (item.type === 'token_pack') {
+    const tokens = `${item.value}M`;
+    return item.group?.name ? `${tokens} · ${item.group.name}` : tokens;
+  }
+  if (item.type === 'chest') return t('redeem.chestCount', { n: item.value });
   const sign = item.value > 0 ? '+' : item.value < 0 ? '−' : '';
   const abs = Math.abs(item.value);
   if (item.type.includes('concurrency')) return `${sign}${abs} ${t('redeem.requests')}`;
@@ -62,6 +72,12 @@ export function redeemedText(item: Pick<RedeemItem, 'type' | 'value' | 'validity
         ? t('redeem.doneSubscription', { group: item.group.name, days })
         : t('redeem.doneSubscriptionNoGroup', { days });
     }
+    case 'token_pack': {
+      const tokens = `${item.value}M`;
+      return item.group?.name ? t('redeem.doneTokenPack', { group: item.group.name, tokens }) : t('redeem.doneTokenPackNoGroup', { tokens });
+    }
+    case 'chest':
+      return t('redeem.doneChest', { n: item.value });
     default:
       return t('redeem.done');
   }

@@ -339,6 +339,11 @@ impl Client {
         self.send(self.http.get(self.url("/api/v1/redeem/history")).query(&q).bearer_auth(access)).await
     }
 
+    /// Time-limited token packs, newest first: `[{ group_name, tokens_total, tokens_used, expires_at, status }]`.
+    pub async fn token_packs(&self, access: &str) -> Result<Value> {
+        self.send(self.http.get(self.url("/api/v1/redeem/token-packs")).bearer_auth(access)).await
+    }
+
     /// Moves balance to another account found by email or username; the password confirms it.
     pub async fn transfer(&self, access: &str, recipient: &str, amount: f64, password: &str) -> Result<Value> {
         let body = json!({ "recipient": recipient, "amount": amount, "password": password });

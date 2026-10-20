@@ -62,6 +62,7 @@ pub fn run() {
             commands::ddz_close,
             commands::redeem,
             commands::redeem_history,
+            commands::token_packs,
             commands::transfer,
             commands::invites,
             commands::invite_create,

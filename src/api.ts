@@ -320,6 +320,18 @@ export type SwitchOutcome =
   | { kind: 'two_factor'; email_masked: string }
   | { kind: 'signed_out'; email: string };
 
+/** A time-limited token allowance in one group. Requests there use it before the balance. */
+export interface TokenPack {
+  id: number;
+  group_id: number;
+  group_name: string;
+  tokens_total: number;
+  tokens_used: number;
+  created_at: string;
+  expires_at: string;
+  status: 'active' | 'used_up' | 'expired';
+}
+
 /** A redeemed code or another balance change, as the relay lists them. */
 export interface RedeemItem {
   id: number;
@@ -608,6 +620,7 @@ export const api = {
   ddzStatus: () => invoke<DdzStatus>('ddz_status'),
   redeem: (code: string) => invoke<RedeemItem>('redeem', { code }),
   redeemHistory: (page: number, pageSize: number) => invoke<Page<RedeemItem>>('redeem_history', { page, pageSize }),
+  tokenPacks: () => invoke<TokenPack[]>('token_packs'),
   transfer: (recipient: string, amount: number, password: string) => invoke<TransferResult>('transfer', { recipient, amount, password }),
   invites: () => invoke<Invites>('invites'),
   inviteCreate: () => invoke<Invite>('invite_create'),
