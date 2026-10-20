@@ -4,12 +4,14 @@ import { useI18n } from '../i18n';
 import { dollars } from '../lottery';
 import { direction, historyTitle, historyValue, redeemedText } from '../redeem';
 import { Icon } from './Icon';
+import { InviteCard } from './InviteCard';
+import { TransferCard } from './TransferCard';
 import { when } from './WinnerSheet';
 
 const PAGE = 20;
 
-/** Redeem codes: balance on top, the code field, then every balance change, newest first. */
-export function RedeemView({ balance, onRedeemed }: { balance: number; onRedeemed: () => void }) {
+/** Redeem codes: balance on top, the code field, transfers and invites, then every balance change, newest first. */
+export function RedeemView({ balance, onRedeemed, onToast }: { balance: number; onRedeemed: () => void; onToast: (m: string) => void }) {
   const { t } = useI18n();
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
@@ -129,6 +131,16 @@ export function RedeemView({ balance, onRedeemed }: { balance: number; onRedeeme
             <p className="redeem-note">{t('redeem.hint')}</p>
           )}
         </form>
+
+        <TransferCard
+          balance={balance}
+          onToast={onToast}
+          onSent={() => {
+            onRedeemed();
+            load(1);
+          }}
+        />
+        <InviteCard onToast={onToast} />
 
         <section className="card usage-card rise" style={{ '--i': 2 } as CSSProperties}>
           <div className="usage-card-head">

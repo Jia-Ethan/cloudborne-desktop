@@ -5233,6 +5233,92 @@ html[data-glass='mica'] {
     font-size: 11.5px;
     font-variant-numeric: tabular-nums;
   }
+  .transfer-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+    gap: 10px;
+  }
+  .redeem-card .usage-card-head {
+    margin-bottom: 0;
+  }
+  .invite-row .invite-code {
+    overflow: hidden;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12.5px;
+    letter-spacing: 0.02em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Per-group concurrency in the admin user sheet. */
+  .group-load {
+    display: grid;
+    gap: 2px;
+    margin-top: 4px;
+  }
+  .group-load-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 4px 14px;
+    padding: 10px 2px;
+    border-top: 1px solid var(--line);
+  }
+  .group-load-row:first-child {
+    border-top: 0;
+  }
+  .group-load-row > div {
+    display: grid;
+    min-width: 0;
+    line-height: 1.35;
+  }
+  .group-load-row b {
+    overflow: hidden;
+    font-size: 13.5px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .group-load-row span {
+    color: var(--ink-3);
+    font-size: 12px;
+  }
+  .group-load-row strong {
+    font-size: 15px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .group-load-row.idle strong {
+    color: var(--ink-3);
+    font-weight: 500;
+  }
+  .group-load-bar {
+    grid-column: 1 / -1;
+    height: 4px;
+    overflow: hidden;
+    background: var(--quiet);
+    border-radius: 999px;
+  }
+  .group-load-bar i {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, #94b1ff, #ff8d5c);
+    border-radius: inherit;
+    transition: width 0.4s cubic-bezier(0.2, 0.7, 0.3, 1);
+  }
+  .user-detail-inviter {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 14px;
+    padding: 10px 12px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: 600;
+  }
 }
 
 @media (max-width: 980px) {

@@ -424,7 +424,7 @@ export function App() {
         ) : view === 'status' ? (
           <StatusView />
         ) : view === 'redeem' ? (
-          <RedeemView balance={user.balance} onRedeemed={refetchMe} />
+          <RedeemView balance={user.balance} onRedeemed={refetchMe} onToast={setToast} />
         ) : view === 'lottery' ? (
           <LotteryView balance={user.balance} onBalance={refetchMe} onStatus={lotteryStatus} />
         ) : view === 'ddz' ? (

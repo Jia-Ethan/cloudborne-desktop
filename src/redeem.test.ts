@@ -13,6 +13,8 @@ describe('redeem', () => {
     expect(historyTitle({ type: 'admin_balance', value: 2 }, t)).toBe('redeem.type.adminAdd');
     expect(historyTitle({ type: 'lottery', value: -25 }, t)).toBe('redeem.type.lottery');
     expect(historyTitle({ type: 'doudizhu', value: 1.6 }, t)).toBe('redeem.type.ddz');
+    expect(historyTitle({ type: 'transfer', value: 3 }, t)).toBe('redeem.type.transferIn');
+    expect(historyTitle({ type: 'transfer', value: -3 }, t)).toBe('redeem.type.transferOut');
     expect(historyTitle({ type: 'something_new', value: 1 }, t)).toBe('redeem.type.other');
   });
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
-import { api, displayName, errorText, type AdminUsageRecord, type AdminUser, type UserConcurrencyInfo } from '../api';
+import { api, displayName, errorText, type AdminUser, type UserConcurrencyInfo, type UserGroupConcurrency } from '../api';
 import { useI18n } from '../i18n';
 import { money } from '../usage';
 import { Dialog } from './Dialog';
@@ -269,6 +269,7 @@ export function AdminUsers({ focus, onToast }: { focus: { id: number; email: str
           user={selectedUser}
           concurrency={concurrencyFor(selectedUser, liveConcurrency)}
           onClose={() => setSelectedUser(null)}
+          onToast={onToast}
         />
       )}
 
@@ -439,57 +440,79 @@ function StatusDialog({ user, onClose, onDone }: { user: AdminUser; onClose: () 
   );
 }
 
-function recordTime(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.valueOf()) ? value : date.toLocaleString();
-}
-
-function recordTokens(record: AdminUsageRecord) {
-  return `${(record.input_tokens ?? 0).toLocaleString()} / ${(record.output_tokens ?? 0).toLocaleString()}`;
-}
+const GROUP_REFRESH_MS = 5000;
 
 function UserDetailsDialog({
   user,
   concurrency,
   onClose,
+  onToast,
 }: {
   user: AdminUser;
   concurrency: UserConcurrencyInfo | null;
   onClose: () => void;
+  onToast: (m: string) => void;
 }) {
   const { t } = useI18n();
   const [profile, setProfile] = useState<AdminUser>(user);
-  const [records, setRecords] = useState<AdminUsageRecord[] | null>(null);
-  const [busy, setBusy] = useState(true);
+  const [groups, setGroups] = useState<UserGroupConcurrency | null>(null);
+  const [inviter, setInviter] = useState<boolean | null>(null);
+  const [inviterBusy, setInviterBusy] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     let alive = true;
-    setBusy(true);
     setError('');
-    void Promise.allSettled([
-      api.adminUser(user.id),
-      api.adminUsage({ user_id: user.id, page: 1, page_size: 20, sort_by: 'created_at', sort_order: 'desc' }),
-    ]).then((results) => {
+    void Promise.allSettled([api.adminUser(user.id), api.adminUserInviter(user.id)]).then(([p, inv]) => {
       if (!alive) return;
-      const [profileResult, usageResult] = results;
-      if (profileResult.status === 'fulfilled') setProfile(profileResult.value);
-      if (usageResult.status === 'fulfilled') setRecords(usageResult.value.items);
-      const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
-      if (failures.length > 0) setError(errorText(failures[0].reason, t('common.genericError')));
-      setBusy(false);
+      if (p.status === 'fulfilled') setProfile(p.value);
+      if (inv.status === 'fulfilled') setInviter(inv.value.allowed);
+      const failed = [p, inv].find((r): r is PromiseRejectedResult => r.status === 'rejected');
+      if (failed) setError(errorText(failed.reason, t('common.genericError')));
     });
     return () => {
       alive = false;
     };
   }, [t, user.id]);
 
-  const current = concurrency?.current_in_use ?? profile.current_concurrency ?? 0;
-  const max = concurrency?.max_capacity ?? profile.concurrency;
-  const waiting = concurrency?.waiting_in_queue ?? profile.waiting_count ?? 0;
-  const load = concurrency?.load_percentage;
+  // Per-group counts move with every request, so they refresh while the sheet is open.
+  useEffect(() => {
+    let alive = true;
+    const tick = () => {
+      if (document.hidden) return;
+      api.adminUserGroups(user.id).then(
+        (g) => alive && setGroups(g),
+        (e) => alive && setError(errorText(e, t('common.genericError'))),
+      );
+    };
+    tick();
+    const id = window.setInterval(tick, GROUP_REFRESH_MS);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [t, user.id]);
+
+  async function toggleInviter() {
+    if (inviter === null || inviterBusy) return;
+    setInviterBusy(true);
+    try {
+      const r = await api.adminUserSetInviter(user.id, !inviter);
+      setInviter(r.allowed);
+      onToast(t(r.allowed ? 'admin.users.inviterOnToast' : 'admin.users.inviterOffToast', { email: profile.email || user.email }));
+    } catch (e) {
+      setError(errorText(e, t('common.genericError')));
+    } finally {
+      setInviterBusy(false);
+    }
+  }
+
+  const current = groups?.in_use ?? concurrency?.current_in_use ?? profile.current_concurrency ?? 0;
+  const max = groups?.max ?? concurrency?.max_capacity ?? profile.concurrency;
+  const waiting = groups?.waiting ?? concurrency?.waiting_in_queue ?? profile.waiting_count ?? 0;
   const active = profile.status === 'active';
   const capacity = max == null || max <= 0 ? t('admin.users.unlimited') : `${current} / ${max}`;
+  const peak = Math.max(1, ...(groups?.groups.map((g) => g.in_use) ?? []), groups?.unlinked ?? 0);
 
   return (
     <Dialog
@@ -528,54 +551,66 @@ function UserDetailsDialog({
           <span>{t('admin.users.concurrency')}</span>
           <b>{capacity}</b>
         </div>
-        {waiting > 0 && (
-          <div className="user-detail-field">
-            <span>{t('admin.users.waiting', { n: waiting })}</span>
-            <b>{waiting}</b>
-          </div>
-        )}
-        {load != null && (
-          <div className="user-detail-field">
-            <span>{t('admin.users.load')}</span>
-            <b>{Math.round(load)}%</b>
-          </div>
-        )}
+        <div className="user-detail-field">
+          <span>{t('admin.users.queued')}</span>
+          <b>{waiting}</b>
+        </div>
       </div>
 
-      <div className="user-detail-history-head">
-        <h3>{t('admin.usage')}</h3>
-        {busy && <span>{t('common.wait')}</span>}
-      </div>
-      {records === null && busy ? (
-        <p className="usage-empty">{t('common.wait')}</p>
-      ) : records?.length ? (
-        <div className="overflow-x-auto">
-          <table className="usage-table admin-user-history">
-            <thead>
-              <tr>
-                <th>{t('usage.time')}</th>
-                <th>{t('usage.model')}</th>
-                <th>{t('usage.tokens')}</th>
-                <th>{t('usage.cost')}</th>
-                <th>{t('usage.status')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {records.map((record) => (
-                <tr key={record.id}>
-                  <td>{recordTime(record.created_at)}</td>
-                  <td className="usage-model" title={record.model}>{record.model || '—'}</td>
-                  <td>{recordTokens(record)}</td>
-                  <td>{money(record.actual_cost ?? record.total_cost ?? 0)}</td>
-                  <td><span className="user-status on">{record.status || t('usage.recorded')}</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {inviter !== null && (
+        <div className="user-detail-inviter">
+          <span>{t('admin.users.inviter')}</span>
+          <button
+            role="switch"
+            aria-checked={inviter}
+            aria-label={t('admin.users.inviter')}
+            className={`switch ${inviter ? 'on' : ''}`}
+            disabled={inviterBusy}
+            onClick={toggleInviter}
+          >
+            <span>{inviter ? t('admin.users.inviterOn') : t('admin.users.inviterOff')}</span>
+            <i />
+          </button>
         </div>
+      )}
+
+      <div className="user-detail-history-head">
+        <h3>{t('admin.users.groups')}</h3>
+        <span>{t('admin.users.groupsNote')}</span>
+      </div>
+      {groups === null ? (
+        <p className="usage-empty">{t('common.wait')}</p>
+      ) : groups.groups.length === 0 && groups.unlinked === 0 ? (
+        <p className="usage-empty">{t('admin.users.groupsNone')}</p>
       ) : (
-        <p className="usage-empty">{t('usage.recordNone')}</p>
+        <div className="group-load">
+          {groups.groups.map((g) => (
+            <GroupRow
+              key={g.group_id}
+              name={g.group_id ? g.group_name || `#${g.group_id}` : t('admin.users.groupNone')}
+              detail={t('admin.users.groupKeys', { n: g.keys })}
+              n={g.in_use}
+              peak={peak}
+            />
+          ))}
+          {groups.unlinked > 0 && <GroupRow name={t('admin.users.unlinked')} n={groups.unlinked} peak={peak} />}
+        </div>
       )}
     </Dialog>
+  );
+}
+
+function GroupRow({ name, detail, n, peak }: { name: string; detail?: string; n: number; peak: number }) {
+  return (
+    <div className={`group-load-row ${n > 0 ? '' : 'idle'}`}>
+      <div>
+        <b title={name}>{name}</b>
+        {detail && <span>{detail}</span>}
+      </div>
+      <strong>{n}</strong>
+      <div className="group-load-bar" aria-hidden>
+        <i style={{ width: `${(n / peak) * 100}%` }} />
+      </div>
+    </div>
   );
 }

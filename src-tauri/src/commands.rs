@@ -481,6 +481,45 @@ pub async fn redeem_history(s: State<'_, Session>, page: u32, page_size: u32) ->
     s.authed(|a| async move { c.redeem_history(&a, page, page_size).await }).await
 }
 
+// ---- Transfers and invites ----
+
+/// Sends `amount` of this account's balance to another account; returns
+/// `{ amount, balance, recipient }` with the recipient masked.
+#[tauri::command]
+pub async fn transfer(s: State<'_, Session>, recipient: String, amount: f64, password: String) -> Result<serde_json::Value> {
+    let recipient = recipient.trim().to_string();
+    if recipient.is_empty() {
+        return Err(Error::Api(tr("请输入收款人的邮箱或用户名", "Enter the recipient's email or username").into()));
+    }
+    if !(amount.is_finite() && amount >= 1.0) {
+        return Err(Error::Api(tr("转账金额至少 $1", "Transfer at least $1").into()));
+    }
+    if password.is_empty() {
+        return Err(Error::Api(tr("请输入登录密码", "Enter your password").into()));
+    }
+    let c = &s.client;
+    let (recipient, password) = (&recipient, &password);
+    s.authed(|a| async move { c.transfer(&a, recipient, amount, password).await }).await
+}
+
+#[tauri::command]
+pub async fn invites(s: State<'_, Session>) -> Result<serde_json::Value> {
+    let c = &s.client;
+    s.authed(|a| async move { c.invites(&a).await }).await
+}
+
+#[tauri::command]
+pub async fn invite_create(s: State<'_, Session>) -> Result<serde_json::Value> {
+    let c = &s.client;
+    s.authed(|a| async move { c.invite_create(&a).await }).await
+}
+
+#[tauri::command]
+pub async fn invite_revoke(s: State<'_, Session>, id: i64) -> Result<serde_json::Value> {
+    let c = &s.client;
+    s.authed(|a| async move { c.invite_revoke(&a, id).await }).await
+}
+
 // ---- Admin (ops origin) ----
 
 type Query = Vec<(String, String)>;
@@ -579,6 +618,24 @@ pub async fn admin_usage(s: State<'_, Session>, query: Query) -> Result<serde_js
 #[tauri::command]
 pub async fn admin_user_concurrency(s: State<'_, Session>) -> Result<serde_json::Value> {
     admin_call(s.inner(), Method::Get, "/ops/user-concurrency", vec![], None).await
+}
+
+/// One user's requests in flight, split by the group of the API key they came through.
+#[tauri::command]
+pub async fn admin_user_groups(s: State<'_, Session>, id: i64) -> Result<serde_json::Value> {
+    admin_call(s.inner(), Method::Get, &format!("/users/{id}/group-concurrency"), vec![], None).await
+}
+
+#[tauri::command]
+pub async fn admin_user_inviter(s: State<'_, Session>, id: i64) -> Result<serde_json::Value> {
+    admin_call(s.inner(), Method::Get, &format!("/users/{id}/inviter"), vec![], None).await
+}
+
+/// Lets a user create invite links, or stops it and expires their unused links.
+#[tauri::command]
+pub async fn admin_user_set_inviter(s: State<'_, Session>, id: i64, allowed: bool) -> Result<serde_json::Value> {
+    let body = serde_json::json!({ "allowed": allowed });
+    admin_call(s.inner(), Method::Put, &format!("/users/{id}/inviter"), vec![], Some(body)).await
 }
 
 /// Adds to or takes from a user's balance; `amount` must be above 0.

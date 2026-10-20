@@ -456,6 +456,57 @@ export interface AdminUserConcurrency {
   timestamp?: string;
 }
 
+/** One group's share of a user's requests in flight, summed over the user's API keys in it. */
+export interface GroupConcurrency {
+  /** 0 for keys without a group. */
+  group_id: number;
+  group_name: string;
+  in_use: number;
+  keys: number;
+}
+
+export interface UserGroupConcurrency {
+  user_id: number;
+  in_use: number;
+  /** 0 or less is unlimited. */
+  max: number;
+  waiting: number;
+  /** Busiest first. */
+  groups: GroupConcurrency[];
+  /** In flight but not on any current key (e.g. a key deleted mid-request). */
+  unlinked: number;
+}
+
+export interface TransferResult {
+  amount: number;
+  /** The sender's balance after the transfer. */
+  balance: number;
+  /** Username, or a masked email. */
+  recipient: string;
+}
+
+export interface Invite {
+  id: number;
+  code: string;
+  url: string;
+  /** `unused` (open), `used`, or `expired` (also revoked). */
+  status: string;
+  created_at: string;
+  expires_at: string | null;
+  used_at?: string | null;
+  /** Masked name of the account it opened. */
+  used_by?: string;
+}
+
+export interface Invites {
+  /** Only accounts the admin allowed can create links. */
+  allowed: boolean;
+  limit: number;
+  open: number;
+  ttl_days: number;
+  items: Invite[];
+}
+
 export interface UsageKey {
   id: number;
   name: string;
@@ -557,6 +608,10 @@ export const api = {
   ddzStatus: () => invoke<DdzStatus>('ddz_status'),
   redeem: (code: string) => invoke<RedeemItem>('redeem', { code }),
   redeemHistory: (page: number, pageSize: number) => invoke<Page<RedeemItem>>('redeem_history', { page, pageSize }),
+  transfer: (recipient: string, amount: number, password: string) => invoke<TransferResult>('transfer', { recipient, amount, password }),
+  invites: () => invoke<Invites>('invites'),
+  inviteCreate: () => invoke<Invite>('invite_create'),
+  inviteRevoke: (id: number) => invoke<{ id: number }>('invite_revoke', { id }),
   adminOverview: (today: string, start: string, timezone: string) =>
     invoke<AdminOverview>('admin_overview', { today, start, timezone }),
   adminUsers: (page: number, pageSize: number, search: string, sortBy = 'created_at', sortOrder: 'asc' | 'desc' = 'desc') =>
@@ -567,6 +622,9 @@ export const api = {
   adminUserBalance: (id: number, amount: number, add: boolean, notes: string) =>
     invoke<AdminUser>('admin_user_balance', { id, amount, add, notes }),
   adminUserStatus: (id: number, active: boolean) => invoke<AdminUser>('admin_user_status', { id, active }),
+  adminUserGroups: (id: number) => invoke<UserGroupConcurrency>('admin_user_groups', { id }),
+  adminUserInviter: (id: number) => invoke<{ allowed: boolean }>('admin_user_inviter', { id }),
+  adminUserSetInviter: (id: number, allowed: boolean) => invoke<{ allowed: boolean }>('admin_user_set_inviter', { id, allowed }),
   adminDdzSettings: () => invoke<DdzSettings>('admin_ddz_settings'),
   adminDdzSave: (settings: Partial<DdzSettings>) => invoke<DdzSettings>('admin_ddz_save', { settings }),
   adminDdzSummary: (days: number) => invoke<DdzSummary>('admin_ddz_summary', { days }),

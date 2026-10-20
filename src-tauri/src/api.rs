@@ -138,6 +138,19 @@ fn friendly(env: &Envelope) -> String {
         },
         Some("LOTTERY_CHEST_FULL") => tr("宝箱已满，先开启一些再购买", "Your chests are full. Open some before buying more.").into(),
         Some("LOTTERY_INVALID_COUNT") => tr("宝箱数量不正确", "That number of chests is not allowed").into(),
+        Some("TRANSFER_INVALID_AMOUNT") => tr("转账金额至少 $1，最多两位小数", "Transfer at least $1, with at most two decimals").into(),
+        Some("TRANSFER_PASSWORD_REQUIRED") => tr("请输入登录密码", "Enter your password").into(),
+        Some("TRANSFER_PASSWORD_INCORRECT") => tr("登录密码不正确", "That password is not correct").into(),
+        Some("TRANSFER_RECIPIENT_REQUIRED") => tr("请输入收款人的邮箱或用户名", "Enter the recipient's email or username").into(),
+        Some("TRANSFER_RECIPIENT_NOT_FOUND") => tr("没有找到这个用户", "No account matches that").into(),
+        Some("TRANSFER_RECIPIENT_AMBIGUOUS") => tr("有多个用户使用这个用户名，请改用邮箱", "Several accounts use that username. Use their email instead.").into(),
+        Some("TRANSFER_RECIPIENT_UNAVAILABLE") => tr("收款账号已停用", "That account is disabled").into(),
+        Some("TRANSFER_SELF") => tr("不能转给自己", "You cannot transfer to yourself").into(),
+        Some("TRANSFER_INSUFFICIENT_BALANCE") => tr("余额不足", "Not enough balance").into(),
+        Some("INVITE_NOT_ALLOWED") => tr("你的账号还不能生成邀请链接", "Your account cannot create invite links yet").into(),
+        Some("INVITE_LIMIT") => tr("可用的邀请链接已达上限，先撤回或等它过期", "You have reached the limit of open invite links. Revoke one or wait for it to expire.").into(),
+        Some("INVITE_NOT_FOUND") => tr("邀请链接不存在或已失效", "That invite link no longer exists").into(),
+        Some("RATE_LIMITED") => tr("操作太频繁，请稍后再试", "Too many attempts. Try again later.").into(),
         _ => env.message.clone(),
     }
 }
@@ -324,6 +337,25 @@ impl Client {
     pub async fn redeem_history(&self, access: &str, page: u32, page_size: u32) -> Result<Value> {
         let q = [("page", page.max(1)), ("page_size", page_size.clamp(1, 100))];
         self.send(self.http.get(self.url("/api/v1/redeem/history")).query(&q).bearer_auth(access)).await
+    }
+
+    /// Moves balance to another account found by email or username; the password confirms it.
+    pub async fn transfer(&self, access: &str, recipient: &str, amount: f64, password: &str) -> Result<Value> {
+        let body = json!({ "recipient": recipient, "amount": amount, "password": password });
+        self.send(self.http.post(self.url("/api/v1/transfer")).bearer_auth(access).json(&body)).await
+    }
+
+    /// `{ allowed, limit, open, ttl_days, items }`; `allowed` is false unless the admin turned invites on.
+    pub async fn invites(&self, access: &str) -> Result<Value> {
+        self.send(self.http.get(self.url("/api/v1/invites")).bearer_auth(access)).await
+    }
+
+    pub async fn invite_create(&self, access: &str) -> Result<Value> {
+        self.send(self.http.post(self.url("/api/v1/invites")).bearer_auth(access)).await
+    }
+
+    pub async fn invite_revoke(&self, access: &str, id: i64) -> Result<Value> {
+        self.send(self.http.delete(self.url(&format!("/api/v1/invites/{id}"))).bearer_auth(access)).await
     }
 
     pub async fn login(&self, email: &str, password: &str) -> Result<(LoginOutcome, Option<Tokens>)> {
