@@ -6,8 +6,9 @@ Cloudborne（栖云）中转站的桌面客户端：用中转站账号登录、�
 
 ## 状态
 
-v0.9.16 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
+v0.9.17 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
 
+- 一键接入 DSH（v0.9.17）：首页新增 DeepSeek Harness 卡片，可一键安装（npm，要 Node.js 22.19 以上）和连接 Cloudborne；连接时选 DeepSeek、GLM、Kimi 或 MiniMax 分组，默认模型 DeepSeek Flash、思考 high，DSH 里原有的模型服务保留，改了什么见下面「连接时改了什么」。
 - 转账、邀请链接和分组并发（v0.9.16）：「兑换」页可以按邮箱或用户名把余额转给其他用户（至少 $1、最多两位小数，确认时输入登录密码，转出不可撤回，双方记录里各有一条「转账转出 / 转入」）；管理员允许的用户在同一页生成一次性邀请链接（7 天过期，同时最多 3 条，可撤回）。管理端用户详情去掉最近使用记录，改为每 5 秒刷新的分组并发，并可开关该用户的邀请权限。需要 relay `0.2.8-cloudborne.42-transfer-invite`。
 - 斗地主闯关试玩版与更长思考时间（v0.9.15）：大厅新增「闯关 · 试玩版」，当地主一打二连闯 3 幕 9 关，得分 = 筹码 × 倍率，小丑整局保留、关间进商店构筑、每幕末有首领；完全在本机运行，不连 relay、不用余额。叫地主和选小丑改为 20 秒、出牌改为 30 秒，需要 relay `0.2.8-cloudborne.26-ddz-clock`。
 - 斗地主技能重做与手感（v0.9.14）：MiniMax 改为「混合专家」（领出 5 张以上时一张牌当万能牌），DeepSeek 改为「开源互换」（亮牌、看一名对手并换走他一张大牌）；J/Q/K 新牌面、默认开启的音效，以及炸弹、王炸、飞机、顺子的打击效果。需要 relay `0.2.8-cloudborne.25-ddz-skills`。
@@ -120,6 +121,6 @@ brand/render.sh          # 用本机 Chrome 渲染 app-icon-1024.png 和 preview
 3. CI 构建 macOS 通用包和 Windows 安装包，生成 `.app.tar.gz` / `-setup.exe` 的签名和 `latest.json`，挂到一个 draft Release 上。
 4. 检查 draft 没问题后点 Publish（不要勾 pre-release，保持 Latest）。发布那一刻起，已安装的客户端在下次检查时就会看到更新。
 
-当前公开版本：[`v0.9.16`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.16)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.16/Cloudborne-Windows-setup.exe)。
+当前公开版本：[`v0.9.17`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.17)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.17/Cloudborne-Windows-setup.exe)。
 
 更新私钥在本机 `~/.cloudborne-desktop-signing/`（权限 700），CI 里是 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 两个 secret。私钥丢了，已装的客户端就收不到后续更新，只能手动重装，所以要另外备份。0.2.0 及更早的版本没有更新功能，需要手动装一次 0.2.1。
