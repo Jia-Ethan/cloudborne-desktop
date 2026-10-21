@@ -8074,54 +8074,29 @@ html[data-glass='mica'] {
   }
   .ddz-versus {
     margin-top: 12px;
-    padding-top: 12px;
+    padding-top: 10px;
     border-top: 1px solid var(--line);
   }
   .ddz-versus h4 {
-    font-size: 13px;
-    font-weight: 700;
-  }
-  .ddz-versus-line p {
-    color: var(--ink);
+    color: var(--ink-3);
+    font-size: 12px;
     font-weight: 600;
+  }
+  .ddz-versus p {
+    margin: 2px 0;
+    color: var(--ink);
+    font-size: 15px;
+    font-weight: 700;
     font-variant-numeric: tabular-nums;
   }
-  .ddz-versus-line small {
-    display: block;
-  }
-  .ddz-versus-line.compact {
-    margin-top: 10px;
-  }
-  .ddz-versus-line.compact p {
-    font-size: 12.5px;
-  }
-  .ddz-versus .up {
+  .ddz-versus p.up {
     color: var(--ddz-ok);
   }
-  .ddz-versus .down {
+  .ddz-versus p.down {
     color: var(--ddz-warn);
   }
-  .ddz-versus-recent {
-    margin: 8px 0 0;
-    padding: 0;
-    list-style: none;
-    font-size: 12px;
-  }
-  .ddz-versus-recent li {
-    display: flex;
-    gap: 8px;
-    justify-content: space-between;
-    padding: 3px 0;
-    color: var(--ink-2);
-  }
-  .ddz-versus-recent b,
-  .ddz-versus-recent i {
-    flex: none;
-    font-style: normal;
-    font-variant-numeric: tabular-nums;
-  }
-  .ddz-versus-recent i {
-    color: var(--ink-3);
+  .ddz-versus small {
+    display: block;
   }
   .ddz-info-close {
     position: absolute;

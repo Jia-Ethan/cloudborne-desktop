@@ -55,33 +55,29 @@ function VersusRecord({ seat }: { seat: Seat }) {
     api.ddzVersus(seat).then(v => live && setData(v)).catch(e => live && setError(errorText(e, t('ddz.versus.error'))));
     return () => { live = false; };
   }, [seat, t]);
-  if (error) return <section className="ddz-versus"><h4>{t('ddz.versus.title')}</h4><p>{error}</p></section>;
-  if (!data) return <section className="ddz-versus" aria-busy><h4>{t('ddz.versus.title')}</h4><p>{t('ddz.versus.loading')}</p></section>;
-  const who = data.bot ? t('ddz.versus.bot', { name: data.name }) : data.name;
   return <section className="ddz-versus">
     <h4>{t('ddz.versus.title')}</h4>
-    <VersusLine who={who} tally={data} />
-    {data.recent.length > 0 && <ol className="ddz-versus-recent">{data.recent.map(g => <li key={g.at}>
-      <span>{new Date(g.at).toLocaleString(undefined, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {dollars(g.base)} · {t(`ddz.versus.lord.${g.landlord}` as MessageKey)}</span>
-      {g.opponent ? <b className={g.net > 0 ? 'up' : g.net < 0 ? 'down' : ''}>{signedDollars(g.net)}</b> : <i>{t('ddz.versus.teammate')}</i>}
-    </li>)}</ol>}
-    {data.all_bots && <VersusLine who={t('ddz.versus.allBots')} tally={data.all_bots} compact />}
+    {error ? <small>{error}</small> : !data ? <small>{t('ddz.versus.loading')}</small> : <>
+      <VersusLine tally={data} />
+      {data.all_bots && <small>{t('ddz.versus.allBots')} · {versusHeadline(t, data.all_bots)}</small>}
+    </>}
   </section>;
 }
 
-const signedDollars = (n: number) => (n > 0 ? `+${dollars(n)}` : n < 0 ? `−${dollars(-n)}` : dollars(0));
+function versusHeadline(t: ReturnType<typeof useI18n>['t'], v: DdzVersusTally) {
+  if (v.opponent_games === 0) return t('ddz.versus.none');
+  if (v.net > 0) return t('ddz.versus.lostToMe', { amount: dollars(v.net) });
+  if (v.net < 0) return t('ddz.versus.wonFromMe', { amount: dollars(-v.net) });
+  return t('ddz.versus.even');
+}
 
-function VersusLine({ who, tally, compact = false }: { who: string; tally: DdzVersusTally; compact?: boolean }) {
+function VersusLine({ tally }: { tally: DdzVersusTally }) {
   const { t } = useI18n();
-  const headline = tally.games === 0 ? t('ddz.versus.none', { who })
-    : tally.net > 0 ? t('ddz.versus.lostToMe', { who, amount: dollars(tally.net) })
-    : tally.net < 0 ? t('ddz.versus.wonFromMe', { who, amount: dollars(-tally.net) })
-    : t('ddz.versus.even', { who });
-  return <div className={`ddz-versus-line ${compact ? 'compact' : ''}`}>
-    <p className={tally.net > 0 ? 'up' : tally.net < 0 ? 'down' : ''}>{headline}</p>
-    {tally.games > 0 && <small>{t('ddz.versus.counts', { games: tally.games, opp: tally.opponent_games, mate: tally.teammate_games, won: tally.won, lost: tally.lost })}</small>}
-    {tally.fee > 0 && <small>{t('ddz.versus.fee', { fee: dollars(tally.fee) })}</small>}
-  </div>;
+  const tone = tally.opponent_games === 0 ? '' : tally.net > 0 ? 'up' : tally.net < 0 ? 'down' : '';
+  return <>
+    <p className={tone}>{versusHeadline(t, tally)}</p>
+    {tally.opponent_games > 0 && <small>{t('ddz.versus.counts', { games: tally.opponent_games, won: tally.won, lost: tally.lost })}</small>}
+  </>;
 }
 
 export function PlayCards({ move, compact = false, expand = true }: { move: Move; compact?: boolean; expand?: boolean }) {
