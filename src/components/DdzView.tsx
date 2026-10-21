@@ -485,8 +485,8 @@ export function TableScene({ table, conn, send, run }: { table: Table; conn: Ddz
         </div>
       )}
 
-      <Opponent table={table} seat={prevSeat(me)} side="left" />
-      <Opponent table={table} seat={nextSeat(me)} side="right" />
+      <Opponent table={table} seat={prevSeat(me)} side="left" versus={!run} />
+      <Opponent table={table} seat={nextSeat(me)} side="right" versus={!run} />
 
       <div className="ddz-center">
         {table.phase === 'play' && <div className="ddz-target">{table.last?.cards?.length ? <><span>{t('ddz.target')}</span><PlayCards move={table.last} compact /></> : <span>{t('ddz.newLead')}</span>}</div>}
@@ -729,7 +729,7 @@ function Tracker({ counts }: { counts: number[] }) {
   );
 }
 
-function Avatar({ info, seat, table, size = 'md' }: { info: SeatInfo | null; seat: Seat; table: Table; size?: 'md' | 'lg' }) {
+function Avatar({ info, seat, table, size = 'md', versus = false }: { info: SeatInfo | null; seat: Seat; table: Table; size?: 'md' | 'lg'; versus?: boolean }) {
   const { t } = useI18n();
   const turn = table.turn === seat && (table.phase === 'bid' || table.phase === 'play');
   const lord = table.landlord === seat;
@@ -737,7 +737,7 @@ function Avatar({ info, seat, table, size = 'md' }: { info: SeatInfo | null; sea
   const low = !!info && info.left > 0 && info.left <= 2 && (table.phase === 'play' || table.phase === 'showdown');
   return (
     <div className={`ddz-avatar ${size} ${turn ? 'ddz-turn' : ''} ${lord ? 'lord' : ''} ${low ? 'ddz-low' : ''} ${info ? '' : 'empty'}`}>
-      {info ? <HeroInfo hero={info.hero} info={info} table={table}><HeroBadge hero={info.hero} size={size === 'lg' ? 'lg' : 'md'} /></HeroInfo> : <span className="ddz-avatar-empty">?</span>}
+      {info ? <HeroInfo hero={info.hero} info={info} table={table} versusSeat={versus ? seat : undefined}><HeroBadge hero={info.hero} size={size === 'lg' ? 'lg' : 'md'} /></HeroInfo> : <span className="ddz-avatar-empty">?</span>}
       {turn && table.deadline && <TimerRing key={table.deadline} deadline={table.deadline} total={table.phase === 'bid' ? BID_MS : PLAY_MS} />}
       {turn && left !== null && left <= 10 && <span className="ddz-avatar-secs">{left}</span>}
       {lord && (
@@ -789,14 +789,15 @@ function SeatMeta({ info, table, seat }: { info: SeatInfo; table: Table; seat: S
   );
 }
 
-function Opponent({ table, seat, side }: { table: Table; seat: Seat; side: 'left' | 'right' }) {
+/** `versus`: money tables only; the local 闯关 preview has no record to show. */
+function Opponent({ table, seat, side, versus }: { table: Table; seat: Seat; side: 'left' | 'right'; versus: boolean }) {
   const { t } = useI18n();
   const info = table.seats[seat];
   const left = info?.left ?? 0;
   const dealt = table.phase === 'bid' || table.phase === 'joker' || table.phase === 'play' || table.phase === 'showdown';
   return (
     <aside className={`ddz-opp ${side}`}>
-      <Avatar info={info} seat={seat} table={table} size="lg" />
+      <Avatar info={info} seat={seat} table={table} size="lg" versus={versus} />
       {info ? <SeatMeta info={info} table={table} seat={seat} /> : <span className="ddz-dim">{t('ddz.emptySeat')}</span>}
       <span className="ddz-thinking-label">{table.turn === seat && table.phase === 'play' ? t('ddz.thinking') : null}</span>
       {dealt && !info?.shown && !info?.peeked && (

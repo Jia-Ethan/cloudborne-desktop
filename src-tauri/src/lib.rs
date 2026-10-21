@@ -57,6 +57,7 @@ pub fn run() {
             commands::lottery_open,
             commands::lottery_buy,
             commands::ddz_status,
+            commands::ddz_versus,
             commands::ddz_connect,
             commands::ddz_send,
             commands::ddz_close,

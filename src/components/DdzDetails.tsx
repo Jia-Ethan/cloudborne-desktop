@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { byPlay, HERO_NAMES, rankLabel, seatName, type Hero, type Move, type SeatInfo, type Table } from '../ddz';
+import { api, errorText, type DdzVersus, type DdzVersusTally } from '../api';
+import { byPlay, HERO_NAMES, rankLabel, seatName, type Hero, type Move, type Seat, type SeatInfo, type Table } from '../ddz';
 import { useI18n, type MessageKey } from '../i18n';
+import { dollars } from '../lottery';
 import { Dialog } from './Dialog';
 import { PlayingCard } from './PlayingCard';
 
 /** Inspecting a hero never sends an action or pauses the turn clock. */
-export function HeroInfo({ hero, info, table, children }: { hero: Hero; info?: SeatInfo; table?: Table; children: ReactNode }) {
+export function HeroInfo({ hero, info, table, versusSeat, children }: { hero: Hero; info?: SeatInfo; table?: Table; versusSeat?: Seat; children: ReactNode }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -39,7 +41,47 @@ export function HeroInfo({ hero, info, table, children }: { hero: Hero; info?: S
       {info?.effects?.map(effect=><p key={effect}>{t('ddz.effectActive')} · {t(`ddz.skill.${effect}` as MessageKey)}</p>)}
       {info?.joker && <p>★ {t(`ddz.joker.${info.joker}` as MessageKey)} — {t(`ddz.joker.${info.joker}.desc` as MessageKey)}</p>}
       {info?.bot && <small>{t('ddz.systemBot')}</small>}
+      {table && versusSeat !== undefined && versusSeat !== table.me && <VersusRecord seat={versusSeat} />}
     </div>,document.body)}</>;
+}
+
+/** What this seat has won from me (or lost to me) across every deal we shared; fetched each time the card opens. */
+function VersusRecord({ seat }: { seat: Seat }) {
+  const { t } = useI18n();
+  const [data, setData] = useState<DdzVersus | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let live = true;
+    api.ddzVersus(seat).then(v => live && setData(v)).catch(e => live && setError(errorText(e, t('ddz.versus.error'))));
+    return () => { live = false; };
+  }, [seat, t]);
+  if (error) return <section className="ddz-versus"><h4>{t('ddz.versus.title')}</h4><p>{error}</p></section>;
+  if (!data) return <section className="ddz-versus" aria-busy><h4>{t('ddz.versus.title')}</h4><p>{t('ddz.versus.loading')}</p></section>;
+  const who = data.bot ? t('ddz.versus.bot', { name: data.name }) : data.name;
+  return <section className="ddz-versus">
+    <h4>{t('ddz.versus.title')}</h4>
+    <VersusLine who={who} tally={data} />
+    {data.recent.length > 0 && <ol className="ddz-versus-recent">{data.recent.map(g => <li key={g.at}>
+      <span>{new Date(g.at).toLocaleString(undefined, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {dollars(g.base)} · {t(`ddz.versus.lord.${g.landlord}` as MessageKey)}</span>
+      {g.opponent ? <b className={g.net > 0 ? 'up' : g.net < 0 ? 'down' : ''}>{signedDollars(g.net)}</b> : <i>{t('ddz.versus.teammate')}</i>}
+    </li>)}</ol>}
+    {data.all_bots && <VersusLine who={t('ddz.versus.allBots')} tally={data.all_bots} compact />}
+  </section>;
+}
+
+const signedDollars = (n: number) => (n > 0 ? `+${dollars(n)}` : n < 0 ? `−${dollars(-n)}` : dollars(0));
+
+function VersusLine({ who, tally, compact = false }: { who: string; tally: DdzVersusTally; compact?: boolean }) {
+  const { t } = useI18n();
+  const headline = tally.games === 0 ? t('ddz.versus.none', { who })
+    : tally.net > 0 ? t('ddz.versus.lostToMe', { who, amount: dollars(tally.net) })
+    : tally.net < 0 ? t('ddz.versus.wonFromMe', { who, amount: dollars(-tally.net) })
+    : t('ddz.versus.even', { who });
+  return <div className={`ddz-versus-line ${compact ? 'compact' : ''}`}>
+    <p className={tally.net > 0 ? 'up' : tally.net < 0 ? 'down' : ''}>{headline}</p>
+    {tally.games > 0 && <small>{t('ddz.versus.counts', { games: tally.games, opp: tally.opponent_games, mate: tally.teammate_games, won: tally.won, lost: tally.lost })}</small>}
+    {tally.fee > 0 && <small>{t('ddz.versus.fee', { fee: dollars(tally.fee) })}</small>}
+  </div>;
 }
 
 export function PlayCards({ move, compact = false, expand = true }: { move: Move; compact?: boolean; expand?: boolean }) {

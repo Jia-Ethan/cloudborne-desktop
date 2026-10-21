@@ -18,6 +18,35 @@ export interface DdzStatus {
   min_balance_times: number;
 }
 
+/** Running totals against one seat. `net` > 0: they lost that much to me; < 0: they won it from me. `fee` is the part of my winnings the platform kept. */
+export interface DdzVersusTally {
+  games: number;
+  opponent_games: number;
+  teammate_games: number;
+  won: number;
+  lost: number;
+  net: number;
+  fee: number;
+}
+export interface DdzVersusGame {
+  at: string;
+  base: number;
+  field: string;
+  opponent: boolean;
+  landlord: 'me' | 'them' | 'other';
+  won: boolean;
+  net: number;
+  fee: number;
+}
+/** My record against the player or AI in a seat at my table. For AI seats the tally is that hero's AI games, plus `all_bots`. */
+export interface DdzVersus extends DdzVersusTally {
+  bot: boolean;
+  name: string;
+  hero: string;
+  recent: DdzVersusGame[];
+  all_bots?: DdzVersusTally;
+}
+
 /** 小丑斗地主 money over a range, for admins. `platform_net` is what the AI seats won (+) or lost (−). */
 export interface DdzSummary {
   since: string;
@@ -618,6 +647,7 @@ export const api = {
   lotteryOpen: (count = 1) => invoke<{ draws?: Draw[]; draw: Draw; status: LotteryStatus }>('lottery_open', { count }),
   lotteryBuy: (count: number) => invoke<{ bought: number; status: LotteryStatus }>('lottery_buy', { count }),
   ddzStatus: () => invoke<DdzStatus>('ddz_status'),
+  ddzVersus: (seat: number) => invoke<DdzVersus>('ddz_versus', { seat }),
   redeem: (code: string) => invoke<RedeemItem>('redeem', { code }),
   redeemHistory: (page: number, pageSize: number) => invoke<Page<RedeemItem>>('redeem_history', { page, pageSize }),
   tokenPacks: () => invoke<TokenPack[]>('token_packs'),

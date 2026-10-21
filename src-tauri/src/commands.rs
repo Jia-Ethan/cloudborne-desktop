@@ -440,6 +440,13 @@ pub async fn ddz_status(s: State<'_, Session>) -> Result<serde_json::Value> {
     s.authed(|a| async move { c.ddz(&a).await }).await
 }
 
+/// What the player or AI in `seat` has won from me, or lost to me, so far.
+#[tauri::command]
+pub async fn ddz_versus(s: State<'_, Session>, seat: u8) -> Result<serde_json::Value> {
+    let c = &s.client;
+    s.authed(|a| async move { c.ddz_versus(&a, seat).await }).await
+}
+
 /// Opens the table line (replacing any open one); snapshots arrive on `channel`.
 #[tauri::command]
 pub async fn ddz_connect(app: tauri::AppHandle, line: State<'_, ddz::SharedLine>, channel: Channel<ddz::Event>) -> Result<()> {

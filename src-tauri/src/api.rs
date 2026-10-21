@@ -329,6 +329,11 @@ impl Client {
         self.send(self.http.get(self.url("/api/v1/ddz")).bearer_auth(access)).await
     }
 
+    /// My running tally against the player or AI in `seat` at my current table.
+    pub async fn ddz_versus(&self, access: &str, seat: u8) -> Result<Value> {
+        self.send(self.http.get(self.url("/api/v1/ddz/versus")).query(&[("seat", seat)]).bearer_auth(access)).await
+    }
+
     pub async fn redeem(&self, access: &str, code: &str) -> Result<Value> {
         self.send(self.http.post(self.url("/api/v1/redeem")).bearer_auth(access).json(&json!({ "code": code }))).await
     }

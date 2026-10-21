@@ -8072,6 +8072,57 @@ html[data-glass='mica'] {
   .ddz-hero-info small {
     color: var(--ink-3);
   }
+  .ddz-versus {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+  }
+  .ddz-versus h4 {
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .ddz-versus-line p {
+    color: var(--ink);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .ddz-versus-line small {
+    display: block;
+  }
+  .ddz-versus-line.compact {
+    margin-top: 10px;
+  }
+  .ddz-versus-line.compact p {
+    font-size: 12.5px;
+  }
+  .ddz-versus .up {
+    color: var(--ddz-ok);
+  }
+  .ddz-versus .down {
+    color: var(--ddz-warn);
+  }
+  .ddz-versus-recent {
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: 12px;
+  }
+  .ddz-versus-recent li {
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+    padding: 3px 0;
+    color: var(--ink-2);
+  }
+  .ddz-versus-recent b,
+  .ddz-versus-recent i {
+    flex: none;
+    font-style: normal;
+    font-variant-numeric: tabular-nums;
+  }
+  .ddz-versus-recent i {
+    color: var(--ink-3);
+  }
   .ddz-info-close {
     position: absolute;
     top: 10px;
