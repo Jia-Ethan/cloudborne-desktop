@@ -6,8 +6,9 @@ Cloudborne（栖云）中转站的桌面客户端：用中转站账号登录、�
 
 ## 状态
 
-v0.9.18 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
+v0.9.19 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
 
+- 斗地主对手战绩（v0.9.19）：真钱牌桌上点对手头像，技能卡片下方显示「你们的战绩」——这个人（或这个 AI 英雄）累计从你这里赢走 / 输给你多少（按对你余额的实际影响，你交的服务费单独列出、不算对方的），同桌几局、对手几局（你赢几局输几局）、队友几局，以及最近 5 局；点 AI 头像另有「所有 AI 合计」。统计全部历史，只算你自己坐过的局。闯关试玩和点自己头像不显示。需要 relay `0.2.8-cloudborne.46` 及以上（`GET /api/v1/ddz/versus?seat=`），旧 relay 上只显示「战绩暂时读不到」。
 - 限时额度（v0.9.18）：「兑换」页兑换码下方新增「限时额度」卡片，每个 token 包一条进度条，显示分组、剩余 / 总量和到期时间，用完或过期的变灰，只留最近两个；没有就不显示。兑换结果和记录能认出限时额度码和宝箱码。需要 relay `0.2.8-cloudborne.44` 及以上。
 
 - 一键接入 DSH（v0.9.17）：首页新增 DeepSeek Harness 卡片，可一键安装（npm，要 Node.js 22.19 以上）和连接 Cloudborne；连接时选 DeepSeek、GLM、Kimi 或 MiniMax 分组，默认模型 DeepSeek Flash、思考 high，DSH 里原有的模型服务保留，改了什么见下面「连接时改了什么」。
@@ -123,6 +124,6 @@ brand/render.sh          # 用本机 Chrome 渲染 app-icon-1024.png 和 preview
 3. CI 构建 macOS 通用包和 Windows 安装包，生成 `.app.tar.gz` / `-setup.exe` 的签名和 `latest.json`，挂到一个 draft Release 上。
 4. 检查 draft 没问题后点 Publish（不要勾 pre-release，保持 Latest）。发布那一刻起，已安装的客户端在下次检查时就会看到更新。
 
-当前公开版本：[`v0.9.18`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.18)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.18/Cloudborne-Windows-setup.exe)。
+当前公开版本：[`v0.9.19`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.19)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.19/Cloudborne-Windows-setup.exe)。
 
 更新私钥在本机 `~/.cloudborne-desktop-signing/`（权限 700），CI 里是 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 两个 secret。私钥丢了，已装的客户端就收不到后续更新，只能手动重装，所以要另外备份。0.2.0 及更早的版本没有更新功能，需要手动装一次 0.2.1。
