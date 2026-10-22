@@ -31,7 +31,7 @@ describe('token packs', () => {
     expect(tokenCount(512)).toBe('512');
   });
 
-  it('lists active packs by expiry, then the latest finished ones', () => {
+  it('lists only active packs, by expiry', () => {
     const list = visiblePacks([
       pack({ id: 5, status: 'expired' }),
       pack({ id: 4, expires_at: '2026-10-25T00:00:00+08:00' }),
@@ -39,6 +39,6 @@ describe('token packs', () => {
       pack({ id: 2, expires_at: '2026-10-23T00:00:00+08:00' }),
       pack({ id: 1, status: 'expired' }),
     ]);
-    expect(list.map((p) => p.id)).toEqual([2, 4, 5, 3]);
+    expect(list.map((p) => p.id)).toEqual([2, 4]);
   });
 });

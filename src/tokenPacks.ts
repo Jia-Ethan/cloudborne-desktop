@@ -17,9 +17,7 @@ export function tokenCount(n: number): string {
   return String(v);
 }
 
-/** Packs worth showing: every active one, plus the latest few that ran out or expired. */
-export function visiblePacks(packs: TokenPack[], past = 2): TokenPack[] {
-  const active = packs.filter((p) => p.status === 'active').sort((a, b) => a.expires_at.localeCompare(b.expires_at));
-  const done = packs.filter((p) => p.status !== 'active').slice(0, past);
-  return [...active, ...done];
+/** Packs worth showing: active ones by expiry. Used-up and expired packs drop out. */
+export function visiblePacks(packs: TokenPack[]): TokenPack[] {
+  return packs.filter((p) => p.status === 'active').sort((a, b) => a.expires_at.localeCompare(b.expires_at));
 }

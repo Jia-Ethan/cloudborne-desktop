@@ -5164,9 +5164,6 @@ html[data-glass='mica'] {
     display: grid;
     gap: 6px;
   }
-  .pack-row.done {
-    opacity: 0.55;
-  }
   .pack-head {
     display: flex;
     align-items: baseline;

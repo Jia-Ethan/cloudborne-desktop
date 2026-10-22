@@ -4,7 +4,7 @@ import { useI18n } from '../i18n';
 import { packLeft, tokenCount, visiblePacks } from '../tokenPacks';
 import { when } from './WinnerSheet';
 
-/** Time-limited token packs with a bar per pack. Hidden when the account has none. `reload` refetches. */
+/** Active time-limited token packs with a bar per pack. Hidden when none are active. `reload` refetches. */
 export function TokenPackCard({ reload }: { reload: number }) {
   const { t } = useI18n();
   const [packs, setPacks] = useState<TokenPack[]>([]);
@@ -29,12 +29,11 @@ export function TokenPackCard({ reload }: { reload: number }) {
       <ul className="pack-list">
         {shown.map((p) => {
           const left = packLeft(p);
-          const active = p.status === 'active';
           return (
-            <li key={p.id} className={`pack-row ${active ? '' : 'done'}`}>
+            <li key={p.id} className="pack-row">
               <div className="pack-head">
                 <b>{p.group_name}</b>
-                <span>{active ? t('packs.expires', { time: when(p.expires_at) }) : t(p.status === 'used_up' ? 'packs.usedUp' : 'packs.expired')}</span>
+                <span>{t('packs.expires', { time: when(p.expires_at) })}</span>
               </div>
               <div className="pack-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(left * 100)}>
                 <i style={{ width: `${left * 100}%` }} />
