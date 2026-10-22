@@ -769,6 +769,7 @@ const zh = {
   'lottery.source.buy': "购买",
   'lottery.source.bonus': "奖励",
   'lottery.source.daily': "低消",
+  'lottery.source.redeem': "兑换",
   'admin.lottery.activity': "活动",
   'admin.lottery.startsAt': "开始（北京时间）",
   'admin.lottery.endsAt': "结束（北京时间）",
@@ -1709,6 +1710,7 @@ const en: Record<MessageKey, string> = {
   'lottery.source.buy': "Bought",
   'lottery.source.bonus': "Bonus",
   'lottery.source.daily': "Daily",
+  'lottery.source.redeem': "Code",
   'admin.lottery.activity': "Event",
   'admin.lottery.startsAt': "Starts (Beijing time)",
   'admin.lottery.endsAt': "Ends (Beijing time)",
@@ -1920,7 +1922,9 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const value = useMemo(() => {
     const table = MESSAGES[lang];
     const t: T = (key, vars) =>
-      table[key].replace(/\{(\w+)\}/g, (m, name: string) => (vars && name in vars ? String(vars[name]) : m));
+      // Keys built from server values (chest source, …) can be newer than this
+      // build; show the key rather than throw and blank the whole window.
+      (table[key] ?? key).replace(/\{(\w+)\}/g, (m, name: string) => (vars && name in vars ? String(vars[name]) : m));
     return { lang, setLang, t };
   }, [lang, setLang]);
 

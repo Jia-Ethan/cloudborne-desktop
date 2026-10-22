@@ -155,7 +155,7 @@ export interface LotterySettings {
   prizes: Prize[];
 }
 
-export type ChestSource = 'earn' | 'buy' | 'bonus' | 'daily';
+export type ChestSource = 'earn' | 'buy' | 'bonus' | 'daily' | 'redeem';
 
 export interface Draw {
   id: number;
