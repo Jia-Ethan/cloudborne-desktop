@@ -2,7 +2,7 @@ import { useState, type CSSProperties, type FormEvent } from 'react';
 import { api, errorText } from '../api';
 import { useI18n } from '../i18n';
 import { dollars } from '../lottery';
-import { transferAmount } from '../transfer';
+import { transferAmount, transferFee } from '../transfer';
 import { Dialog } from './Dialog';
 import { Icon } from './Icon';
 
@@ -13,7 +13,9 @@ export function TransferCard({ balance, onSent, onToast }: { balance: number; on
   const [amount, setAmount] = useState('');
   const [confirm, setConfirm] = useState(false);
   const value = transferAmount(amount);
-  const short = value != null && value > balance;
+  const fee = value == null ? 0 : transferFee(value);
+  const total = value == null ? 0 : Math.round((value + fee) * 100) / 100;
+  const short = value != null && total > balance;
   const ready = recipient.trim() !== '' && value != null && !short;
 
   function submit(e: FormEvent) {
@@ -47,7 +49,7 @@ export function TransferCard({ balance, onSent, onToast }: { balance: number; on
               className="field"
               inputMode="decimal"
               value={amount}
-              placeholder="1.00"
+              placeholder="10.00"
               onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))}
             />
           </div>
@@ -57,12 +59,20 @@ export function TransferCard({ balance, onSent, onToast }: { balance: number; on
         {t('transfer.submit')}
       </button>
       <p className={`redeem-note ${short ? 'bad' : ''}`}>
-        {short ? t('transfer.short') : amount && value == null ? t('transfer.amountHint') : t('transfer.hint')}
+        {short
+          ? t('transfer.short', { total: dollars(total) })
+          : value != null
+            ? t('transfer.feeNote', { fee: dollars(fee), total: dollars(total) })
+            : amount
+              ? t('transfer.amountHint')
+              : t('transfer.hint')}
       </p>
       {confirm && value != null && (
         <ConfirmTransfer
           recipient={recipient.trim()}
           amount={value}
+          fee={fee}
+          total={total}
           onClose={() => setConfirm(false)}
           onDone={(msg) => {
             setConfirm(false);
@@ -80,11 +90,15 @@ export function TransferCard({ balance, onSent, onToast }: { balance: number; on
 function ConfirmTransfer({
   recipient,
   amount,
+  fee,
+  total,
   onClose,
   onDone,
 }: {
   recipient: string;
   amount: number;
+  fee: number;
+  total: number;
   onClose: () => void;
   onDone: (msg: string) => void;
 }) {
@@ -99,7 +113,7 @@ function ConfirmTransfer({
     setError('');
     try {
       const r = await api.transfer(recipient, amount, password);
-      onDone(t('transfer.done', { recipient: r.recipient, amount: dollars(r.amount) }));
+      onDone(t('transfer.done', { recipient: r.recipient, amount: dollars(r.amount), total: dollars(r.debited ?? total) }));
     } catch (e) {
       setError(errorText(e, t('common.genericError')));
       setBusy(false);
@@ -123,7 +137,7 @@ function ConfirmTransfer({
       }
     >
       <div className="form-grid">
-        <p className="confirm-text">{t('transfer.confirmText', { recipient, amount: dollars(amount) })}</p>
+        <p className="confirm-text">{t('transfer.confirmText', { recipient, amount: dollars(amount), fee: dollars(fee), total: dollars(total) })}</p>
         <label className="form-row">
           <span>{t('transfer.password')}</span>
           <div className="relative">

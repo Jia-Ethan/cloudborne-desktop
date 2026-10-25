@@ -138,7 +138,7 @@ fn friendly(env: &Envelope) -> String {
         },
         Some("LOTTERY_CHEST_FULL") => tr("宝箱已满，先开启一些再购买", "Your chests are full. Open some before buying more.").into(),
         Some("LOTTERY_INVALID_COUNT") => tr("宝箱数量不正确", "That number of chests is not allowed").into(),
-        Some("TRANSFER_INVALID_AMOUNT") => tr("转账金额至少 $1，最多两位小数", "Transfer at least $1, with at most two decimals").into(),
+        Some("TRANSFER_INVALID_AMOUNT") => tr("转账金额至少 $10，最多两位小数", "Transfer at least $10, with at most two decimals").into(),
         Some("TRANSFER_PASSWORD_REQUIRED") => tr("请输入登录密码", "Enter your password").into(),
         Some("TRANSFER_PASSWORD_INCORRECT") => tr("登录密码不正确", "That password is not correct").into(),
         Some("TRANSFER_RECIPIENT_REQUIRED") => tr("请输入收款人的邮箱或用户名", "Enter the recipient's email or username").into(),

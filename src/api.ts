@@ -519,7 +519,12 @@ export interface UserGroupConcurrency {
 }
 
 export interface TransferResult {
+  /** What the recipient got. */
   amount: number;
+  /** 5% of `amount`, paid by the sender on top. Missing from relays before the fee. */
+  fee?: number;
+  /** `amount + fee`. */
+  debited?: number;
   /** The sender's balance after the transfer. */
   balance: number;
   /** Username, or a masked email. */

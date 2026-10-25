@@ -505,8 +505,8 @@ pub async fn transfer(s: State<'_, Session>, recipient: String, amount: f64, pas
     if recipient.is_empty() {
         return Err(Error::Api(tr("请输入收款人的邮箱或用户名", "Enter the recipient's email or username").into()));
     }
-    if !(amount.is_finite() && amount >= 1.0) {
-        return Err(Error::Api(tr("转账金额至少 $1", "Transfer at least $1").into()));
+    if !(amount.is_finite() && amount >= 10.0) {
+        return Err(Error::Api(tr("转账金额至少 $10", "Transfer at least $10").into()));
     }
     if password.is_empty() {
         return Err(Error::Api(tr("请输入登录密码", "Enter your password").into()));
