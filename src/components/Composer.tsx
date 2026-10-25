@@ -18,19 +18,11 @@ function readImage(file: File): Promise<Attachment | null> {
   });
 }
 
-export function Composer({
-  agent,
-  draft,
-  setDraft,
-  continuing,
-}: {
-  agent: Agent;
-  draft: string;
-  setDraft: (s: string) => void;
-  continuing: boolean;
-}) {
+/** The draft lives in `agent`, so it survives switching pages and tasks. */
+export function Composer({ agent, continuing }: { agent: Agent; continuing: boolean }) {
   const { t } = useI18n();
-  const [images, setImages] = useState<Attachment[]>([]);
+  const { text: draft, images } = agent.draft;
+  const setImages = (f: (cur: Attachment[]) => Attachment[]) => agent.setDraft((d) => ({ ...d, images: f(d.images) }));
   const [dropping, setDropping] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const running = agent.isRunning(agent.currentId);
@@ -44,8 +36,7 @@ export function Composer({
   const submit = () => {
     if (!canSend) return;
     agent.send(draft.trim(), images);
-    setDraft('');
-    setImages([]);
+    agent.setDraft(() => ({ text: '', images: [] }));
   };
 
   return (
@@ -82,7 +73,7 @@ export function Composer({
         rows={2}
         autoFocus
         placeholder={continuing ? t('agent.placeholderContinue') : t('agent.placeholder')}
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => agent.setDraft((d) => ({ ...d, text: e.target.value }))}
         onPaste={(e: ClipboardEvent) => {
           const files = [...e.clipboardData.files].filter((f) => f.type.startsWith('image/'));
           if (files.length) {

@@ -3,6 +3,14 @@ import { agentApi, applyEvent, type AgentModels, type Attachment, type Effort, t
 import { errorText } from './api';
 
 const MODEL_KEY = 'cloudborne.agent.model';
+const NEW_TASK = '';
+const EMPTY_DRAFT: Draft = { text: '', images: [] };
+
+/** What the composer holds before it is sent. */
+export interface Draft {
+  text: string;
+  images: Attachment[];
+}
 const EFFORT_KEY = 'cloudborne.agent.effort';
 
 /** First line of the first prompt, as the sidebar shows it. */
@@ -16,7 +24,8 @@ export function titleOf(prompt: string): string {
  * task keeps streaming while the user is on another page. Task history is kept
  * per install; the model list depends on the account's groups, so it reloads
  * when `account` (the signed-in user id) changes. A running turn keeps the key
- * it started with.
+ * it started with. Unsent drafts are kept per task (and one for the new-task
+ * page) so leaving the page doesn't lose them.
  */
 export function useAgent(lang: string, account: number | null) {
   const [summaries, setSummaries] = useState<SessionSummary[]>([]);
@@ -26,12 +35,14 @@ export function useAgent(lang: string, account: number | null) {
   const [modelsError, setModelsError] = useState('');
   const [model, setModelState] = useState(() => localStorage.getItem(MODEL_KEY) ?? '');
   const [effort, setEffortState] = useState<Effort>(() => (localStorage.getItem(EFFORT_KEY) as Effort) || 'medium');
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const running = useRef(new Set<string>());
   const [, bump] = useState(0);
 
   useEffect(() => {
     setModels(null);
     setModelsError('');
+    setDrafts({});
     if (account === null) return;
     agentApi.sessions().then(setSummaries).catch(() => {});
     agentApi
@@ -61,6 +72,12 @@ export function useAgent(lang: string, account: number | null) {
       }
     },
     [open],
+  );
+
+  const draftKey = currentId ?? NEW_TASK;
+  const setDraft = useCallback(
+    (f: (d: Draft) => Draft) => setDrafts((m) => ({ ...m, [draftKey]: f(m[draftKey] ?? EMPTY_DRAFT) })),
+    [draftKey],
   );
 
   const patchLast = (id: string, f: (t: Turn) => Turn) =>
@@ -114,6 +131,7 @@ export function useAgent(lang: string, account: number | null) {
       await agentApi.deleteSession(id).catch(() => {});
       setSummaries((l) => l.filter((x) => x.id !== id));
       setOpen(({ [id]: _, ...rest }) => rest);
+      setDrafts(({ [id]: _, ...rest }) => rest);
       if (currentId === id) setCurrentId(null);
     },
     [currentId],
@@ -124,6 +142,8 @@ export function useAgent(lang: string, account: number | null) {
     current: currentId ? (open[currentId] ?? null) : null,
     currentId,
     isRunning: (id: string | null) => !!id && running.current.has(id),
+    draft: drafts[draftKey] ?? EMPTY_DRAFT,
+    setDraft,
     models,
     modelsError,
     model,
