@@ -185,6 +185,13 @@ html[data-glass='mica'] {
     border-color: #ff8d5c;
     box-shadow: 0 0 0 3px rgb(255 141 92 / 0.18);
   }
+  /* WebView2 builds the select popup from the field's own colors: in dark mode
+     the 5% white fill lands on a white popup under near-white text. Give the
+     options opaque theme colors (macOS draws a native menu and ignores them). */
+  select.field option {
+    background-color: var(--paper);
+    color: var(--ink);
+  }
 }
 
 /* Motion, after TeamoRouter's desktop client: content rises in with a short
