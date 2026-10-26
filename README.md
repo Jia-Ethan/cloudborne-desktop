@@ -6,8 +6,9 @@ Cloudborne（栖云）中转站的桌面客户端：用中转站账号登录、�
 
 ## 状态
 
-v0.9.21 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
+v0.9.23 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
 
+- 深色模式下拉框（v0.9.23）：Windows 深色模式下，下拉框（如「请求记录」的类型和 API Key 筛选）弹出的选项是白底浅字、几乎看不见；现在选项跟随主题用深底浅字。macOS 用系统菜单，不受影响。
 - 会话草稿与转账手续费（v0.9.22）：新任务和每个会话里没发出的文字和图片，切到别的页面再回来都还在（只保存在内存里，退出客户端后清空）。转账改为 $10 起，填的是对方到账金额，转出方另付 5% 手续费（按分向上取整），卡片、确认框和成功提示里都显示手续费和总扣款。需要 relay `0.2.8-cloudborne.57-transfer-fee`。
 - 修复宝箱页黑屏（v0.9.21）：开过兑换码宝箱的当天，宝箱页的「今日结果」里有来源为「兑换」的记录，旧版不认识这个来源，整个窗口变黑；现在标为「兑换」，以后遇到不认识的文案也只显示原始键名，不再黑屏。
 - 限时额度只显示可用的（v0.9.20）：「兑换」页「限时额度」卡片只列还能用的 token 包，用完或过期的直接消失；全部用完或过期时整张卡片不显示。
@@ -127,6 +128,6 @@ brand/render.sh          # 用本机 Chrome 渲染 app-icon-1024.png 和 preview
 3. CI 构建 macOS 通用包和 Windows 安装包，生成 `.app.tar.gz` / `-setup.exe` 的签名和 `latest.json`，挂到一个 draft Release 上。
 4. 检查 draft 没问题后点 Publish（不要勾 pre-release，保持 Latest）。发布那一刻起，已安装的客户端在下次检查时就会看到更新。
 
-当前公开版本：[`v0.9.21`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.21)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.21/Cloudborne-Windows-setup.exe)。
+当前公开版本：[`v0.9.23`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.23)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.23/Cloudborne-Windows-setup.exe)。
 
 更新私钥在本机 `~/.cloudborne-desktop-signing/`（权限 700），CI 里是 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 两个 secret。私钥丢了，已装的客户端就收不到后续更新，只能手动重装，所以要另外备份。0.2.0 及更早的版本没有更新功能，需要手动装一次 0.2.1。
