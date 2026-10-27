@@ -321,10 +321,49 @@ describe('lottery', () => {
     expect(buyMax({ ...b, enabled: false }, 100)).toBe(0);
   });
 
+  it('counts token packs at their booked value and mirrors their validation', () => {
+    // 2026-10-27 table, relay TestLotteryTokenPackPrizesPassBuyRule: 4.8414 with pity 30 and batch 5
+    const packs: Prize[] = [
+      { id: 'coin_s', name: '零钱', rarity: 'common', kind: 'balance_fixed', weight: 52, min: 1, max: 3 },
+      { id: 'gpt_s', name: 'GPT 体验包', rarity: 'common', kind: 'token_pack', weight: 14, group_id: 57, tokens: 0.5, hours: 72, amount: 2.5 },
+      { id: 'again', name: '再开一箱', rarity: 'rare', kind: 'extra_draw', weight: 10 },
+      { id: 'coin_m', name: '钱袋', rarity: 'rare', kind: 'balance_fixed', weight: 15, min: 4, max: 7 },
+      { id: 'gpt_m', name: 'GPT 畅聊包', rarity: 'rare', kind: 'token_pack', weight: 4, group_id: 57, tokens: 2, hours: 168, amount: 9.5 },
+      { id: 'coin_l', name: '金币箱', rarity: 'epic', kind: 'balance_fixed', weight: 3, min: 10, max: 16 },
+      { id: 'claude_l', name: 'Claude 包', rarity: 'epic', kind: 'token_pack', weight: 1.5, group_id: 79, tokens: 1, hours: 168, amount: 25 },
+      { id: 'jackpot', name: '头奖', rarity: 'legendary', kind: 'balance_fixed', weight: 0.5, min: 66, max: 66 },
+      { id: 'mega', name: '超级头奖', rarity: 'legendary', kind: 'balance_fixed', weight: 0.1, min: 188, max: 188 },
+    ];
+    expect(prizeMax(packs[1])).toBe(2.5);
+    expect(costCeiling(packs, 30, 5)).toBeCloseTo(4.8414, 4);
+    const ok = settings(packs, { buy_enabled: true, pity_epic: 30, batch_rare: 5, first_open_boost: 2 });
+    expect(settingsProblem(ok)).toBeNull();
+    const withPack = (patch: Partial<Prize>) => ({ ...ok, prizes: packs.map((p) => (p.id === 'gpt_s' ? { ...p, ...patch } : p)) });
+    expect(settingsProblem(withPack({ group_id: 0 }))).toEqual({ problem: 'packGroup', index: 1 });
+    expect(settingsProblem(withPack({ tokens: 0.05 }))?.problem).toBe('packTokens');
+    expect(settingsProblem(withPack({ tokens: 0.15 }))?.problem).toBe('packTokens');
+    expect(settingsProblem(withPack({ tokens: 100.1 }))?.problem).toBe('packTokens');
+    expect(settingsProblem(withPack({ tokens: 0.1 }))).toBeNull();
+    expect(settingsProblem(withPack({ hours: 721 }))?.problem).toBe('packHours');
+    expect(settingsProblem(withPack({ hours: 720 }))).toBeNull();
+    expect(settingsProblem(withPack({ amount: 0 }))?.problem).toBe('packAmount');
+    // Booked at twice the value, buying would lose money
+    expect(settingsProblem({ ...ok, prizes: packs.map((p) => (p.kind === 'token_pack' ? { ...p, amount: (p.amount ?? 0) * 2 } : p)) })?.problem).toBe('buyLoss');
+    expect(withKind(packs[0], 'token_pack')).toEqual({ id: 'coin_s', name: '零钱', rarity: 'common', weight: 52, kind: 'token_pack', group_id: 0, tokens: 1, hours: 168, amount: 5 });
+  });
+
   it('picks the headline for each kind', () => {
     expect(headline({ kind: 'cashback', amount: 3.2, detail: {} })).toEqual({ kind: 'money', value: 3.2 });
     expect(headline({ kind: 'discount', amount: 0, detail: { rate: 0.8, hours: 24 } })).toEqual({ kind: 'discount', zhe: '8', hours: 24 });
     expect(headline({ kind: 'credit', amount: 20, detail: { amount: 20, hours: 24 } })).toEqual({ kind: 'credit', value: 20, hours: 24 });
+    expect(headline({ kind: 'token_pack', amount: 0, detail: { group_id: 79, group_name: 'Claude', tokens: 1_000_000, hours: 168 } })).toEqual({
+      kind: 'pack',
+      tokens: '1M',
+      group: 'Claude',
+      hours: 168,
+    });
+    // Older relays send no group name
+    expect(headline({ kind: 'token_pack', amount: 0, detail: { tokens: 500_000, hours: 72 } })).toEqual({ kind: 'pack', tokens: '500K', group: '', hours: 72 });
     expect(headline({ kind: 'extra_draw', amount: 0, detail: {} })).toEqual({ kind: 'again' });
     expect(headline({ kind: 'none', amount: 0, detail: {} })).toEqual({ kind: 'none' });
   });

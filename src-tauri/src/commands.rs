@@ -694,6 +694,12 @@ pub async fn admin_ddz_summary(s: State<'_, Session>, days: u32) -> Result<serde
     admin_call(s.inner(), Method::Get, "/ddz/summary", q(&[("days", &days.to_string())]), None).await
 }
 
+/// Active groups, for picking the group a token-pack prize pays for.
+#[tauri::command]
+pub async fn admin_groups(s: State<'_, Session>) -> Result<serde_json::Value> {
+    admin_call(s.inner(), Method::Get, "/groups/all", vec![], None).await
+}
+
 /// The recommended settings, for the form only; nothing is saved.
 #[tauri::command]
 pub async fn admin_lottery_defaults(s: State<'_, Session>) -> Result<serde_json::Value> {

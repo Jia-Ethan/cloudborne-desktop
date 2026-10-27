@@ -79,6 +79,7 @@ pub fn run() {
             commands::admin_user_inviter,
             commands::admin_user_set_inviter,
             commands::admin_lottery_settings,
+            commands::admin_groups,
             commands::admin_lottery_save,
             commands::admin_lottery_defaults,
             commands::admin_lottery_summary,

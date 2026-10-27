@@ -731,6 +731,16 @@ function Headline({ draw }: { draw: Draw }) {
         <small> · {t('lottery.hours', { n: h.hours })}</small>
       </div>
     );
+  if (h.kind === 'pack')
+    return (
+      <>
+        <div className="lot-amount">
+          <Slot text={t('lottery.pack', { tokens: h.tokens })} slow={draw.rarity === 'legendary'} />
+          <small> · {t('lottery.hours', { n: h.hours })}</small>
+        </div>
+        <p className="lot-pack-hint">{h.group ? t('lottery.packHint', { group: h.group }) : t('lottery.packHintAny')}</p>
+      </>
+    );
   return null;
 }
 

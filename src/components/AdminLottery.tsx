@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
-import { api, errorText, type Draw, type LotterySettings, type LotterySummary, type Prize, type Rarity } from '../api';
+import { api, errorText, type AdminGroup, type Draw, type LotterySettings, type LotterySummary, type Prize, type Rarity } from '../api';
 import { useI18n } from '../i18n';
 import {
   GUARANTEE_DEFAULTS,
@@ -369,6 +369,15 @@ function SettingsEditor({ onToast }: { onToast: (m: string) => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [askDefaults, setAskDefaults] = useState(false);
+  // Token packs only pay for active non-subscription groups; the relay rejects the rest on save.
+  const [groups, setGroups] = useState<AdminGroup[]>([]);
+
+  useEffect(() => {
+    api.adminGroups().then(
+      (gs) => setGroups((Array.isArray(gs) ? gs : []).filter((g) => g.status === 'active' && g.subscription_type !== 'subscription')),
+      () => setGroups([]),
+    );
+  }, []);
 
   useEffect(() => {
     api.adminLotterySettings().then(
@@ -583,7 +592,7 @@ function SettingsEditor({ onToast }: { onToast: (m: string) => void }) {
               ))}
             </select>
             <Num value={p.weight} onChange={(v) => setPrize(i, { ...p, weight: v })} />
-            <Params p={p} onChange={(x) => setPrize(i, x)} />
+            <Params p={p} groups={groups} onChange={(x) => setPrize(i, x)} />
             <b className="prize-chance">{(probs[i] * 100).toFixed(probs[i] < 0.1 ? 1 : 0)}%</b>
             <button
               className="icon-button danger"
@@ -597,6 +606,7 @@ function SettingsEditor({ onToast }: { onToast: (m: string) => void }) {
           </div>
         ))}
       </div>
+      {s.prizes.some((p) => p.kind === 'token_pack') && <p className="redeem-note">{t('admin.lottery.bookedHint')}</p>}
 
       <div className="prize-foot">
         <button
@@ -674,7 +684,7 @@ function newId(prizes: Prize[]): string {
 }
 
 /** Per-kind parameters. Percent kinds show % and store fractions. */
-function Params({ p, onChange }: { p: Prize; onChange: (p: Prize) => void }) {
+function Params({ p, groups, onChange }: { p: Prize; groups: AdminGroup[]; onChange: (p: Prize) => void }) {
   const { t } = useI18n();
   const set = (k: keyof Prize, v: number) => onChange({ ...p, [k]: v });
   const cap = (
@@ -728,6 +738,34 @@ function Params({ p, onChange }: { p: Prize; onChange: (p: Prize) => void }) {
           </Tagged>
         </div>
       );
+    case 'token_pack': {
+      const known = groups.some((g) => g.id === p.group_id);
+      return (
+        <div className="prize-params">
+          <Tagged label={t('admin.lottery.group')}>
+            <select className="field" value={p.group_id ?? 0} onChange={(e) => set('group_id', Number(e.target.value))}>
+              <option value={0}>{t('admin.lottery.groupPick')}</option>
+              {/* A saved group that is no longer offered still shows, so the row does not silently change. */}
+              {!known && (p.group_id ?? 0) > 0 && <option value={p.group_id}>#{p.group_id}</option>}
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          </Tagged>
+          <Tagged label={t('admin.lottery.tokens')}>
+            <Num value={p.tokens ?? 0} suffix="M" onChange={(v) => set('tokens', Math.round(v * 10) / 10)} />
+          </Tagged>
+          <Tagged label={t('admin.lottery.hours')}>
+            <Num value={p.hours ?? 0} suffix="h" onChange={(v) => set('hours', Math.round(v))} />
+          </Tagged>
+          <Tagged label={t('admin.lottery.booked')}>
+            <Num value={p.amount ?? 0} prefix="$" onChange={(v) => set('amount', v)} />
+          </Tagged>
+        </div>
+      );
+    }
     case 'extra_draw':
       return <div className="prize-params empty">—</div>;
   }

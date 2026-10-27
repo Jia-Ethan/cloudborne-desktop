@@ -1,6 +1,6 @@
 import type { Draw, Rarity } from '../api';
 import { useI18n } from '../i18n';
-import { headline, dollars, zheVars } from '../lottery';
+import { headline, dollars, zheVars, type Headline } from '../lottery';
 
 export function RarityTag({ rarity }: { rarity: Rarity }) {
   const { t } = useI18n();
@@ -35,9 +35,17 @@ export function PrizeText({ draw }: { draw: Pick<Draw, 'kind' | 'amount' | 'deta
           {t('lottery.zhe', zheVars(h.zhe))} · {t('lottery.hours', { n: h.hours })}
         </>
       );
+    case 'pack':
+      return <>{packText(t, h)}</>;
     case 'again':
       return <>{t('lottery.again')}</>;
     case 'none':
       return <>{t('lottery.thanks')}</>;
   }
+}
+
+/** "Claude 1M tokens · 168 h"; the group is left out when an older relay did not send it. */
+export function packText(t: ReturnType<typeof useI18n>['t'], h: Extract<Headline, { kind: 'pack' }>): string {
+  const size = t('lottery.pack', { tokens: h.tokens });
+  return `${h.group ? `${h.group} ${size}` : size} · ${t('lottery.hours', { n: h.hours })}`;
 }

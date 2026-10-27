@@ -1,7 +1,8 @@
 import type { Draw, LotterySettings, Prize, PrizeKind, Rarity } from './api';
+import { tokenCount } from './tokenPacks';
 
 export const RARITIES: Rarity[] = ['common', 'rare', 'epic', 'legendary'];
-export const KINDS: Prize['kind'][] = ['balance_fixed', 'cashback', 'balance_percent', 'discount', 'credit', 'extra_draw'];
+export const KINDS: Prize['kind'][] = ['balance_fixed', 'cashback', 'balance_percent', 'discount', 'credit', 'token_pack', 'extra_draw'];
 
 /** Kinds whose min/max are fractions of something, edited as percents. */
 export const PERCENT_KINDS: PrizeKind[] = ['cashback', 'balance_percent'];
@@ -27,7 +28,8 @@ export function probabilities(prizes: Pick<Prize, 'weight'>[]): number[] {
  * What one draw of this prize counts for in the cost ceiling, in $. Fixed
  * balance is drawn uniformly, so its mean is exact; the other kinds count at
  * their cap. Cashback and balance percent are bounded only by their cap; cap 0
- * means no cap, so Infinity. Extra chests are worth 0 themselves.
+ * means no cap, so Infinity. A token pack counts at the value the admin booked
+ * for it. Extra chests are worth 0 themselves.
  */
 export function prizeMax(p: Prize): number {
   switch (p.kind) {
@@ -39,6 +41,7 @@ export function prizeMax(p: Prize): number {
     case 'discount':
       return Math.max(0, p.cap ?? 0);
     case 'credit':
+    case 'token_pack':
       return Math.max(0, p.amount ?? 0);
     case 'extra_draw':
       return 0;
@@ -158,6 +161,10 @@ export type SettingsProblem =
   | 'discountCap'
   | 'hours'
   | 'amount'
+  | 'packGroup'
+  | 'packTokens'
+  | 'packHours'
+  | 'packAmount'
   | 'buyUncapped'
   | 'buyAllExtra'
   | 'buyLoss';
@@ -210,6 +217,14 @@ export function settingsProblem(s: LotterySettings): { problem: SettingsProblem;
       if (!(h >= 1 && h <= 168)) return { problem: 'hours', index: i };
     }
     if (p.kind === 'credit' && !((p.amount ?? 0) > 0)) return { problem: 'amount', index: i };
+    if (p.kind === 'token_pack') {
+      if (!((p.group_id ?? 0) > 0)) return { problem: 'packGroup', index: i };
+      const tenths = (p.tokens ?? 0) * 10;
+      if (Math.abs(Math.round(tenths) - tenths) > 1e-6 || tenths < 1 || (p.tokens ?? 0) > 100) return { problem: 'packTokens', index: i };
+      const h = p.hours ?? 0;
+      if (!(isInt(h) && h >= 1 && h <= 720)) return { problem: 'packHours', index: i };
+      if (!((p.amount ?? 0) > 0)) return { problem: 'packAmount', index: i };
+    }
   }
   if (s.prizes.reduce((t, p) => t + p.weight, 0) <= 0) return { problem: 'totalWeight' };
   if (s.buy_enabled) {
@@ -236,6 +251,8 @@ export function withKind(p: Prize, kind: Prize['kind']): Prize {
       return { ...base, rate: 0.8, hours: 24, cap: 30 };
     case 'credit':
       return { ...base, amount: 20, hours: 24 };
+    case 'token_pack':
+      return { ...base, group_id: 0, tokens: 1, hours: 168, amount: 5 };
     case 'extra_draw':
       return base;
   }
@@ -386,6 +403,8 @@ export type Headline =
   | { kind: 'money'; value: number }
   | { kind: 'discount'; zhe: string; hours: number }
   | { kind: 'credit'; value: number; hours: number }
+  /** `tokens` as shown ("1M", "500K"); `group` is empty when an older relay left it out. */
+  | { kind: 'pack'; tokens: string; group: string; hours: number }
   | { kind: 'again' }
   | { kind: 'none' };
 
@@ -396,6 +415,8 @@ export function headline(d: Pick<Draw, 'kind' | 'amount' | 'detail'>): Headline 
       return { kind: 'discount', zhe: zhe(num('rate')), hours: num('hours') };
     case 'credit':
       return { kind: 'credit', value: num('amount') || d.amount, hours: num('hours') };
+    case 'token_pack':
+      return { kind: 'pack', tokens: tokenCount(num('tokens')), group: String(d.detail?.group_name ?? ''), hours: num('hours') };
     case 'extra_draw':
       return { kind: 'again' };
     case 'none':

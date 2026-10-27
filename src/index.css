@@ -3189,6 +3189,14 @@ html[data-glass='mica'] {
     margin: 8px 0 4px;
     font-size: 28px;
   }
+  .lot-pack-hint {
+    max-width: 260px;
+    margin: 2px auto 0;
+    color: #55525a;
+    font-size: 12.5px;
+    line-height: 1.5;
+    text-align: center;
+  }
   .lot-card.k-none .lot-amount.words {
     color: var(--ink-2, #55525a);
     color: #55525a;

@@ -97,7 +97,7 @@ export function displayName(u: { username?: string; email: string }): string {
 }
 
 export type Rarity = 'common' | 'rare' | 'epic' | 'legendary';
-export type PrizeKind = 'balance_fixed' | 'cashback' | 'balance_percent' | 'discount' | 'credit' | 'extra_draw' | 'none';
+export type PrizeKind = 'balance_fixed' | 'cashback' | 'balance_percent' | 'discount' | 'credit' | 'token_pack' | 'extra_draw' | 'none';
 
 /** A prize as configured by the admin. Percent kinds store fractions (0.05 = 5%). */
 export interface Prize {
@@ -111,7 +111,12 @@ export interface Prize {
   cap?: number;
   rate?: number;
   hours?: number;
+  /** credit: $ granted; token_pack: what one pack counts for in the budget and the cost ceiling. */
   amount?: number;
+  /** token_pack: the group the pack pays for. */
+  group_id?: number;
+  /** token_pack: million tokens, in 0.1 steps. */
+  tokens?: number;
 }
 
 export interface LotterySettings {
@@ -391,6 +396,15 @@ export interface Group {
   platform: string;
   status: string;
   rate_multiplier: number;
+}
+
+/** A group as the admin group list returns it; only what the lottery editor reads. */
+export interface AdminGroup {
+  id: number;
+  name: string;
+  platform: string;
+  status: string;
+  subscription_type?: string;
 }
 
 export interface PlatformRate {
@@ -677,6 +691,8 @@ export const api = {
   adminDdzSave: (settings: Partial<DdzSettings>) => invoke<DdzSettings>('admin_ddz_save', { settings }),
   adminDdzSummary: (days: number) => invoke<DdzSummary>('admin_ddz_summary', { days }),
   adminLotterySettings: () => invoke<LotterySettings>('admin_lottery_settings'),
+  /** Active groups; the token-pack prize editor offers the non-subscription ones. */
+  adminGroups: () => invoke<AdminGroup[]>('admin_groups'),
   adminLotterySave: (settings: LotterySettings) => invoke<LotterySettings>('admin_lottery_save', { settings }),
   adminLotteryDefaults: () => invoke<LotterySettings>('admin_lottery_defaults'),
   adminLotterySummary: (date: string) => invoke<LotterySummary>('admin_lottery_summary', { date }),
