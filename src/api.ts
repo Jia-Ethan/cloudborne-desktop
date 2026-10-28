@@ -603,8 +603,8 @@ export interface ApiKey {
   usage_7d: number;
   /** Added by the client from the usage endpoint. */
   today_cost: number;
-  /** Last 30 days. */
-  month_cost: number;
+  /** Last 7 days. */
+  week_cost: number;
   /** Set when this client created the key for one of its tools. */
   tool: ToolId | null;
 }

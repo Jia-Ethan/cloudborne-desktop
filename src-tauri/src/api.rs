@@ -79,11 +79,18 @@ pub struct ApiKey {
     pub status: String,
 }
 
+/// Days of spend shown per key; matches the web console.
+pub const KEY_COST_DAYS: u32 = 7;
+
+fn key_costs_body(ids: &[i64]) -> Value {
+    json!({ "api_key_ids": ids, "days": KEY_COST_DAYS })
+}
+
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct KeyCost {
     #[serde(default)]
     pub today_actual_cost: f64,
-    /// Last 30 days.
+    /// Last `KEY_COST_DAYS` days.
     #[serde(default)]
     pub total_actual_cost: f64,
 }
@@ -472,8 +479,8 @@ impl Client {
         self.send(self.http.put(self.url(&format!("/api/v1/keys/{id}"))).bearer_auth(access).json(body)).await
     }
 
-    /// Today's and the last 30 days' spend per key id. The relay takes at most
-    /// 100 ids per call.
+    /// Today's and the last 7 days' spend per key id. The relay takes at most
+    /// 100 ids per call; relays before `.66` ignore `days` and send 30 days.
     pub async fn key_costs(&self, access: &str, ids: &[i64]) -> Result<std::collections::HashMap<i64, KeyCost>> {
         #[derive(Deserialize)]
         struct Out {
@@ -487,7 +494,7 @@ impl Client {
                     self.http
                         .post(self.url("/api/v1/usage/dashboard/api-keys-usage"))
                         .bearer_auth(access)
-                        .json(&json!({ "api_key_ids": chunk })),
+                        .json(&key_costs_body(chunk)),
                 )
                 .await?;
             all.extend(o.stats.into_iter().filter_map(|(k, v)| Some((k.parse().ok()?, v))));
@@ -627,6 +634,11 @@ mod tests {
         let e: Envelope =
             serde_json::from_str(r#"{"code":404,"message":"redeem code not found","reason":"REDEEM_CODE_NOT_FOUND"}"#).unwrap();
         assert_eq!(friendly(&e), "兑换码不存在，请检查后重试");
+    }
+
+    #[test]
+    fn key_costs_ask_for_seven_days() {
+        assert_eq!(key_costs_body(&[3, 4]), json!({ "api_key_ids": [3, 4], "days": 7 }));
     }
 
     #[test]

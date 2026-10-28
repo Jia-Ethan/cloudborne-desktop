@@ -3,6 +3,11 @@ import type { LogoId } from './components/Logo';
 
 export type Range = 'today' | 'week' | 'month';
 
+/** Ranges a customer can pick: at most 7 days, which the relay answers quickly (owner, 2026-10-28). */
+export const USER_RANGES: Range[] = ['today', 'week'];
+/** Admin views keep the 30-day range. */
+export const ADMIN_RANGES: Range[] = ['today', 'week', 'month'];
+
 /** Share of prompt tokens served from cache. Input excludes cached tokens. */
 export function hitRate(t: TokenCounts): number | null {
   const prompt = t.input_tokens + t.cache_read_tokens + t.cache_creation_tokens;

@@ -9,14 +9,12 @@ import {
   type UsageStats,
 } from '../api';
 import { useI18n } from '../i18n';
-import { byVendor, compact, fillTrend, hitRate, money, percent, rangeDates, type Range, type Vendor } from '../usage';
+import { byVendor, compact, fillTrend, hitRate, money, percent, rangeDates, USER_RANGES, type Range, type Vendor } from '../usage';
 import { Logo } from './Logo';
 import { Icon } from './Icon';
 import { ToolGlyph } from './ToolGlyph';
 import { UsageChart, type Metric } from './UsageChart';
 import { UsageRecordsView } from './UsageRecordsView';
-
-const RANGES: Range[] = ['today', 'week', 'month'];
 
 export function UsageView() {
   const { t } = useI18n();
@@ -108,7 +106,7 @@ export function UsageView() {
           {tab === 'summary' && (
             <div className="flex items-center gap-2">
               <div className="seg" role="tablist">
-                {RANGES.map((r) => (
+                {USER_RANGES.map((r) => (
                   <button key={r} role="tab" aria-selected={range === r} className={range === r ? 'on' : ''} onClick={() => setRange(r)}>
                     {t(`usage.range.${r}`)}
                   </button>

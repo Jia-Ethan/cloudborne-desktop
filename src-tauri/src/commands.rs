@@ -320,7 +320,7 @@ fn tool_of_key(name: &str) -> Option<ToolId> {
 // ---- API keys ----
 
 /// Every key on the account as the relay sends it, plus `today_cost`,
-/// `month_cost` (last 30 days) and `tool` when this client made it for a tool.
+/// `week_cost` (last 7 days) and `tool` when this client made it for a tool.
 #[tauri::command]
 pub async fn keys_list(s: State<'_, Session>) -> Result<Vec<serde_json::Value>> {
     let c = &s.client;
@@ -335,7 +335,7 @@ pub async fn keys_list(s: State<'_, Session>) -> Result<Vec<serde_json::Value>> 
             let cost = k.get("id").and_then(|v| v.as_i64()).and_then(|id| costs.get(&id)).copied().unwrap_or_default();
             let tool = k.get("name").and_then(|v| v.as_str()).and_then(tool_of_key);
             k.insert("today_cost".into(), cost.today_actual_cost.into());
-            k.insert("month_cost".into(), cost.total_actual_cost.into());
+            k.insert("week_cost".into(), cost.total_actual_cost.into());
             k.insert("tool".into(), serde_json::to_value(tool).unwrap_or_default());
             serde_json::Value::Object(k)
         })

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { api, errorText, type AdminUsageRecord, type UsageKey, type UsageRecord, type UsageQuery } from '../api';
 import { useI18n } from '../i18n';
-import { money, rangeDates, type Range } from '../usage';
+import { ADMIN_RANGES, money, rangeDates, USER_RANGES, type Range } from '../usage';
 import { Dialog } from './Dialog';
 import { Icon } from './Icon';
 
@@ -119,7 +119,7 @@ export function UsageRecordsView({ admin = false, userId, embedded = false }: { 
       <div className="main-column">
         <div className="usage-head rise" style={{ '--i': 0 } as CSSProperties}>
           <div className="seg" role="tablist" aria-label={t('usage.range.week')}>
-            {(['today', 'week', 'month'] as Range[]).map((r) => (
+            {(admin ? ADMIN_RANGES : USER_RANGES).map((r) => (
               <button key={r} role="tab" aria-selected={range === r} className={range === r ? 'on' : ''} onClick={() => { setRange(r); setPage(1); }}>
                 {t(`usage.range.${r}`)}
               </button>

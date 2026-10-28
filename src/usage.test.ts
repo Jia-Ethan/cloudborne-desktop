@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { byVendor, compact, fillTrend, hitRate, money, rangeDates, vendorOf } from './usage';
+import { ADMIN_RANGES, byVendor, compact, fillTrend, hitRate, money, rangeDates, USER_RANGES, vendorOf } from './usage';
 
 const counts = (input: number, read: number, write = 0) => ({
   input_tokens: input,
@@ -20,6 +20,11 @@ describe('usage', () => {
     expect(rangeDates('today', now)).toEqual({ start: '2026-10-13', end: '2026-10-13' });
     expect(rangeDates('week', now)).toEqual({ start: '2026-10-07', end: '2026-10-13' });
     expect(rangeDates('month', now)).toEqual({ start: '2026-09-14', end: '2026-10-13' });
+  });
+
+  it('offers customers at most 7 days and admins 30', () => {
+    expect(USER_RANGES).toEqual(['today', 'week']);
+    expect(ADMIN_RANGES).toContain('month');
   });
 
   it('fills the hours and days the relay skips', () => {

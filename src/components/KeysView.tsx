@@ -114,8 +114,8 @@ export function KeysView({ onToast }: { onToast: (msg: string) => void }) {
                       {money(k.today_cost)}
                     </span>
                     <span>
-                      <i>{t('keys.month')}</i>
-                      {money(k.month_cost)}
+                      <i>{t('keys.week')}</i>
+                      {money(k.week_cost)}
                     </span>
                   </div>
 
