@@ -39,7 +39,6 @@ import { climbTick, cue, playSound, setSoundOn, useSoundOn } from '../ddzSound';
 import { Icon } from './Icon';
 import { Logo, type LogoId } from './Logo';
 import { CardBack, CardRow, PlayingCard } from './PlayingCard';
-import { DdzRunView, RunCard } from './DdzRunView';
 
 /** Bump when the rules text changes so everyone reads it again. */
 const RULES_VERSION = '3';
@@ -118,8 +117,6 @@ export function DdzView({ balance, table, conn, send, userId = 0, previewStatus 
   const [status, setStatus] = useState<DdzStatus | null>(previewStatus ?? null);
   const [policy, setPolicy] = useState<FeePolicy>(FREE_POLICY);
   const [error, setError] = useState('');
-  // 闯关 runs locally and needs no seat: a live table from the relay still comes first.
-  const [inRun, setInRun] = useState(false);
   const busy = useRef(false);
   const acceptanceKey = (p: FeePolicy) => `${RULES_KEY}.${userId}.${RULES_VERSION}.${p.version}`;
   useEffect(() => {
@@ -149,8 +146,7 @@ export function DdzView({ balance, table, conn, send, userId = 0, previewStatus 
     finally {busy.current=false;}
   };
   let body: ReactNode;
-  if (!table && inRun) body=<DdzRunView onExit={()=>setInRun(false)} />;
-  else if (!table) body=<Lobby balance={balance} conn={conn} onEnter={a=>void enter(a)} onRules={()=>{setPolicy(status?.fee_policy ?? FREE_POLICY);setRulesFor('read');}} policy={status?.fee_policy} minBalanceTimes={status?.min_balance_times} runCard={<RunCard onStart={()=>setInRun(true)} />} />;
+  if (!table) body=<Lobby balance={balance} conn={conn} onEnter={a=>void enter(a)} onRules={()=>{setPolicy(status?.fee_policy ?? FREE_POLICY);setRulesFor('read');}} policy={status?.fee_policy} minBalanceTimes={status?.min_balance_times} />;
   else if (table.phase === 'waiting' && !table.code) body=<Matching send={send} />;
   else body=<TableScene table={table} conn={conn} send={a=>void enter(a)} />;
   return <>{error && <div className="ddz-entry-error" role="alert">{error}</div>}{body}{rulesFor && <RulesDialog policy={policy} agree={rulesFor!=='read'} onClose={()=>setRulesFor(null)} onAgree={()=>{
@@ -162,7 +158,7 @@ export function DdzView({ balance, table, conn, send, userId = 0, previewStatus 
 
 // ---------------------------------------------------------------- lobby
 
-function Lobby({ balance, conn, onEnter, onRules, policy, minBalanceTimes, runCard }: { balance: number; conn: DdzConn; onEnter: (a: Action) => void; onRules: () => void; policy?: FeePolicy; minBalanceTimes?: number; runCard?: ReactNode }) {
+function Lobby({ balance, conn, onEnter, onRules, policy, minBalanceTimes }: { balance: number; conn: DdzConn; onEnter: (a: Action) => void; onRules: () => void; policy?: FeePolicy; minBalanceTimes?: number }) {
   const { t } = useI18n();
   const quality = useMemo(readDdzQuality, []);
   const times = Number.isFinite(minBalanceTimes) && (minBalanceTimes ?? 0) > 0 ? minBalanceTimes! : 20;
@@ -189,8 +185,6 @@ function Lobby({ balance, conn, onEnter, onRules, policy, minBalanceTimes, runCa
             ))}
           </div>
         </section>
-
-        {runCard}
 
         <section className="card ddz-roster rise" style={{ '--i': 1 } as CSSProperties}>
           <div className="ddz-section-head">
@@ -413,10 +407,7 @@ function JokerCard({ joker, size = 'md', onClick, picked }: { joker: Joker; size
 
 // ---------------------------------------------------------------- table
 
-/** 闯关: the run's bar on top, its own end-of-deal sheet, and leaving through the run. */
-export type RunTableProps = { hud: ReactNode; over: ReactNode | null; leaveBody: string; onLeave: () => void };
-
-export function TableScene({ table, conn, send, run }: { table: Table; conn: DdzConn; send: (a: Action) => void; run?: RunTableProps }) {
+function TableScene({ table, conn, send }: { table: Table; conn: DdzConn; send: (a: Action) => void }) {
   const { t } = useI18n();
   const me = table.me;
   const showdown = table.phase === 'showdown';
@@ -458,7 +449,6 @@ export function TableScene({ table, conn, send, run }: { table: Table; conn: Ddz
 
   const leave = () => {
     if (table.phase === 'bid' || table.phase === 'joker' || table.phase === 'play' || showdown) setLeaving(true);
-    else if (run) run.onLeave();
     else send({ type: 'leave' });
   };
 
@@ -474,19 +464,19 @@ export function TableScene({ table, conn, send, run }: { table: Table; conn: Ddz
         '--ddz-sm-h': `${56 * cardScale}px`,
         '--ddz-sm-fs': `${15 * cardScale}px`,
       } as CSSProperties}
-      className={`ddz-felt ddz-table ${run ? 'ddz-run-table' : ''} ddz-${quality} ${compact ? 'ddz-compact' : ''} ${short ? 'ddz-short' : ''} phase-${table.phase} ${fx.shake} ${fx.impact ? `hit-${fx.impact.kind} hit-from-${fx.impact.from}` : ''}`}
+      className={`ddz-felt ddz-table ddz-${quality} ${compact ? 'ddz-compact' : ''} ${short ? 'ddz-short' : ''} phase-${table.phase} ${fx.shake} ${fx.impact ? `hit-${fx.impact.kind} hit-from-${fx.impact.from}` : ''}`}
     >
       <canvas ref={fx.canvas} className="ddz-sparks" aria-hidden />
       {fx.impact && <ImpactLayer fx={fx.impact} quality={quality} />}
-      <TopBar table={table} onLeave={leave} send={send} hud={run?.hud} />
+      <TopBar table={table} onLeave={leave} send={send} />
       {conn !== 'open' && (
         <div className="ddz-conn" role="status">
           {t(conn === 'auth' ? 'ddz.signedOut' : conn === 'unavailable' ? 'ddz.unavailable' : 'ddz.reconnecting')}
         </div>
       )}
 
-      <Opponent table={table} seat={prevSeat(me)} side="left" versus={!run} />
-      <Opponent table={table} seat={nextSeat(me)} side="right" versus={!run} />
+      <Opponent table={table} seat={prevSeat(me)} side="left" />
+      <Opponent table={table} seat={nextSeat(me)} side="right" />
 
       <div className="ddz-center">
         {table.phase === 'play' && <div className="ddz-target">{table.last?.cards?.length ? <><span>{t('ddz.target')}</span><PlayCards move={table.last} compact /></> : <span>{t('ddz.newLead')}</span>}</div>}
@@ -528,7 +518,7 @@ export function TableScene({ table, conn, send, run }: { table: Table; conn: Ddz
           </button>
         </div>
       )}
-      {table.phase === 'over' && table.result && (run ? run.over : <ResultSheet table={table} send={send} />)}
+      {table.phase === 'over' && table.result && <ResultSheet table={table} send={send} />}
 
       {leaving && (
         <Dialog
@@ -539,20 +529,20 @@ export function TableScene({ table, conn, send, run }: { table: Table; conn: Ddz
               <button className="btn btn-quiet" onClick={() => setLeaving(false)}>
                 {t('ddz.stay')}
               </button>
-              <button className="btn btn-danger" onClick={() => (run ? run.onLeave() : send({ type: 'leave' }))}>
+              <button className="btn btn-danger" onClick={() => send({ type: 'leave' })}>
                 {t('ddz.leaveAnyway')}
               </button>
             </>
           }
         >
-          <p className="ddz-dialog-text">{run ? run.leaveBody : t('ddz.leaveBody')}</p>
+          <p className="ddz-dialog-text">{t('ddz.leaveBody')}</p>
         </Dialog>
       )}
     </div>
   );
 }
 
-function TopBar({ table, onLeave, send, hud }: { table: Table; onLeave: () => void; send: (a: Action) => void; hud?: ReactNode }) {
+function TopBar({ table, onLeave, send }: { table: Table; onLeave: () => void; send: (a: Action) => void }) {
   const { t } = useI18n();
   const playing = table.phase === 'bid' || table.phase === 'joker' || table.phase === 'play';
   const auto = table.seats[table.me]?.auto ?? false;
@@ -562,12 +552,10 @@ function TopBar({ table, onLeave, send, hud }: { table: Table; onLeave: () => vo
         <button className="ddz-chip ddz-chip-btn" onClick={onLeave} aria-label={t('ddz.leave')}>
           <Icon name="chevronLeft" className="size-4" />
         </button>
-        {hud ?? (
-          <span className="ddz-chip">
-            {t('ddz.base')} <b>{dollars(table.base)}</b>
-            {table.fee_policy && <small>{t('ddz.feeRate',{rate:table.fee_policy.bps/100})}</small>}
-          </span>
-        )}
+        <span className="ddz-chip">
+          {t('ddz.base')} <b>{dollars(table.base)}</b>
+          {table.fee_policy && <small>{t('ddz.feeRate',{rate:table.fee_policy.bps/100})}</small>}
+        </span>
         {table.field && <FieldCard field={table.field} />}
       </div>
 
@@ -579,7 +567,7 @@ function TopBar({ table, onLeave, send, hud }: { table: Table; onLeave: () => vo
             )}
           </div>
         )}
-        {table.phase !== 'waiting' && !hud && (
+        {table.phase !== 'waiting' && (
           <span className={`ddz-mult ${table.mult >= 8 ? 'hot' : ''}`} aria-label={`×${fmtX(table.mult)}`}>
             <b key={table.mult}>×{fmtX(table.mult)}</b>
           </span>
@@ -590,7 +578,7 @@ function TopBar({ table, onLeave, send, hud }: { table: Table; onLeave: () => vo
         <SoundToggle />
         <PlayHistory table={table} />
         {table.code && <RoomCode code={table.code} base={table.base} compact />}
-        {playing && !hud && (
+        {playing && (
           <button className={`ddz-chip ddz-chip-btn ${auto ? 'on' : ''}`} onClick={() => send({ type: 'auto', on: !auto })}>
             {t('ddz.auto')}
           </button>
@@ -789,15 +777,14 @@ function SeatMeta({ info, table, seat }: { info: SeatInfo; table: Table; seat: S
   );
 }
 
-/** `versus`: money tables only; the local 闯关 preview has no record to show. */
-function Opponent({ table, seat, side, versus }: { table: Table; seat: Seat; side: 'left' | 'right'; versus: boolean }) {
+function Opponent({ table, seat, side }: { table: Table; seat: Seat; side: 'left' | 'right' }) {
   const { t } = useI18n();
   const info = table.seats[seat];
   const left = info?.left ?? 0;
   const dealt = table.phase === 'bid' || table.phase === 'joker' || table.phase === 'play' || table.phase === 'showdown';
   return (
     <aside className={`ddz-opp ${side}`}>
-      <Avatar info={info} seat={seat} table={table} size="lg" versus={versus} />
+      <Avatar info={info} seat={seat} table={table} size="lg" versus />
       {info ? <SeatMeta info={info} table={table} seat={seat} /> : <span className="ddz-dim">{t('ddz.emptySeat')}</span>}
       <span className="ddz-thinking-label">{table.turn === seat && table.phase === 'play' ? t('ddz.thinking') : null}</span>
       {dealt && !info?.shown && !info?.peeked && (
