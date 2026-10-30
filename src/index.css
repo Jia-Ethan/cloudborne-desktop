@@ -6084,6 +6084,71 @@ html[data-glass='mica'] {
     opacity: 0.45;
     cursor: not-allowed;
   }
+  /* 玩法: two tiles like the stakes; 赖子场 keeps the same accent. */
+  .ddz-modes {
+    padding: 18px 20px 20px;
+    border-radius: 18px;
+  }
+  .ddz-mode-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  .ddz-mode {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 14px 16px;
+    text-align: left;
+    background: var(--field);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    transition:
+      border-color 0.14s ease,
+      background-color 0.14s ease,
+      box-shadow 0.14s ease,
+      transform 0.14s ease;
+  }
+  .ddz-mode b {
+    font-size: 16px;
+    font-weight: 700;
+  }
+  .ddz-mode small {
+    color: var(--ink-3);
+    font-size: 12px;
+  }
+  .ddz-mode:hover {
+    border-color: color-mix(in srgb, var(--ink) 18%, transparent);
+  }
+  .ddz-mode:active {
+    transform: scale(0.99);
+  }
+  .ddz-mode.on {
+    background: var(--ddz-accent-soft);
+    border-color: var(--ddz-accent);
+    box-shadow: 0 0 0 3px var(--ddz-accent-soft);
+  }
+  .ddz-mode.on b {
+    color: var(--ddz-accent-ink);
+  }
+  .ddz-laizi-rules ol {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding-left: 20px;
+    color: var(--ink-2);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .ddz-laizi-guide {
+    margin-top: 4px;
+  }
+  .ddz-matching-mode {
+    margin: 0;
+    color: var(--ink-3);
+    font-size: 13px;
+  }
   .ddz-entries {
     display: grid;
     grid-template-columns: 1fr 1fr 1.3fr;
@@ -6453,6 +6518,40 @@ html[data-glass='mica'] {
   .ddz-field-button:hover {
     filter: brightness(1.04) saturate(1.1);
     transform: translateY(-1px);
+  }
+  /* 赖子场: 天 and 地 side by side; 地 turns over once the landlord takes the bottom. */
+  .ddz-laizi {
+    gap: 10px;
+    padding: 0 10px;
+  }
+  .ddz-laizi-slot {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .ddz-laizi-slot i {
+    display: inline-grid;
+    place-items: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 3px;
+    border-radius: 6px;
+    color: #fff;
+    background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+    font-size: 11px;
+    font-style: normal;
+    font-weight: 700;
+  }
+  .ddz-laizi-slot b {
+    display: inline-block;
+    min-width: 1.2em;
+    text-align: center;
+  }
+  .ddz-laizi-slot.pending b {
+    color: var(--ink-3);
+  }
+  .ddz-laizi-slot.up b {
+    animation: ddz-laizi-flip 0.5s cubic-bezier(0.2, 0.8, 0.3, 1.2);
   }
   .ddz-field b {
     font-size: 13px;
@@ -6832,6 +6931,36 @@ html[data-glass='mica'] {
     line-height: 14px;
     text-align: center;
   }
+  /* 赖子: a violet ring and a 天/地 tag in the strip that shows when cards overlap. */
+  .pc.ddz-laizi-card {
+    box-shadow:
+      0 0 0 1.5px rgb(139 92 246 / 0.6),
+      var(--ddz-card-shadow);
+  }
+  .pc.ddz-wild.ddz-laizi-card {
+    box-shadow:
+      0 0 0 2px #8b5cf6,
+      0 0 14px rgb(139 92 246 / 0.4),
+      var(--ddz-card-shadow);
+  }
+  .ddz-laizi-card .ddz-wild-as {
+    background: #7c3aed;
+  }
+  .ddz-wild-tag {
+    position: absolute;
+    z-index: 2;
+    left: 3px;
+    bottom: 4px;
+    min-width: 16px;
+    padding: 1px 3px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 14px;
+    text-align: center;
+  }
   .ddz-aim-note {
     margin: 0;
     color: var(--ink-3);
@@ -7093,6 +7222,48 @@ html[data-glass='mica'] {
   }
   .ddz-verdict.warn {
     color: var(--ddz-warn);
+  }
+  /* 赖子场: when a play reads more than one way, the reading to send. */
+  .ddz-readings {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 2px;
+    animation: ddz-from-below 0.2s cubic-bezier(0.2, 0.8, 0.3, 1.1);
+  }
+  .ddz-readings > span {
+    margin-right: 2px;
+    color: var(--ink-3);
+    font-size: 12px;
+  }
+  .ddz-reading {
+    height: 26px;
+    padding: 0 10px;
+    color: var(--ink-2);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 600;
+    transition:
+      background-color 0.14s ease,
+      border-color 0.14s ease,
+      color 0.14s ease;
+  }
+  .ddz-reading:hover {
+    border-color: color-mix(in srgb, var(--ink) 18%, transparent);
+  }
+  .ddz-reading.on {
+    color: var(--ddz-accent-ink);
+    background: var(--ddz-accent-soft);
+    border-color: var(--ddz-accent);
+  }
+  .ddz-reading.bomb.on {
+    color: #fff;
+    background: linear-gradient(100deg, #ffb36b, #ff7a45 55%, #e0483a);
+    border-color: transparent;
   }
   .ddz-hand {
     --mid: calc((var(--n) - 1) / 2);
@@ -8100,6 +8271,12 @@ html[data-glass='mica'] {
   }
 }
 
+@keyframes ddz-laizi-flip {
+  from {
+    opacity: 0;
+    transform: rotateY(90deg);
+  }
+}
 @keyframes ddz-deal {
   from {
     opacity: 0;

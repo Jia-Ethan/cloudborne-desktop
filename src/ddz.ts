@@ -43,6 +43,15 @@ export function byPlay(cards: Card[]): Card[] {
   return [...cards].sort((a, b) => n[rankOf(b)] - n[rankOf(a)] || a - b);
 }
 
+/** byPlay for a play holding 赖子: each wild card sorts as the rank it stood for. */
+export function byPlayAs(cards: Card[], wilds?: { card: Card; as: number }[] | null): Card[] {
+  if (!wilds?.length) return byPlay(cards);
+  const eff = (c: Card) => wilds.find((w) => w.card === c)?.as ?? rankOf(c);
+  const n = new Array<number>(NUM_RANKS).fill(0);
+  for (const c of cards) n[eff(c)]++;
+  return [...cards].sort((a, b) => n[eff(b)] - n[eff(a)] || eff(a) - eff(b) || a - b);
+}
+
 export type Kind =
   | 'single'
   | 'pair'
@@ -57,22 +66,33 @@ export type Kind =
   | 'four_singles'
   | 'four_pairs'
   | 'bomb'
-  | 'rocket';
+  | 'rocket'
+  /** 赖子场: a bomb with wild cards in it. */
+  | 'soft_bomb'
+  /** 赖子场: four wild cards. */
+  | 'laizi_bomb';
 
 /** A play's shape. Same kind and len compare by rank; bombs beat everything but a higher bomb or the rocket. */
 export type Pattern = { kind: Kind; rank: number; len: number };
 
-export const isBomb = (p: Pattern) => p.kind === 'bomb' || p.kind === 'rocket';
+/** Bomb order, 0 for no bomb: 软炸 < 炸弹 (硬炸) < 赖子炸 < 王炸. Mirrors the relay. */
+export const bombClass = (k: Kind) => (k === 'soft_bomb' ? 1 : k === 'bomb' ? 2 : k === 'laizi_bomb' ? 3 : k === 'rocket' ? 4 : 0);
+
+export const isBomb = (p: Pattern) => bombClass(p.kind) > 0;
 
 export function beats(p: Pattern, prev: Pattern): boolean {
-  if (p.kind === 'rocket') return true;
-  if (prev.kind === 'rocket') return false;
-  if (p.kind === 'bomb') return prev.kind !== 'bomb' || p.rank > prev.rank;
-  if (prev.kind === 'bomb') return false;
+  const cp = bombClass(p.kind);
+  const cq = bombClass(prev.kind);
+  if (cp || cq) return cp !== cq ? cp > cq : p.kind !== 'rocket' && p.rank > prev.rank;
   return p.kind === prev.kind && p.len === prev.len && p.rank > prev.rank;
 }
 
-function counts(cards: Card[]): number[] {
+/** Best reading first: the higher class of bomb, then the longer chain, then the higher rank. */
+export const patternOrder = (a: Pattern, b: Pattern) => bombClass(b.kind) - bombClass(a.kind) || b.len - a.len || b.rank - a.rank;
+
+export const samePattern = (a: Pattern, b: Pattern) => a.kind === b.kind && a.rank === b.rank && a.len === b.len;
+
+export function counts(cards: Card[]): number[] {
   const n = new Array<number>(NUM_RANKS).fill(0);
   for (const c of cards) n[rankOf(c)]++;
   return n;
@@ -153,10 +173,7 @@ export function patterns(cards: Card[]): Pattern[] {
     }
   }
 
-  return out.sort((a, b) => {
-    if (isBomb(a) !== isBomb(b)) return isBomb(a) ? -1 : 1;
-    return b.len - a.len || b.rank - a.rank;
-  });
+  return out.sort(patternOrder);
 }
 
 /** 混合专家: the fewest cards in the play, and the highest rank the wild card may stand in for (10). Mirrors the relay. */
@@ -410,6 +427,8 @@ export type SeatInfo = {
 export type Move = {
   /** 混合专家: the card played as another rank. */
   wild?: { card: Card; as: number };
+  /** 赖子场: the wild cards that stood for another rank (those counting as themselves are left out). */
+  wilds?: { card: Card; as: number }[];
   seq?: number;
   trick?: number;
   reverted?: boolean;
@@ -467,6 +486,10 @@ export type Table = {
   code: string | null;
   owner: Seat | null;
   base: number;
+  /** Absent from relays before 赖子场, which only have 小丑场. */
+  mode?: Mode;
+  /** 赖子场: the wild ranks turned up, 天赖子 first; 地赖子 joins once the landlord takes the bottom. */
+  laizi?: number[] | null;
   /**
    * `showdown` is the short pause after the winning play and before the
    * settlement snapshot.  It gives every client time to see the final cards
@@ -506,18 +529,23 @@ export type Table = {
 
 export type SkillArgs = { target?: Seat; rank?: number; cards?: Card[]; give?: Card[]; copy?: Hero; wild?: Card };
 
+/** 小丑场 (heroes, jokers, field cards) or 赖子场 (天地赖子, no skills). */
+export type Mode = 'joker' | 'laizi';
+
 /** What the player asks the relay to do. */
 export type Action = ({ fee_policy?: string }) & (
-  | { type: 'match'; base: number }
+  | { type: 'match'; base: number; mode?: Mode }
   | { type: 'cancel' }
-  | { type: 'create'; base: number }
-  | { type: 'join'; code: string }
+  | { type: 'create'; base: number; mode?: Mode }
+  /** `laizi`: this client can sit at a 赖子场 room; the relay turns away clients that do not say so. */
+  | { type: 'join'; code: string; laizi?: boolean }
   | { type: 'bots' }
   | { type: 'ready' }
   | { type: 'bid'; want: boolean }
   | { type: 'joker'; index: number }
   | { type: 'skill'; args: SkillArgs }
-  | { type: 'play'; cards: Card[] }
+  /** `pattern`: in 赖子场, which reading of the cards is meant. */
+  | { type: 'play'; cards: Card[]; pattern?: Pattern }
   | { type: 'pass' }
   | { type: 'auto'; on: boolean }
   | { type: 'leave' });

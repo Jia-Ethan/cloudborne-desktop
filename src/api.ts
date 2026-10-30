@@ -1,4 +1,4 @@
-import type { FeePolicy } from './ddz';
+import type { FeePolicy, Mode } from './ddz';
 import { invoke } from '@tauri-apps/api/core';
 
 export type ToolId = 'codex' | 'claude' | 'zcode' | 'grok' | 'pi' | 'dsh';
@@ -10,12 +10,16 @@ export interface DdzSettings {
   fee_bps: number;
   /** Minimum balance required to enter, as a multiple of the base stake. */
   min_balance_times: number;
+  /** 赖子场: closed, admins only (to try it before launch), or open to everyone. */
+  laizi?: 'off' | 'admin' | 'on';
 }
 export interface DdzStatus {
   fee_policy?: FeePolicy;
   enabled: boolean;
   stakes: number[];
   min_balance_times: number;
+  /** The modes this user may enter; relays before 赖子场 leave it out. */
+  modes?: Mode[];
 }
 
 /** Running totals against one seat. `net` > 0: they lost that much to me; < 0: they won it from me. `fee` is the part of my winnings the platform kept. */
@@ -59,9 +63,12 @@ export interface DdzSummary {
   gross_won?: number;
   total_net?: number;
   unknown_seats?: number;
+  /** Games and the AI seats' result per mode; relays before 赖子场 leave it out. */
+  modes?: Partial<Record<Mode, { games: number; platform_net: number; fee_income: number }>>;
   recent:
     | {
         id: string;
+        mode?: Mode;
         base: number;
         field: string;
         landlord: number;

@@ -9,11 +9,13 @@ import {
   STAKES,
   byHand,
   hints,
+  isBomb,
   judge,
   nextSeat,
   prevSeat,
   rankLabel,
   rankOf,
+  samePattern,
   wildPattern,
   type Action,
   type Card,
@@ -21,13 +23,16 @@ import {
   type Hero,
   type Joker,
   type Kind,
+  type Mode,
   type Move,
+  type Pattern,
   type Seat,
   type SeatInfo,
   type SkillArgs,
   type Step,
   type Table,
 } from '../ddz';
+import { isWild, judgeLaizi, laiziHints } from '../ddzLaizi';
 import { useI18n, type MessageKey, type T } from '../i18n';
 import type { DdzConn } from '../useDdz';
 import { dollars } from '../lottery';
@@ -41,7 +46,7 @@ import { Logo, type LogoId } from './Logo';
 import { CardBack, CardRow, PlayingCard } from './PlayingCard';
 
 /** Bump when the rules text changes so everyone reads it again. */
-const RULES_VERSION = '3';
+const RULES_VERSION = '4';
 const RULES_KEY = 'cloudborne.ddz.rules';
 
 /** Turn clocks; the relay enforces them, these only draw the ring. */
@@ -50,6 +55,18 @@ const PLAY_MS = 30000;
 
 const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 const DDZ_QUALITY_KEY = 'cloudborne.ddz.quality';
+/** The lobby remembers the last mode picked, per machine. */
+const DDZ_MODE_KEY = 'cloudborne.ddz.mode';
+
+function readDdzMode(): Mode {
+  try {
+    return localStorage.getItem(DDZ_MODE_KEY) === 'laizi' ? 'laizi' : 'joker';
+  } catch {
+    return 'joker';
+  }
+}
+
+const LAIZI_RULES: MessageKey[] = ['ddz.laizi.rule.flip', 'ddz.laizi.rule.wild', 'ddz.laizi.rule.self', 'ddz.laizi.rule.bombs', 'ddz.laizi.rule.noSkill'];
 
 type DdzQuality = 'standard' | 'high';
 
@@ -94,6 +111,8 @@ const SHOWY: Partial<Record<Kind, MessageKey>> = {
   trio_pair: 'ddz.kind.trio_pair',
   bomb: 'ddz.kind.bomb',
   rocket: 'ddz.kind.rocket',
+  soft_bomb: 'ddz.kind.soft_bomb',
+  laizi_bomb: 'ddz.kind.laizi_bomb',
   plane: 'ddz.kind.plane',
   plane_singles: 'ddz.kind.plane',
   plane_pairs: 'ddz.kind.plane',
@@ -102,6 +121,14 @@ const SHOWY: Partial<Record<Kind, MessageKey>> = {
   four_singles: 'ddz.kind.four_singles',
   four_pairs: 'ddz.kind.four_pairs',
 };
+
+/** A reading named with its ranks, for the 赖子场 chooser: 软炸 9, 顺子 4–8. */
+function readingLabel(p: Pattern, t: T): string {
+  const name = (r: number) => (r === 13 ? t('ddz.smallJoker') : r === 14 ? t('ddz.bigJoker') : rankLabel(r * 4));
+  const kind = t(`ddz.kind.${p.kind}` as MessageKey);
+  if (p.kind === 'rocket' || p.kind === 'laizi_bomb') return kind;
+  return p.len > 1 ? `${kind} ${name(p.rank)}–${name(p.rank + p.len - 1)}` : `${kind} ${name(p.rank)}`;
+}
 
 const signed = (n: number) => (n > 0 ? `+${dollars(n)}` : n < 0 ? `−${dollars(-n)}` : dollars(0));
 const fmtX = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(n * 10 === Math.round(n * 10) ? 1 : 2));
@@ -146,8 +173,8 @@ export function DdzView({ balance, table, conn, send, userId = 0, previewStatus 
     finally {busy.current=false;}
   };
   let body: ReactNode;
-  if (!table) body=<Lobby balance={balance} conn={conn} onEnter={a=>void enter(a)} onRules={()=>{setPolicy(status?.fee_policy ?? FREE_POLICY);setRulesFor('read');}} policy={status?.fee_policy} minBalanceTimes={status?.min_balance_times} />;
-  else if (table.phase === 'waiting' && !table.code) body=<Matching send={send} />;
+  if (!table) body=<Lobby balance={balance} conn={conn} onEnter={a=>void enter(a)} onRules={()=>{setPolicy(status?.fee_policy ?? FREE_POLICY);setRulesFor('read');}} policy={status?.fee_policy} minBalanceTimes={status?.min_balance_times} modes={status?.modes} />;
+  else if (table.phase === 'waiting' && !table.code) body=<Matching table={table} send={send} />;
   else body=<TableScene table={table} conn={conn} send={a=>void enter(a)} />;
   return <>{error && <div className="ddz-entry-error" role="alert">{error}</div>}{body}{rulesFor && <RulesDialog policy={policy} agree={rulesFor!=='read'} onClose={()=>setRulesFor(null)} onAgree={()=>{
     localStorage.setItem(acceptanceKey(policy),'yes');
@@ -158,13 +185,25 @@ export function DdzView({ balance, table, conn, send, userId = 0, previewStatus 
 
 // ---------------------------------------------------------------- lobby
 
-function Lobby({ balance, conn, onEnter, onRules, policy, minBalanceTimes }: { balance: number; conn: DdzConn; onEnter: (a: Action) => void; onRules: () => void; policy?: FeePolicy; minBalanceTimes?: number }) {
+function Lobby({ balance, conn, onEnter, onRules, policy, minBalanceTimes, modes }: { balance: number; conn: DdzConn; onEnter: (a: Action) => void; onRules: () => void; policy?: FeePolicy; minBalanceTimes?: number; modes?: Mode[] }) {
   const { t } = useI18n();
   const quality = useMemo(readDdzQuality, []);
   const times = Number.isFinite(minBalanceTimes) && (minBalanceTimes ?? 0) > 0 ? minBalanceTimes! : 20;
   const affordable = (b: number) => balance >= b * times;
   const [base, setBase] = useState(STAKES[0]);
   const [code, setCode] = useState('');
+  const [picked, setPicked] = useState<Mode>(readDdzMode);
+  // 赖子场 shows only where the relay lets this account in.
+  const laiziOpen = !!modes?.includes('laizi');
+  const mode: Mode = laiziOpen ? picked : 'joker';
+  const pick = (m: Mode) => {
+    setPicked(m);
+    try {
+      localStorage.setItem(DDZ_MODE_KEY, m);
+    } catch {
+      /* the choice just is not remembered */
+    }
+  };
   const canPlay = affordable(base) && conn === 'open';
 
   return (
@@ -186,22 +225,52 @@ function Lobby({ balance, conn, onEnter, onRules, policy, minBalanceTimes }: { b
           </div>
         </section>
 
-        <section className="card ddz-roster rise" style={{ '--i': 1 } as CSSProperties}>
-          <div className="ddz-section-head">
-            <h2>{t('ddz.guide.heroes')}</h2>
-            <span>{t('ddz.avatarHint')}</span>
-          </div>
-          <div className="ddz-roster-row">
-            {HEROES.map((h) => (
-              <div key={h} className="ddz-roster-item">
-                <HeroInfo hero={h}><HeroBadge hero={h} /></HeroInfo>
-                <span>{NAME[h]}</span>
-              </div>
-            ))}
-          </div>
-        </section>
+        {laiziOpen && (
+          <section className="card ddz-modes rise" style={{ '--i': 1 } as CSSProperties}>
+            <div className="ddz-section-head">
+              <h2>{t('ddz.mode.title')}</h2>
+              {mode === 'laizi' && <span>{t('ddz.mode.laiziRisk')}</span>}
+            </div>
+            <div className="ddz-mode-row" role="radiogroup" aria-label={t('ddz.mode.title')}>
+              {(['joker', 'laizi'] as const).map((m) => (
+                <button key={m} role="radio" aria-checked={mode === m} className={`ddz-mode m-${m} ${mode === m ? 'on' : ''}`} onClick={() => pick(m)}>
+                  <b>{t(`ddz.mode.${m}`)}</b>
+                  <small>{t(`ddz.mode.${m}.desc`)}</small>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
 
-        <section className="card ddz-play rise" style={{ '--i': 2 } as CSSProperties}>
+        {mode === 'laizi' ? (
+          <section key="laizi" className="card ddz-roster ddz-laizi-rules rise" style={{ '--i': 2 } as CSSProperties}>
+            <div className="ddz-section-head">
+              <h2>{t('ddz.laizi.rules')}</h2>
+            </div>
+            <ol>
+              {LAIZI_RULES.map((k) => (
+                <li key={k}>{t(k)}</li>
+              ))}
+            </ol>
+          </section>
+        ) : (
+          <section key="joker" className="card ddz-roster rise" style={{ '--i': 2 } as CSSProperties}>
+            <div className="ddz-section-head">
+              <h2>{t('ddz.guide.heroes')}</h2>
+              <span>{t('ddz.avatarHint')}</span>
+            </div>
+            <div className="ddz-roster-row">
+              {HEROES.map((h) => (
+                <div key={h} className="ddz-roster-item">
+                  <HeroInfo hero={h}><HeroBadge hero={h} /></HeroInfo>
+                  <span>{NAME[h]}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <section className="card ddz-play rise" style={{ '--i': 3 } as CSSProperties}>
           <div className="ddz-section-head">
             <h2>{t('ddz.base')}</h2>
             <span>{policy ? t(policy.bps > 0 ? 'ddz.feeNotice' : 'ddz.feeFree', { rate: policy.bps / 100 }) : t('common.wait')}</span>
@@ -223,11 +292,11 @@ function Lobby({ balance, conn, onEnter, onRules, policy, minBalanceTimes }: { b
             ))}
           </div>
           <div className="ddz-entries">
-            <button className="btn btn-primary ddz-go" disabled={!canPlay} onClick={() => onEnter({ type: 'match', base })}>
+            <button className="btn btn-primary ddz-go" disabled={!canPlay} onClick={() => onEnter({ type: 'match', base, mode })}>
               <Icon name="bolt" className="size-4" />
               {t('ddz.quick')}
             </button>
-            <button className="btn btn-quiet ddz-go" disabled={!canPlay} onClick={() => onEnter({ type: 'create', base })}>
+            <button className="btn btn-quiet ddz-go" disabled={!canPlay} onClick={() => onEnter({ type: 'create', base, mode })}>
               <Icon name="plus" className="size-4" />
               {t('ddz.create')}
             </button>
@@ -235,7 +304,7 @@ function Lobby({ balance, conn, onEnter, onRules, policy, minBalanceTimes }: { b
               className="ddz-join"
               onSubmit={(e) => {
                 e.preventDefault();
-                if (code.length === 6) onEnter({ type: 'join', code });
+                if (code.length === 6) onEnter({ type: 'join', code, laizi: true });
               }}
             >
               <input
@@ -268,7 +337,7 @@ const FAN: Card[] = [51, 41, 44, BIG_JOKER];
 
 function RulesDialog({ agree, onClose, onAgree, policy }: { agree: boolean; onClose: () => void; onAgree: () => void; policy: FeePolicy }) {
   const { t } = useI18n();
-  const [tab, setTab] = useState<'rules' | 'heroes' | 'jokers'>('rules');
+  const [tab, setTab] = useState<'rules' | 'heroes' | 'jokers' | 'laizi'>('rules');
   return (
     <Dialog
       title={t('ddz.rulesTitle')}
@@ -300,13 +369,20 @@ function RulesDialog({ agree, onClose, onAgree, policy }: { agree: boolean; onCl
         {policy.bps>0 && <li>{t('ddz.feeExample',{fee:dollars(2*policy.bps/10000),net:dollars(2-2*policy.bps/10000)})}</li>}
       </ol>
       <div className="ddz-guide-tabs" role="tablist">
-        {(['rules', 'heroes', 'jokers'] as const).map((k) => (
+        {(['rules', 'heroes', 'jokers', 'laizi'] as const).map((k) => (
           <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
             {t(`ddz.guide.${k}` as MessageKey)}
           </button>
         ))}
       </div>
       {tab === 'rules' && <p className="ddz-guide-text">{t('ddz.guide.flow')}</p>}
+      {tab === 'laizi' && (
+        <ol className="ddz-rules ddz-laizi-guide">
+          {LAIZI_RULES.map((k) => (
+            <li key={k}>{t(k)}</li>
+          ))}
+        </ol>
+      )}
       {tab === 'heroes' && (
         <ul className="ddz-guide-list">
           {HEROES.map((h) => (
@@ -356,7 +432,7 @@ const JOKER_LIST: Joker[] = [
   'ledger',
 ];
 
-function Matching({ send }: { send: (a: Action) => void }) {
+function Matching({ table, send }: { table: Table; send: (a: Action) => void }) {
   const { t } = useI18n();
   return (
     <div className="ddz-felt ddz-matching">
@@ -366,6 +442,7 @@ function Matching({ send }: { send: (a: Action) => void }) {
         ))}
       </div>
       <h2>{t('ddz.matching')}</h2>
+      {table.mode === 'laizi' && <p className="ddz-matching-mode">{t('ddz.matchingMode', { mode: t('ddz.mode.laizi'), base: dollars(table.base) })}</p>}
       <button className="btn btn-quiet" onClick={() => send({ type: 'cancel' })}>
         {t('common.cancel')}
       </button>
@@ -479,11 +556,11 @@ function TableScene({ table, conn, send }: { table: Table; conn: DdzConn; send: 
       <Opponent table={table} seat={nextSeat(me)} side="right" />
 
       <div className="ddz-center">
-        {table.phase === 'play' && <div className="ddz-target">{table.last?.cards?.length ? <><span>{t('ddz.target')}</span><PlayCards move={table.last} compact /></> : <span>{t('ddz.newLead')}</span>}</div>}
+        {table.phase === 'play' && <div className="ddz-target">{table.last?.cards?.length ? <><span>{t('ddz.target')}</span><PlayCards move={table.last} laizi={table.laizi} compact /></> : <span>{t('ddz.newLead')}</span>}</div>}
         {showdown && table.last?.cards?.length ? (
           <div className="ddz-showdown" role="status" aria-live="polite">
             <span className="ddz-showdown-title">{t('ddz.showdown')}</span>
-            <PlayCards move={table.last} />
+            <PlayCards move={table.last} laizi={table.laizi} />
           </div>
         ) : (
           <>
@@ -556,7 +633,7 @@ function TopBar({ table, onLeave, send }: { table: Table; onLeave: () => void; s
           {t('ddz.base')} <b>{dollars(table.base)}</b>
           {table.fee_policy && <small>{t('ddz.feeRate',{rate:table.fee_policy.bps/100})}</small>}
         </span>
-        {table.field && <FieldCard field={table.field} />}
+        {table.mode === 'laizi' ? <LaiziChip laizi={table.laizi} /> : table.field && <FieldCard field={table.field} />}
       </div>
 
       <div className="ddz-top-mid">
@@ -621,6 +698,25 @@ function FieldCard({ field }: { field: Field }) {
       <p className="ddz-field-detail muted">{t('ddz.field.tapHint')}</p>
     </Dialog>}
     </>
+  );
+}
+
+/** 赖子场: the wild ranks, 天 at once and 地 face down until the landlord takes the bottom. */
+function LaiziChip({ laizi }: { laizi?: number[] | null }) {
+  const { t } = useI18n();
+  const [tian, di] = laizi ?? [];
+  const label = (r: number | undefined) => (r === undefined ? '?' : rankLabel(r * 4));
+  return (
+    <span className="ddz-chip ddz-laizi" role="group" aria-label={`${t('ddz.laizi.label')} ${t('ddz.laizi.tian')} ${label(tian)} ${t('ddz.laizi.di')} ${label(di)}`}>
+      <span className="ddz-laizi-slot">
+        <i>{t('ddz.laizi.tian')}</i>
+        <b>{label(tian)}</b>
+      </span>
+      <span className={`ddz-laizi-slot ${di === undefined ? 'pending' : 'up'}`} title={di === undefined ? t('ddz.laizi.waitDi') : undefined}>
+        <i>{t('ddz.laizi.di')}</i>
+        <b key={di ?? 'down'}>{label(di)}</b>
+      </span>
+    </span>
   );
 }
 
@@ -769,7 +865,7 @@ function SeatMeta({ info, table, seat }: { info: SeatInfo; table: Table; seat: S
             ★ {t(`ddz.joker.${info.joker}` as MessageKey)}
           </span>
         )}
-        {table.phase === 'play' && info.skills === 0 && seat !== table.me && (
+        {table.phase === 'play' && table.mode !== 'laizi' && info.skills === 0 && seat !== table.me && (
           <span className="ddz-tag spent">{t(`ddz.skill.${info.hero}` as MessageKey)}</span>
         )}
       </span>
@@ -812,7 +908,7 @@ function MoveBubble({ table, seat, side }: { table: Table; seat: Seat; side: 'le
     return (
       <div className={`ddz-move ${side} cards k-${move.pattern?.kind ?? 'single'}`} key={move.cards.join()}>
         {move.trick !== undefined && table.trick !== undefined && move.trick < table.trick && <small>{t('ddz.previousTrick')}</small>}
-        <PlayCards move={move} />
+        <PlayCards move={move} laizi={table.laizi} />
       </div>
     );
   }
@@ -827,8 +923,16 @@ function MoveBubble({ table, seat, side }: { table: Table; seat: Seat; side: 'le
 
 function MyHand({ table, myTurn, send, cardScale = 1 }: { table: Table; myTurn: boolean; send: (a: Action) => void; cardScale?: number }) {
   const { t } = useI18n();
-  const hand = useMemo(() => byHand(table.hand), [table.hand]);
+  // 赖子场: the wild ranks turned up; the wild cards sit together at the right end.
+  const laiziKey = table.mode === 'laizi' ? (table.laizi ?? []).join(',') : null;
+  const laizi = useMemo(() => (laiziKey === null ? null : laiziKey.split(',').filter(Boolean).map(Number)), [laiziKey]);
+  const hand = useMemo(() => {
+    const h = byHand(table.hand);
+    return laizi ? [...h.filter((c) => !isWild(c, laizi)), ...h.filter((c) => isWild(c, laizi))] : h;
+  }, [table.hand, laizi]);
   const [sel, setSel] = useState<Set<Card>>(() => new Set());
+  // The reading asked for when a selection can be played more than one way.
+  const [want, setWant] = useState<Pattern | null>(null);
   const [hintAt, setHintAt] = useState(0);
   const [nudge, setNudge] = useState<string | null>(null);
   const [aiming, setAiming] = useState<Hero | null>(null);
@@ -858,12 +962,27 @@ function MyHand({ table, myTurn, send, cardScale = 1 }: { table: Table; myTurn: 
     });
 
   const picked = hand.filter((c) => sel.has(c));
-  const verdict = judge(picked, prev);
+  const read = laizi ? judgeLaizi(picked, prev, laizi) : null;
+  const verdict = read ?? judge(picked, prev);
+  const readings = read?.readings ?? [];
+  const reading = readings.find((p) => want && samePattern(p, want)) ?? readings[0] ?? null;
   const playing = table.phase === 'play' && myTurn;
   const bidding = table.phase === 'bid' && myTurn;
   const leading = !table.last;
 
   const hint = () => {
+    if (laizi) {
+      const list = laiziHints(table.hand, prev, laizi);
+      if (list.length === 0) {
+        setNudge(t('ddz.noBeat'));
+        return;
+      }
+      const h = list[hintAt % list.length];
+      setSel(new Set(h.cards));
+      setWant(h.pattern);
+      setHintAt((i) => i + 1);
+      return;
+    }
     const list = hints(table.hand, prev);
     if (list.length === 0) {
       setNudge(t('ddz.noBeat'));
@@ -874,8 +993,9 @@ function MyHand({ table, myTurn, send, cardScale = 1 }: { table: Table; myTurn: 
   };
   const play = () => {
     if (verdict.verdict !== 'ok') return;
-    send({ type: 'play', cards: picked });
+    send(laizi && reading ? { type: 'play', cards: picked, pattern: reading } : { type: 'play', cards: picked });
     setSel(new Set());
+    setWant(null);
   };
   const pass = () => {
     if (leading) return;
@@ -930,9 +1050,11 @@ function MyHand({ table, myTurn, send, cardScale = 1 }: { table: Table; myTurn: 
     if (!playing) return null;
     if (verdict.verdict === 'bad') return { text: t('ddz.notAPlay'), tone: 'warn' };
     if (verdict.verdict === 'small') return { text: t('ddz.tooSmall'), tone: 'warn' };
+    if (reading) return { text: readingLabel(reading, t), tone: 'ok' };
     if (verdict.verdict === 'ok' && verdict.pattern) return { text: t(`ddz.kind.${verdict.pattern.kind}` as MessageKey), tone: 'ok' };
     return null;
   })();
+  const choose = playing && readings.length > 1;
 
   return (
     // Keep game state names scoped: the chat .turn class adds a 14px gap.
@@ -941,7 +1063,7 @@ function MyHand({ table, myTurn, send, cardScale = 1 }: { table: Table; myTurn: 
         <div className="ddz-me-who">
           <Avatar info={mine} seat={table.me} table={table} />
           {mine && <SeatMeta info={mine} table={table} seat={table.me} />}
-          {mine && table.phase === 'play' && (
+          {mine && table.phase === 'play' && table.mode !== 'laizi' && (
             <SkillButton
               table={table}
               hero={mine.hero}
@@ -984,8 +1106,19 @@ function MyHand({ table, myTurn, send, cardScale = 1 }: { table: Table; myTurn: 
           {!myTurn && (table.phase === 'bid' || table.phase === 'play') && <span className="ddz-dim">{waitingLine(table, t)}</span>}
         </div>
 
-        <div className="ddz-status">{status && <span className={`ddz-verdict ${status.tone}`}>{status.text}</span>}</div>
+        <div className="ddz-status">{status && !choose && <span className={`ddz-verdict ${status.tone}`}>{status.text}</span>}</div>
       </div>
+
+      {choose && (
+        <div className="ddz-readings" role="radiogroup" aria-label={t('ddz.laizi.readAs')}>
+          <span>{t('ddz.laizi.readAs')}</span>
+          {readings.map((p) => (
+            <button key={`${p.kind}-${p.rank}-${p.len}`} role="radio" aria-checked={reading !== null && samePattern(p, reading)} className={`ddz-reading ${reading && samePattern(p, reading) ? 'on' : ''} ${isBomb(p) ? 'bomb' : ''}`} onClick={() => setWant(p)}>
+              {readingLabel(p, t)}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div
         ref={row}
@@ -1001,6 +1134,7 @@ function MyHand({ table, myTurn, send, cardScale = 1 }: { table: Table; myTurn: 
             key={c}
             card={c}
             size="lg"
+            wildTag={laizi && isWild(c, laizi) ? t(rankOf(c) === laizi[0] ? 'ddz.laizi.tian' : 'ddz.laizi.di') : undefined}
             selected={sel.has(c)}
             fresh={table.bottom?.includes(c) && table.landlord === table.me}
             style={{ '--i': i } as CSSProperties}
@@ -1372,14 +1506,15 @@ function useTableFx(table: Table, quality: DdzQuality) {
     seen.current = key;
     if (first || !m?.pattern) return;
     const kind = m.pattern.kind;
-    playSound(kind, m.cards!.length);
+    const heavy = isBomb(m.pattern);
+    // 软炸 and 赖子炸 land like any bomb.
+    playSound(heavy && kind !== 'rocket' ? 'bomb' : kind, m.cards!.length);
     const from = m.seat === table.me ? 'me' : m.seat === prevSeat(table.me) ? 'left' : 'right';
     const label = SHOWY[kind];
     const still = reducedMotion();
-    const heavy = kind === 'bomb' || kind === 'rocket';
     if (heavy || PLANES.includes(kind)) {
       const times = table.field === 'blast' ? (kind === 'rocket' ? 4 : 3) : 2;
-      const fx: Impact = { key, kind: heavy ? (kind as 'bomb' | 'rocket') : 'plane', from, times };
+      const fx: Impact = { key, kind: heavy ? (kind === 'rocket' ? 'rocket' : 'bomb') : 'plane', from, times };
       setImpact(fx);
       later(kind === 'rocket' ? 1300 : 1000, () => setImpact((cur) => (cur?.key === key ? null : cur)));
     }

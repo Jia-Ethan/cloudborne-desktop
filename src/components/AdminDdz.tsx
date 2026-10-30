@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type CSSProperties } from 'react';
-import { api, errorText, type DdzSummary } from '../api';
+import { api, errorText, type DdzSettings, type DdzSummary } from '../api';
 import { useI18n, type MessageKey } from '../i18n';
 import { dollars } from '../lottery';
 import { Figure, Line, Panel } from './AdminLottery';
@@ -21,6 +21,7 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
   const [feeEnabled, setFeeEnabled] = useState(false);
   const [feeRate, setFeeRate] = useState('5');
   const [minBalanceTimes, setMinBalanceTimes] = useState('20');
+  const [laizi, setLaizi] = useState<NonNullable<DdzSettings['laizi']>>('off');
   const [saving, setSaving] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState('');
@@ -35,6 +36,7 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
       setFeeEnabled(st.fee_enabled ?? false);
       setFeeRate(String((st.fee_bps ?? 500) / 100));
       setMinBalanceTimes(String(st.min_balance_times ?? 20));
+      setLaizi(st.laizi ?? 'off');
       setError('');
     } catch (e) {
       setError(errorText(e, t('common.genericError')));
@@ -79,6 +81,18 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
     } catch (e) { onToast(errorText(e, t('common.genericError'))); }
     finally { setSaving(false); }
   };
+
+  const saveLaizi = async () => {
+    setSaving(true);
+    try {
+      const st = await api.adminDdzSave({ laizi });
+      setLaizi(st.laizi ?? 'off');
+      onToast(t('admin.ddz.laiziSaved'));
+    } catch (e) { onToast(errorText(e, t('common.genericError'))); }
+    finally { setSaving(false); }
+  };
+
+  const modeName = (m: string) => t(m === 'laizi' ? 'ddz.mode.laizi' : 'ddz.mode.joker');
 
   return (
     <div className="main-scroll">
@@ -129,6 +143,13 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
             <button className="btn btn-primary" disabled={busy || saving || enabled === null}>{t('admin.ddz.balanceSave')}</button>
           </form>
           <p className="lot-settings-hint">{t('admin.ddz.balanceHint')}</p>
+          <form className="ddz-fee-settings" onSubmit={e => {e.preventDefault();void saveLaizi();}}>
+            <label>{t('admin.ddz.laizi')} <select className="field" value={laizi} disabled={busy || saving || enabled === null} onChange={e=>setLaizi(e.target.value as typeof laizi)}>
+              {(['off', 'admin', 'on'] as const).map(v => <option key={v} value={v}>{t(`admin.ddz.laizi.${v}`)}</option>)}
+            </select></label>
+            <button className="btn btn-primary" disabled={busy || saving || enabled === null}>{t('admin.ddz.laiziSave')}</button>
+          </form>
+          <p className="lot-settings-hint">{t('admin.ddz.laiziHint')}</p>
         </section>
 
         <div className="lot-panels rise" style={{ '--i': 2 } as CSSProperties}>
@@ -137,6 +158,9 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
             <div className="lot-split">
               <Line label={t('admin.ddz.players')} value={summary ? String(summary.players) : '—'} />
               <Line label={t('admin.ddz.botGames')} value={summary ? String(summary.bot_games) : '—'} />
+              {summary?.modes?.laizi && (['joker', 'laizi'] as const).map(m => (
+                <Line key={m} label={modeName(m)} value={String(summary.modes?.[m]?.games ?? 0)} />
+              ))}
             </div>
           </Panel>
           <Panel title={t('admin.ddz.panel.money')}>
@@ -151,6 +175,9 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
               <Line label={t('admin.ddz.feeIncome')} value={summary ? dollars(summary.fee_income ?? 0) : '—'} />
               <Line label={t('admin.ddz.grossWon')} value={summary ? dollars(summary.gross_won ?? summary.won) : '—'} />
               <Line label={t('admin.ddz.netWon')} value={summary ? dollars(summary.won) : '—'} />
+              {summary?.modes?.laizi && (['joker', 'laizi'] as const).map(m => (
+                <Line key={m} label={t('admin.ddz.modeNet', { mode: modeName(m) })} value={signed(summary.modes?.[m]?.platform_net ?? 0)} />
+              ))}
             </div>
           </Panel>
         </div>
@@ -171,7 +198,7 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
                 <div key={g.id} className="draw-row ddz-admin-row">
                   <time>{when(g.at)}</time>
                   <span className="ddz-admin-field">
-                    {dollars(g.base)} · {t(`ddz.field.${g.field}` as MessageKey)}
+                    {dollars(g.base)} · {g.mode === 'laizi' ? t('ddz.mode.laizi') : t(`ddz.field.${g.field}` as MessageKey)}
                   </span>
                   {g.users.map((u, s) => (
                     <span key={s} className={`ddz-admin-seat ${g.delta[s] >= 0 ? 'up' : 'down'}`}>

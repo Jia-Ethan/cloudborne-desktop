@@ -15,6 +15,7 @@ export function PlayingCard({
   fresh,
   dim,
   wildAs,
+  wildTag,
   className = '',
   style,
   onPointerDown,
@@ -25,8 +26,10 @@ export function PlayingCard({
   selected?: boolean;
   fresh?: boolean;
   dim?: boolean;
-  /** 混合专家: the rank this card was played as. */
+  /** 混合专家 or a 赖子: the rank this card was played as. */
   wildAs?: string;
+  /** 赖子场: this card is wild; the tag says which (天 or 地). */
+  wildTag?: string;
   className?: string;
   style?: CSSProperties;
   onPointerDown?: PointerEventHandler<HTMLDivElement>;
@@ -43,6 +46,7 @@ export function PlayingCard({
     fresh ? 'fresh' : '',
     dim ? 'dim' : '',
     wildAs ? 'ddz-wild' : '',
+    wildTag ? 'ddz-laizi-card' : '',
     faceRank ? `face face-${rankLabel(card).toLowerCase()}` : '',
     className,
   ]
@@ -52,6 +56,7 @@ export function PlayingCard({
     <div className={cls} style={style} onPointerDown={onPointerDown} onPointerEnter={onPointerEnter} data-card={card}>
       <span className="pc-frame" aria-hidden />
       {wildAs && <span className="ddz-wild-as">{wildAs}</span>}
+      {wildTag && <span className="ddz-wild-tag">{wildTag}</span>}
       {joker ? (
         <>
           <span className="pc-joker">JOKER</span>
