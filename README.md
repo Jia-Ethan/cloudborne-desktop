@@ -6,8 +6,9 @@ Cloudborne（栖云）中转站的桌面客户端：用中转站账号登录、�
 
 ## 状态
 
-v0.9.25 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
+v0.9.26 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
 
+- 斗地主赖子场，闯关下线（v0.9.26）：大厅去掉「闯关 · 试玩版」。中转站给账号开放赖子场时，大厅多一张「玩法」卡片可选小丑场或赖子场（选择记在本机）。赖子场是天地赖子：发完牌翻天赖子、地主拿到底牌后翻地赖子，这两个点数的 8 张牌可以当 3 到 2 的任意点数（不能当王，连牌最多当到 A）；没有技能、小丑和场地牌；软炸 < 硬炸 < 赖子炸 < 王炸，每个 ×2。牌桌顶栏显示「天 7 · 地 ?」，手牌里的赖子排在最右并带天/地角标，一手牌能读成几种时在手牌上方选读法，提示会用赖子。赖子场的入场余额门槛单独设（默认底分 × 40）。管理端「斗地主管理」多了赖子场开关（关闭 / 仅管理员试玩 / 开放）、赖子场门槛倍数和按玩法分开的统计。规则版本升到 4，进牌局前会再确认一次规则。需要 relay `0.2.8-cloudborne.74-ddz-laizi`；旧 relay 上没有赖子场，小丑场照常。
 - 宝箱 Token 包奖品（v0.9.24）：宝箱能开出限时 Token 包，结果卡片显示大小（如「1M tokens · 168 小时」）和该用哪个分组的 Key，包直接进「兑换」页的「限时额度」。管理端奖品编辑新增「Token 包」类型：选分组（只列活跃的非订阅分组）、大小（0.1M 起）、有效期和计入成本上限的计价。需要 relay `0.2.8-cloudborne.60-lottery-packs`；旧客户端会把 Token 包显示成 $0.00。
 - 深色模式下拉框（v0.9.23）：Windows 深色模式下，下拉框（如「请求记录」的类型和 API Key 筛选）弹出的选项是白底浅字、几乎看不见；现在选项跟随主题用深底浅字。macOS 用系统菜单，不受影响。
 - 会话草稿与转账手续费（v0.9.22）：新任务和每个会话里没发出的文字和图片，切到别的页面再回来都还在（只保存在内存里，退出客户端后清空）。转账改为 $10 起，填的是对方到账金额，转出方另付 5% 手续费（按分向上取整），卡片、确认框和成功提示里都显示手续费和总扣款。需要 relay `0.2.8-cloudborne.57-transfer-fee`。
@@ -18,7 +19,7 @@ v0.9.25 已发布（未做 Apple 公证和 Windows 代码签名；应用内更�
 
 - 一键接入 DSH（v0.9.17）：首页新增 DeepSeek Harness 卡片，可一键安装（npm，要 Node.js 22.19 以上）和连接 Cloudborne；连接时选 DeepSeek、GLM、Kimi 或 MiniMax 分组，默认模型 DeepSeek Flash、思考 high，DSH 里原有的模型服务保留，改了什么见下面「连接时改了什么」。
 - 转账、邀请链接和分组并发（v0.9.16）：「兑换」页可以按邮箱或用户名把余额转给其他用户（至少 $1、最多两位小数；v0.9.22 起改为 $10 起并另收 5% 手续费，确认时输入登录密码，转出不可撤回，双方记录里各有一条「转账转出 / 转入」）；管理员允许的用户在同一页生成一次性邀请链接（7 天过期，同时最多 3 条，可撤回）。管理端用户详情去掉最近使用记录，改为每 5 秒刷新的分组并发，并可开关该用户的邀请权限。需要 relay `0.2.8-cloudborne.42-transfer-invite`。
-- 斗地主闯关试玩版与更长思考时间（v0.9.15）：大厅新增「闯关 · 试玩版」，当地主一打二连闯 3 幕 9 关，得分 = 筹码 × 倍率，小丑整局保留、关间进商店构筑、每幕末有首领；完全在本机运行，不连 relay、不用余额。叫地主和选小丑改为 20 秒、出牌改为 30 秒，需要 relay `0.2.8-cloudborne.26-ddz-clock`。
+- 斗地主闯关试玩版与更长思考时间（v0.9.15；闯关在 v0.9.26 下线）：大厅新增「闯关 · 试玩版」，当地主一打二连闯 3 幕 9 关，得分 = 筹码 × 倍率，小丑整局保留、关间进商店构筑、每幕末有首领；完全在本机运行，不连 relay、不用余额。叫地主和选小丑改为 20 秒、出牌改为 30 秒，需要 relay `0.2.8-cloudborne.26-ddz-clock`。
 - 斗地主技能重做与手感（v0.9.14）：MiniMax 改为「混合专家」（领出 5 张以上时一张牌当万能牌），DeepSeek 改为「开源互换」（亮牌、看一名对手并换走他一张大牌）；J/Q/K 新牌面、默认开启的音效，以及炸弹、王炸、飞机、顺子的打击效果。需要 relay `0.2.8-cloudborne.25-ddz-skills`。
 - 斗地主融入客户端风格（v0.9.13）：去掉墨绿底板和金框，大厅改为主栏卡片，牌桌直接用主面板背景加淡玻璃台面，按钮、弹窗和结算面板沿用客户端样式，深色模式随系统切换；牌面保持象牙白，金色只用于倍数、场地、小丑和地主标记。
 - 斗地主牌桌填满可用区域，手牌随区域宽高缩放；回合切换时头像位置固定，结算直接显示净到账、详情可展开滚动，底部操作保持可见。窗口可继续调整大小。修复原因与 v0.9.12 发布验收见 [斗地主文档](docs/DOUDIZHU-IMPROVEMENT-2026-10-15.md#v0912-布局修复与发布2026-10-17)。
@@ -129,6 +130,6 @@ brand/render.sh          # 用本机 Chrome 渲染 app-icon-1024.png 和 preview
 3. CI 构建 macOS 通用包和 Windows 安装包，生成 `.app.tar.gz` / `-setup.exe` 的签名和 `latest.json`，挂到一个 draft Release 上。
 4. 检查 draft 没问题后点 Publish（不要勾 pre-release，保持 Latest）。发布那一刻起，已安装的客户端在下次检查时就会看到更新。
 
-当前公开版本：[`v0.9.25`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.25)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.25/Cloudborne-Windows-setup.exe)。
+当前公开版本：[`v0.9.26`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.26)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.26/Cloudborne-Windows-setup.exe)。
 
 更新私钥在本机 `~/.cloudborne-desktop-signing/`（权限 700），CI 里是 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 两个 secret。私钥丢了，已装的客户端就收不到后续更新，只能手动重装，所以要另外备份。0.2.0 及更早的版本没有更新功能，需要手动装一次 0.2.1。
