@@ -6,8 +6,9 @@ Cloudborne（栖云）中转站的桌面客户端：用中转站账号登录、�
 
 ## 状态
 
-v0.9.26 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
+v0.9.27 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
 
+- 宝箱 Token 包结果卡片（v0.9.27）：开出 Token 包时，「500K tokens · 72 小时」这一行比卡片还宽，卡片里的内容整体右移、右边被截掉。现在大小单独一行，下面另起一行写「有效期 72 小时」，说明文字和「收下」按钮回到居中。不需要更新 relay。
 - 斗地主赖子场，闯关下线（v0.9.26）：大厅去掉「闯关 · 试玩版」。中转站给账号开放赖子场时，大厅多一张「玩法」卡片可选小丑场或赖子场（选择记在本机）。赖子场是天地赖子：发完牌翻天赖子、地主拿到底牌后翻地赖子，这两个点数的 8 张牌可以当 3 到 2 的任意点数（不能当王，连牌最多当到 A）；没有技能、小丑和场地牌；软炸 < 硬炸 < 赖子炸 < 王炸，每个 ×2。牌桌顶栏显示「天 7 · 地 ?」，手牌里的赖子排在最右并带天/地角标，一手牌能读成几种时在手牌上方选读法，提示会用赖子。赖子场的入场余额门槛单独设（默认底分 × 40）。管理端「斗地主管理」多了赖子场开关（关闭 / 仅管理员试玩 / 开放）、赖子场门槛倍数和按玩法分开的统计。规则版本升到 4，进牌局前会再确认一次规则。需要 relay `0.2.8-cloudborne.74-ddz-laizi`；旧 relay 上没有赖子场，小丑场照常。
 - 宝箱 Token 包奖品（v0.9.24）：宝箱能开出限时 Token 包，结果卡片显示大小（如「1M tokens · 168 小时」）和该用哪个分组的 Key，包直接进「兑换」页的「限时额度」。管理端奖品编辑新增「Token 包」类型：选分组（只列活跃的非订阅分组）、大小（0.1M 起）、有效期和计入成本上限的计价。需要 relay `0.2.8-cloudborne.60-lottery-packs`；旧客户端会把 Token 包显示成 $0.00。
 - 深色模式下拉框（v0.9.23）：Windows 深色模式下，下拉框（如「请求记录」的类型和 API Key 筛选）弹出的选项是白底浅字、几乎看不见；现在选项跟随主题用深底浅字。macOS 用系统菜单，不受影响。
@@ -130,6 +131,6 @@ brand/render.sh          # 用本机 Chrome 渲染 app-icon-1024.png 和 preview
 3. CI 构建 macOS 通用包和 Windows 安装包，生成 `.app.tar.gz` / `-setup.exe` 的签名和 `latest.json`，挂到一个 draft Release 上。
 4. 检查 draft 没问题后点 Publish（不要勾 pre-release，保持 Latest）。发布那一刻起，已安装的客户端在下次检查时就会看到更新。
 
-当前公开版本：[`v0.9.26`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.26)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.26/Cloudborne-Windows-setup.exe)。
+当前公开版本：[`v0.9.27`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.27)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.27/Cloudborne-Windows-setup.exe)。
 
 更新私钥在本机 `~/.cloudborne-desktop-signing/`（权限 700），CI 里是 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 两个 secret。私钥丢了，已装的客户端就收不到后续更新，只能手动重装，所以要另外备份。0.2.0 及更早的版本没有更新功能，需要手动装一次 0.2.1。
