@@ -12,6 +12,8 @@ export interface DdzSettings {
   min_balance_times: number;
   /** 赖子场: closed, admins only (to try it before launch), or open to everyone. */
   laizi?: 'off' | 'admin' | 'on';
+  /** 赖子场's own entry multiple; a deal there swings about twice as much. */
+  laizi_min_balance_times?: number;
 }
 export interface DdzStatus {
   fee_policy?: FeePolicy;
@@ -20,6 +22,8 @@ export interface DdzStatus {
   min_balance_times: number;
   /** The modes this user may enter; relays before 赖子场 leave it out. */
   modes?: Mode[];
+  /** 赖子场's entry multiple, sent when this user may enter it. */
+  laizi_min_balance_times?: number;
 }
 
 /** Running totals against one seat. `net` > 0: they lost that much to me; < 0: they won it from me. `fee` is the part of my winnings the platform kept. */

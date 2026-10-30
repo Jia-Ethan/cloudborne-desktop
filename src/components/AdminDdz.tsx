@@ -22,6 +22,7 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
   const [feeRate, setFeeRate] = useState('5');
   const [minBalanceTimes, setMinBalanceTimes] = useState('20');
   const [laizi, setLaizi] = useState<NonNullable<DdzSettings['laizi']>>('off');
+  const [laiziTimes, setLaiziTimes] = useState('40');
   const [saving, setSaving] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState('');
@@ -37,6 +38,7 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
       setFeeRate(String((st.fee_bps ?? 500) / 100));
       setMinBalanceTimes(String(st.min_balance_times ?? 20));
       setLaizi(st.laizi ?? 'off');
+      setLaiziTimes(String(st.laizi_min_balance_times ?? 40));
       setError('');
     } catch (e) {
       setError(errorText(e, t('common.genericError')));
@@ -85,8 +87,9 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
   const saveLaizi = async () => {
     setSaving(true);
     try {
-      const st = await api.adminDdzSave({ laizi });
+      const st = await api.adminDdzSave({ laizi, laizi_min_balance_times: Math.round(Number(laiziTimes)) });
       setLaizi(st.laizi ?? 'off');
+      setLaiziTimes(String(st.laizi_min_balance_times ?? 40));
       onToast(t('admin.ddz.laiziSaved'));
     } catch (e) { onToast(errorText(e, t('common.genericError'))); }
     finally { setSaving(false); }
@@ -147,6 +150,7 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
             <label>{t('admin.ddz.laizi')} <select className="field" value={laizi} disabled={busy || saving || enabled === null} onChange={e=>setLaizi(e.target.value as typeof laizi)}>
               {(['off', 'admin', 'on'] as const).map(v => <option key={v} value={v}>{t(`admin.ddz.laizi.${v}`)}</option>)}
             </select></label>
+            <label>{t('admin.ddz.laiziTimes')} <input type="number" min="10" max="100" step="1" required value={laiziTimes} disabled={busy || saving || enabled === null} onChange={e=>setLaiziTimes(e.target.value)} /> ×</label>
             <button className="btn btn-primary" disabled={busy || saving || enabled === null}>{t('admin.ddz.laiziSave')}</button>
           </form>
           <p className="lot-settings-hint">{t('admin.ddz.laiziHint')}</p>

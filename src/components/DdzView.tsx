@@ -173,7 +173,7 @@ export function DdzView({ balance, table, conn, send, userId = 0, previewStatus 
     finally {busy.current=false;}
   };
   let body: ReactNode;
-  if (!table) body=<Lobby balance={balance} conn={conn} onEnter={a=>void enter(a)} onRules={()=>{setPolicy(status?.fee_policy ?? FREE_POLICY);setRulesFor('read');}} policy={status?.fee_policy} minBalanceTimes={status?.min_balance_times} modes={status?.modes} />;
+  if (!table) body=<Lobby balance={balance} conn={conn} onEnter={a=>void enter(a)} onRules={()=>{setPolicy(status?.fee_policy ?? FREE_POLICY);setRulesFor('read');}} policy={status?.fee_policy} minBalanceTimes={status?.min_balance_times} laiziBalanceTimes={status?.laizi_min_balance_times} modes={status?.modes} />;
   else if (table.phase === 'waiting' && !table.code) body=<Matching table={table} send={send} />;
   else body=<TableScene table={table} conn={conn} send={a=>void enter(a)} />;
   return <>{error && <div className="ddz-entry-error" role="alert">{error}</div>}{body}{rulesFor && <RulesDialog policy={policy} agree={rulesFor!=='read'} onClose={()=>setRulesFor(null)} onAgree={()=>{
@@ -185,17 +185,18 @@ export function DdzView({ balance, table, conn, send, userId = 0, previewStatus 
 
 // ---------------------------------------------------------------- lobby
 
-function Lobby({ balance, conn, onEnter, onRules, policy, minBalanceTimes, modes }: { balance: number; conn: DdzConn; onEnter: (a: Action) => void; onRules: () => void; policy?: FeePolicy; minBalanceTimes?: number; modes?: Mode[] }) {
+function Lobby({ balance, conn, onEnter, onRules, policy, minBalanceTimes, laiziBalanceTimes, modes }: { balance: number; conn: DdzConn; onEnter: (a: Action) => void; onRules: () => void; policy?: FeePolicy; minBalanceTimes?: number; laiziBalanceTimes?: number; modes?: Mode[] }) {
   const { t } = useI18n();
   const quality = useMemo(readDdzQuality, []);
-  const times = Number.isFinite(minBalanceTimes) && (minBalanceTimes ?? 0) > 0 ? minBalanceTimes! : 20;
-  const affordable = (b: number) => balance >= b * times;
   const [base, setBase] = useState(STAKES[0]);
   const [code, setCode] = useState('');
   const [picked, setPicked] = useState<Mode>(readDdzMode);
-  // 赖子场 shows only where the relay lets this account in.
+  // 赖子场 shows only where the relay lets this account in, with its own entry multiple.
   const laiziOpen = !!modes?.includes('laizi');
   const mode: Mode = laiziOpen ? picked : 'joker';
+  const gate = (n: number | undefined, fallback: number) => (Number.isFinite(n) && (n ?? 0) > 0 ? n! : fallback);
+  const times = mode === 'laizi' ? gate(laiziBalanceTimes, 40) : gate(minBalanceTimes, 20);
+  const affordable = (b: number) => balance >= b * times;
   const pick = (m: Mode) => {
     setPicked(m);
     try {
