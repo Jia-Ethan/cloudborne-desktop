@@ -3119,6 +3119,8 @@ html[data-glass='mica'] {
   .lot-card-inner {
     position: relative;
     display: grid;
+    /* A long line must not widen the column, which shifts everything right and clips it. */
+    grid-template-columns: minmax(0, 1fr);
     justify-items: center;
     gap: 6px;
     padding: 22px 22px 18px;
@@ -3189,8 +3191,15 @@ html[data-glass='mica'] {
     margin: 8px 0 4px;
     font-size: 28px;
   }
+  .lot-term {
+    margin-top: -2px;
+    color: #6b6870;
+    font-size: 13px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
   .lot-pack-hint {
-    max-width: 260px;
+    max-width: 100%;
     margin: 2px auto 0;
     color: #55525a;
     font-size: 12.5px;

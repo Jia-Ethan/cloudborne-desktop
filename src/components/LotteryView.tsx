@@ -731,13 +731,15 @@ function Headline({ draw }: { draw: Draw }) {
         <small> · {t('lottery.hours', { n: h.hours })}</small>
       </div>
     );
+  // "500K tokens · 72 小时" is wider than the card, so the validity gets its own line.
   if (h.kind === 'pack')
     return (
       <>
         <div className="lot-amount">
-          <Slot text={t('lottery.pack', { tokens: h.tokens })} slow={draw.rarity === 'legendary'} />
-          <small> · {t('lottery.hours', { n: h.hours })}</small>
+          <Slot text={h.tokens} slow={draw.rarity === 'legendary'} />
+          <small>{t('lottery.tokensUnit')}</small>
         </div>
+        <span className="lot-term">{t('lottery.validFor', { n: h.hours })}</span>
         <p className="lot-pack-hint">{h.group ? t('lottery.packHint', { group: h.group }) : t('lottery.packHintAny')}</p>
       </>
     );
