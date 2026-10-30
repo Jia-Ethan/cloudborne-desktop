@@ -6,8 +6,14 @@ Cloudborne（栖云）中转站的桌面客户端：用中转站账号登录、�
 
 ## 状态
 
-v0.9.27 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
+v0.9.28 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
 
+- 新任务边想边答、会主动提问，侧边栏对齐 Claude，赖子场放到大厅最前面（v0.9.28）：
+  - 新任务改用 `codex app-server` 跑：回答逐字出现，思考过程运行时展开显示最新几行，答完收成「思考了 N 秒」。模型遇到有歧义、要确认计划或要删东西、装软件、要管理员权限时，会弹出 1 到 3 个问题，每题有选项（推荐的排第一）和「其他」输入框，答完在同一轮接着做。
+  - 修了 v0.9.27 就有的问题：Codex 把用户自己的 `~/.codex/config.toml` 当成项目配置叠加进来，开了 memories 的用户每次启动都会在后台多跑一个模型调用，费用记在 Agent 密钥上。
+  - 侧边栏：任务悬停出现「⋯」，右键也是同一个菜单（置顶、重命名、封存、删除）；删除前先确认，双击标题直接改名。列表分「置顶」「最近」，封存的收进底部「已封存」；别处跑完的任务带蓝点。⌘K 搜索任务标题和对话内容，⌘N 新任务，⌘B 收起成图标栏；「管理」组可折叠，收起状态都记在本机。
+  - 中转站开放赖子场时，大厅顶部并排两张模式卡（小丑场 / 赖子场），各写入场门槛，下面的内容跟着切换；没开放时大厅不变，「规则与图鉴」也不再显示赖子页签。
+  - 不需要更新 relay。
 - 宝箱 Token 包结果卡片（v0.9.27）：开出 Token 包时，「500K tokens · 72 小时」这一行比卡片还宽，卡片里的内容整体右移、右边被截掉。现在大小单独一行，下面另起一行写「有效期 72 小时」，说明文字和「收下」按钮回到居中。不需要更新 relay。
 - 斗地主赖子场，闯关下线（v0.9.26）：大厅去掉「闯关 · 试玩版」。中转站给账号开放赖子场时，大厅多一张「玩法」卡片可选小丑场或赖子场（选择记在本机）。赖子场是天地赖子：发完牌翻天赖子、地主拿到底牌后翻地赖子，这两个点数的 8 张牌可以当 3 到 2 的任意点数（不能当王，连牌最多当到 A）；没有技能、小丑和场地牌；软炸 < 硬炸 < 赖子炸 < 王炸，每个 ×2。牌桌顶栏显示「天 7 · 地 ?」，手牌里的赖子排在最右并带天/地角标，一手牌能读成几种时在手牌上方选读法，提示会用赖子。赖子场的入场余额门槛单独设（默认底分 × 40）。管理端「斗地主管理」多了赖子场开关（关闭 / 仅管理员试玩 / 开放）、赖子场门槛倍数和按玩法分开的统计。规则版本升到 4，进牌局前会再确认一次规则。需要 relay `0.2.8-cloudborne.74-ddz-laizi`；旧 relay 上没有赖子场，小丑场照常。
 - 宝箱 Token 包奖品（v0.9.24）：宝箱能开出限时 Token 包，结果卡片显示大小（如「1M tokens · 168 小时」）和该用哪个分组的 Key，包直接进「兑换」页的「限时额度」。管理端奖品编辑新增「Token 包」类型：选分组（只列活跃的非订阅分组）、大小（0.1M 起）、有效期和计入成本上限的计价。需要 relay `0.2.8-cloudborne.60-lottery-packs`；旧客户端会把 Token 包显示成 $0.00。
@@ -32,7 +38,7 @@ v0.9.27 已发布（未做 Apple 公证和 Windows 代码签名；应用内更�
 - 登录状态不随网络变化失效：首次启动生成一个随机设备 ID，和令牌存在一起，放进 User-Agent（`CloudborneDesktop/<版本> (<系统>; device=<ID>)`）。中转站的会话绑定对这种 UA 只校验设备 ID，不校验 IP 和版本号；其他客户端仍按 IP + UA 校验。需要中转站 `0.2.8-cloudborne.8-devicebind` 及以上，旧版中转站上换网络仍会被要求重新登录。
 - 更新后不掉登录（v0.7）：刷新令牌是一次性的，中转站用过就作废。两个请求同时遇到 401 时只刷新一次，另一个直接用新令牌；刷新成功但存盘失败时新令牌仍留在内存里；中转站说旧令牌无效时，先看文件里是否已有别的进程存下的新令牌，有就接着用。设备 ID 读不出来时这次运行临时用一个，不覆盖已存的那个，免得会话绑定对不上。启动时检查登录失败（比如更新重启后网络还没好）会自动重试，不再直接显示登录页。
 - 窗口：macOS 用系统侧边栏材质做毛玻璃，标题栏隐藏、红绿灯嵌在侧边栏上；Windows 11 用 Mica；Windows 10 及更早是实心背景。页面从 `window.__CB_GLASS__`（`vibrancy` / `mica` / `none`）得知拿到的是哪种，见 `src-tauri/src/window.rs`。
-- 布局：左侧边栏（新任务、首页、用量、宝箱、小丑斗地主、兑换、API 密钥、服务状态，管理员另有「管理」组，再往下是最近任务；底部显示用户名，点开头像菜单：当前账号（点击复制邮箱）、切换账号和添加账号、控制台、语言、检查更新、关于、退出账号），右侧主页面顶部一抹晨光渐变。
+- 布局：左侧边栏（新任务、搜索任务、首页、用量、宝箱、小丑斗地主、兑换、API 密钥、服务状态，管理员另有可折叠的「管理」组，再往下是任务列表（置顶、最近、已封存）；v0.9.28 起 ⌘B 可收起成图标栏；底部显示用户名，点开头像菜单：当前账号（点击复制邮箱）、切换账号和添加账号、控制台、语言、检查更新、关于、退出账号），右侧主页面顶部一抹晨光渐变。
 - 语言：简体中文和英文，首次按系统语言选择，可在登录页右上角或头像菜单里切换，不用重启。Rust 侧的报错和安装窗口提示通过 `set_language` 跟着切换。
 - 应用内更新：启动 3 秒后和每 6 小时静默检查一次，发现新版本时首页右上角出现「更新到 vX」、头像旁出现小红点，点了下载、安装、重启；头像菜单里的「检查更新」可以手动检查。更新源是本仓库 Latest Release 里的 `latest.json`，安装包用更新密钥签名（minisign，和苹果、微软的代码签名无关），客户端只装签名对得上的包。v0.9.4 起 macOS 上原地替换 `Cloudborne.app` 里的 `Contents`，不再整个换掉应用目录，所以更新后程序坞里不会多出第二个图标（从 v0.9.4 往后的更新生效；装 v0.9.4 本身仍由旧版完成，可能还会出现一次）。
 - 登录页左边是品牌面板（渐变缓慢流动，各工具标签绕图标转），首页各块依次淡入上移，连接时工具图标外圈转动，连上后状态点弹一下。系统开了「减少动态效果」时动画都关掉。
@@ -55,13 +61,15 @@ v0.9.27 已发布（未做 Apple 公证和 Windows 代码签名；应用内更�
 
 ## 新任务
 
-做法参照 TeamoRouter：每一轮用 `codex exec --json` 跑 Codex，界面把它吐出的事件画成对话。代码在 `src-tauri/src/agent/`。
+做法参照 TeamoRouter：每一轮起一个 `codex app-server`（stdio 上的 JSON 行），握手后开或接着线程、开始这一轮，把它推来的事件画成对话；回答和思考摘要逐字推送。v0.9.27 及以前用 `codex exec --json`，现在设环境变量 `CLOUDBORNE_AGENT_RUNNER=exec` 还能切回去。代码在 `src-tauri/src/agent/`（`appserver.rs` 是这一套）。
 
 - 运行环境：客户端自带一份 Codex CLI（`runtime.rs` 里固定版本），第一次用时从 npm 下载对应平台的包，先走 npmmirror，失败再走 npmjs，按写死的 sha512 校验后解压到应用数据目录 `agent/codex/<版本>/`，不依赖、也不改用户自己装的 Codex。macOS 包约 140 MB。
-- Codex 的 home 是应用数据目录里的 `agent/codex-home/`，只配了中转站一个 provider，关掉了更新检查、统计和反馈；用户的 `~/.codex` 和它的历史不受影响。工作目录是用户主目录。
-- 权限：完全访问，不弹确认（`--dangerously-bypass-approvals-and-sandbox`）。提示词（`instructions.rs`）要求改文件前先备份、不完整显示密钥、删数据或要管理员权限前先问。
+- Codex 的 home 是应用数据目录里的 `agent/codex-home/`，只配了中转站一个 provider，关掉了更新检查、统计、反馈和 memories；用户的 `~/.codex` 和它的历史不受影响。工作目录是用户主目录，在配置里标成不信任：否则 Codex 会把 `~/.codex/config.toml` 当成项目配置叠加进来（v0.9.27 的问题）。
+- 权限：完全访问，不弹确认（`approvalPolicy: never`、`sandbox: danger-full-access`）。提示词（`instructions.rs`）要求改文件前先备份、不完整显示密钥、删数据或要管理员权限前先问。
+- 思考：Codex 自带的模型表给所有 GPT 模型都关了思考摘要，所以每轮在 `turn/start` 里带 `summary: "auto"`。
+- 提问：配置里开了 `default_mode_request_user_input`，模型在普通模式下也能调 `request_user_input`（这个开关在 Codex 里还在开发，升级 Codex 时要重测）。客户端收到 `item/tool/requestUserInput` 后显示问题卡片，用户的回答经 `agent_answer` 回给 Codex，同一轮接着做。停止时先发 `turn/interrupt`，3 秒没停就结束进程。
 - 密钥：在账号第一个可用的 OpenAI 分组里建一把 `Cloudborne Desktop · Agent`，通过环境变量交给 Codex，不写进文件。模型列表来自这把密钥的 `/v1/models`，去掉 codex、image、audio 类模型。
-- 对话：后续轮次用 `codex exec resume <thread>` 接着上一轮。界面上的历史存在 `agent/sessions/<id>.json`。
+- 对话：后续轮次用 `thread/resume` 接着上一轮。界面上的历史存在 `agent/sessions/<id>.json`，事件按 exec 的格式存，旧任务照常显示；置顶、封存和改过的标题也记在这个文件里，正在跑的任务改名不会被覆盖。搜索（`agent_search`）读这些文件，匹配标题、提问和回答。
 - 失败分类：余额不足（402 / quota）、登录失效（401）、请求太多（429）、网络、运行环境，各自给出提示和按钮。
 
 ## 连接时改了什么
@@ -131,6 +139,6 @@ brand/render.sh          # 用本机 Chrome 渲染 app-icon-1024.png 和 preview
 3. CI 构建 macOS 通用包和 Windows 安装包，生成 `.app.tar.gz` / `-setup.exe` 的签名和 `latest.json`，挂到一个 draft Release 上。
 4. 检查 draft 没问题后点 Publish（不要勾 pre-release，保持 Latest）。发布那一刻起，已安装的客户端在下次检查时就会看到更新。
 
-当前公开版本：[`v0.9.27`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.27)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.27/Cloudborne-Windows-setup.exe)。
+当前公开版本：[`v0.9.28`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.28)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.28/Cloudborne-Windows-setup.exe)。
 
 更新私钥在本机 `~/.cloudborne-desktop-signing/`（权限 700），CI 里是 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 两个 secret。私钥丢了，已装的客户端就收不到后续更新，只能手动重装，所以要另外备份。0.2.0 及更早的版本没有更新功能，需要手动装一次 0.2.1。
