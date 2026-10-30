@@ -6093,39 +6093,81 @@ html[data-glass='mica'] {
     opacity: 0.45;
     cursor: not-allowed;
   }
-  /* 玩法: two tiles like the stakes; 赖子场 keeps the same accent. */
-  .ddz-modes {
-    padding: 18px 20px 20px;
-    border-radius: 18px;
+  /* Modes (when 赖子场 is open): a title row, then one large tile per mode in
+     place of the intro card. 小丑场 keeps the apricot accent, 赖子场 takes the
+     violet of its wild cards. */
+  .ddz-lobby-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 4px 0;
+  }
+  .ddz-lobby-head h1 {
+    font-size: 26px;
+    font-weight: 750;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+  }
+  .ddz-lobby-head .ddz-rules-link {
+    margin-top: 0;
   }
   .ddz-mode-row {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
   }
   .ddz-mode {
+    --mode: var(--ddz-accent);
+    --mode-ink: var(--ddz-accent-ink);
+    --mode-soft: var(--ddz-accent-soft);
+    position: relative;
+    isolation: isolate;
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-    padding: 14px 16px;
+    align-items: center;
+    gap: 12px;
+    min-height: 148px;
+    padding: 22px 20px 22px 24px;
+    overflow: hidden;
     text-align: left;
-    background: var(--field);
-    border: 1px solid var(--line);
-    border-radius: 14px;
+    border-radius: 20px;
     transition:
-      border-color 0.14s ease,
-      background-color 0.14s ease,
-      box-shadow 0.14s ease,
+      border-color 0.16s ease,
+      box-shadow 0.16s ease,
       transform 0.14s ease;
   }
-  .ddz-mode b {
-    font-size: 16px;
-    font-weight: 700;
+  .ddz-mode.m-laizi {
+    --mode: #8b5cf6;
+    --mode-ink: #6d28d9;
+    --mode-soft: rgb(139 92 246 / 0.14);
   }
-  .ddz-mode small {
-    color: var(--ink-3);
-    font-size: 12px;
+  @media (prefers-color-scheme: dark) {
+    .ddz-mode.m-laizi {
+      --mode-ink: #c4b5fd;
+      --mode-soft: rgb(167 139 250 / 0.16);
+    }
+  }
+  .ddz-mode::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    opacity: 0.45;
+    transition: opacity 0.2s ease;
+  }
+  .ddz-mode.m-joker::before {
+    background:
+      radial-gradient(50% 90% at 88% 30%, var(--wash-sun) 0%, transparent 70%),
+      radial-gradient(45% 80% at 70% 100%, var(--wash-rose) 0%, transparent 70%);
+  }
+  .ddz-mode.m-laizi::before {
+    background:
+      radial-gradient(50% 90% at 88% 30%, rgb(139 92 246 / 0.24) 0%, transparent 70%),
+      radial-gradient(45% 80% at 70% 100%, var(--wash-sky) 0%, transparent 70%);
+  }
+  .ddz-mode.on::before,
+  .ddz-mode:hover::before {
+    opacity: 1;
   }
   .ddz-mode:hover {
     border-color: color-mix(in srgb, var(--ink) 18%, transparent);
@@ -6134,12 +6176,63 @@ html[data-glass='mica'] {
     transform: scale(0.99);
   }
   .ddz-mode.on {
-    background: var(--ddz-accent-soft);
-    border-color: var(--ddz-accent);
-    box-shadow: 0 0 0 3px var(--ddz-accent-soft);
+    border-color: var(--mode);
+    box-shadow: 0 0 0 3px var(--mode-soft);
   }
-  .ddz-mode.on b {
-    color: var(--ddz-accent-ink);
+  .ddz-mode-text {
+    display: grid;
+    flex: 1;
+    gap: 6px;
+    min-width: 0;
+  }
+  .ddz-mode-text b {
+    font-size: 20px;
+    font-weight: 750;
+    letter-spacing: -0.01em;
+    transition: color 0.16s ease;
+  }
+  .ddz-mode.on .ddz-mode-text b {
+    color: var(--mode-ink);
+  }
+  .ddz-mode-text span {
+    color: var(--ink-2);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .ddz-mode-text small {
+    color: var(--ink-3);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  /* The fan opens a little wider on the chosen (or hovered) tile. */
+  .ddz-mode-fan {
+    position: relative;
+    flex: none;
+    width: 112px;
+    height: 84px;
+  }
+  .ddz-mode-fan .pc {
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    margin-left: -20px;
+    transform-origin: 50% 210%;
+    rotate: calc((var(--i) - 1.5) * 8deg);
+    transition: rotate 0.28s cubic-bezier(0.2, 0.8, 0.3, 1);
+    animation: ddz-fan 0.6s cubic-bezier(0.2, 0.8, 0.3, 1.1) backwards;
+    animation-delay: calc(0.15s + var(--i) * 60ms);
+  }
+  .ddz-mode.on .ddz-mode-fan .pc,
+  .ddz-mode:hover .ddz-mode-fan .pc {
+    rotate: calc((var(--i) - 1.5) * 13deg);
+  }
+  @media (max-width: 1040px) {
+    .ddz-mode {
+      min-height: 0;
+    }
+    .ddz-mode-fan {
+      display: none;
+    }
   }
   .ddz-laizi-rules ol {
     display: grid;
@@ -8276,6 +8369,9 @@ html[data-glass='mica'] {
     .ddz-lobby * {
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
+    }
+    .ddz-mode-fan .pc {
+      transition: none;
     }
   }
 }

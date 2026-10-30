@@ -176,7 +176,7 @@ export function DdzView({ balance, table, conn, send, userId = 0, previewStatus 
   if (!table) body=<Lobby balance={balance} conn={conn} onEnter={a=>void enter(a)} onRules={()=>{setPolicy(status?.fee_policy ?? FREE_POLICY);setRulesFor('read');}} policy={status?.fee_policy} minBalanceTimes={status?.min_balance_times} laiziBalanceTimes={status?.laizi_min_balance_times} modes={status?.modes} />;
   else if (table.phase === 'waiting' && !table.code) body=<Matching table={table} send={send} />;
   else body=<TableScene table={table} conn={conn} send={a=>void enter(a)} />;
-  return <>{error && <div className="ddz-entry-error" role="alert">{error}</div>}{body}{rulesFor && <RulesDialog policy={policy} agree={rulesFor!=='read'} onClose={()=>setRulesFor(null)} onAgree={()=>{
+  return <>{error && <div className="ddz-entry-error" role="alert">{error}</div>}{body}{rulesFor && <RulesDialog policy={policy} laizi={!!status?.modes?.includes('laizi') || table?.mode === 'laizi'} agree={rulesFor!=='read'} onClose={()=>setRulesFor(null)} onAgree={()=>{
     localStorage.setItem(acceptanceKey(policy),'yes');
     if(rulesFor!=='read') void enter(rulesFor);
     setRulesFor(null);
@@ -206,38 +206,50 @@ function Lobby({ balance, conn, onEnter, onRules, policy, minBalanceTimes, laizi
     }
   };
   const canPlay = affordable(base) && conn === 'open';
+  const rulesLink = (
+    <button className="text-link ddz-rules-link" onClick={onRules}>
+      {t('ddz.rulesRead')}
+      <Icon name="chevronRight" className="size-3.5" />
+    </button>
+  );
 
   return (
     <div className="main-scroll">
       <div className={`main-column ddz-lobby ddz-${quality}`}>
-        <section className="card ddz-intro rise" style={{ '--i': 0 } as CSSProperties}>
-          <div className="ddz-intro-text">
-            <h1>{t('ddz.title')}</h1>
-            <p>{t('ddz.tagline')}</p>
-            <button className="text-link ddz-rules-link" onClick={onRules}>
-              {t('ddz.rulesRead')}
-              <Icon name="chevronRight" className="size-3.5" />
-            </button>
-          </div>
-          <div className="ddz-intro-fan" aria-hidden>
-            {FAN.map((c, i) => (
-              <PlayingCard key={c} card={c} size="md" style={{ '--i': i } as CSSProperties} />
-            ))}
-          </div>
-        </section>
-
-        {laiziOpen && (
-          <section className="card ddz-modes rise" style={{ '--i': 1 } as CSSProperties}>
-            <div className="ddz-section-head">
-              <h2>{t('ddz.mode.title')}</h2>
-              {mode === 'laizi' && <span>{t('ddz.mode.laiziRisk')}</span>}
+        {laiziOpen ? (
+          // Two modes: each is a tile of its own at the top, not a choice tucked under the intro.
+          <>
+            <div className="ddz-lobby-head rise" style={{ '--i': 0 } as CSSProperties}>
+              <h1>{t('ddz.title')}</h1>
+              {rulesLink}
             </div>
-            <div className="ddz-mode-row" role="radiogroup" aria-label={t('ddz.mode.title')}>
+            <div className="ddz-mode-row rise" role="radiogroup" aria-label={t('ddz.mode.title')} style={{ '--i': 1 } as CSSProperties}>
               {(['joker', 'laizi'] as const).map((m) => (
-                <button key={m} role="radio" aria-checked={mode === m} className={`ddz-mode m-${m} ${mode === m ? 'on' : ''}`} onClick={() => pick(m)}>
-                  <b>{t(`ddz.mode.${m}`)}</b>
-                  <small>{t(`ddz.mode.${m}.desc`)}</small>
+                <button key={m} role="radio" aria-checked={mode === m} className={`card ddz-mode m-${m} ${mode === m ? 'on' : ''}`} onClick={() => pick(m)}>
+                  <span className="ddz-mode-text">
+                    <b>{t(`ddz.mode.${m}`)}</b>
+                    <span>{t(`ddz.mode.${m}.desc`)}</span>
+                    <small>{t('ddz.mode.gate', { n: m === 'laizi' ? gate(laiziBalanceTimes, 40) : gate(minBalanceTimes, 20) })}</small>
+                  </span>
+                  <span className="ddz-mode-fan" aria-hidden>
+                    {m === 'laizi'
+                      ? LAIZI_FAN.map(([c, tag], i) => <PlayingCard key={c} card={c} size="sm" wildTag={t(`ddz.laizi.${tag}`)} style={{ '--i': i } as CSSProperties} />)
+                      : FAN.map((c, i) => <PlayingCard key={c} card={c} size="sm" style={{ '--i': i } as CSSProperties} />)}
+                  </span>
                 </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <section className="card ddz-intro rise" style={{ '--i': 0 } as CSSProperties}>
+            <div className="ddz-intro-text">
+              <h1>{t('ddz.title')}</h1>
+              <p>{t('ddz.tagline')}</p>
+              {rulesLink}
+            </div>
+            <div className="ddz-intro-fan" aria-hidden>
+              {FAN.map((c, i) => (
+                <PlayingCard key={c} card={c} size="md" style={{ '--i': i } as CSSProperties} />
               ))}
             </div>
           </section>
@@ -247,6 +259,7 @@ function Lobby({ balance, conn, onEnter, onRules, policy, minBalanceTimes, laizi
           <section key="laizi" className="card ddz-roster ddz-laizi-rules rise" style={{ '--i': 2 } as CSSProperties}>
             <div className="ddz-section-head">
               <h2>{t('ddz.laizi.rules')}</h2>
+              <span>{t('ddz.mode.laiziRisk')}</span>
             </div>
             <ol>
               {LAIZI_RULES.map((k) => (
@@ -335,10 +348,19 @@ function Lobby({ balance, conn, onEnter, onRules, policy, minBalanceTimes, laizi
 
 /** The lobby's fanned cards: a joker over the top of a hand. */
 const FAN: Card[] = [51, 41, 44, BIG_JOKER];
+/** 赖子场's tile: two 天 7s and two 地 Js. */
+const LAIZI_FAN: [Card, 'tian' | 'di'][] = [
+  [17, 'tian'],
+  [16, 'tian'],
+  [35, 'di'],
+  [32, 'di'],
+];
 
-function RulesDialog({ agree, onClose, onAgree, policy }: { agree: boolean; onClose: () => void; onAgree: () => void; policy: FeePolicy }) {
+function RulesDialog({ agree, onClose, onAgree, policy, laizi }: { agree: boolean; onClose: () => void; onAgree: () => void; policy: FeePolicy; laizi: boolean }) {
   const { t } = useI18n();
   const [tab, setTab] = useState<'rules' | 'heroes' | 'jokers' | 'laizi'>('rules');
+  // The 赖子 page only shows where 赖子场 is open, so nobody reads rules for a table they cannot join.
+  const tabs = laizi ? (['rules', 'heroes', 'jokers', 'laizi'] as const) : (['rules', 'heroes', 'jokers'] as const);
   return (
     <Dialog
       title={t('ddz.rulesTitle')}
@@ -370,7 +392,7 @@ function RulesDialog({ agree, onClose, onAgree, policy }: { agree: boolean; onCl
         {policy.bps>0 && <li>{t('ddz.feeExample',{fee:dollars(2*policy.bps/10000),net:dollars(2-2*policy.bps/10000)})}</li>}
       </ol>
       <div className="ddz-guide-tabs" role="tablist">
-        {(['rules', 'heroes', 'jokers', 'laizi'] as const).map((k) => (
+        {tabs.map((k) => (
           <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
             {t(`ddz.guide.${k}` as MessageKey)}
           </button>
