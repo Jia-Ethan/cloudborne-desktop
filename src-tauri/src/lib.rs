@@ -92,6 +92,8 @@ pub fn run() {
             commands::agent_models,
             commands::agent_sessions,
             commands::agent_session,
+            commands::agent_search,
+            commands::agent_update_session,
             commands::agent_delete_session,
             commands::agent_send,
             commands::agent_stop,

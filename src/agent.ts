@@ -52,9 +52,17 @@ export interface Session {
   title: string;
   updated_at: number;
   turns: Turn[];
+  pinned?: boolean;
+  archived?: boolean;
 }
 
-export type SessionSummary = Pick<Session, 'id' | 'title' | 'updated_at'>;
+export type SessionSummary = Pick<Session, 'id' | 'title' | 'updated_at' | 'pinned' | 'archived'>;
+
+/** A task found by search; `snippet` is the matching line when the title does not match. */
+export type SearchHit = SessionSummary & { snippet?: string };
+
+/** A sidebar change; fields left out stay as they are. */
+export type SessionPatch = Partial<Pick<Session, 'title' | 'pinned' | 'archived'>>;
 
 export interface Attachment {
   name: string;
@@ -71,6 +79,8 @@ export const agentApi = {
   models: () => invoke<AgentModels>('agent_models'),
   sessions: () => invoke<SessionSummary[]>('agent_sessions'),
   session: (id: string) => invoke<Session>('agent_session', { id }),
+  search: (query: string) => invoke<SearchHit[]>('agent_search', { query }),
+  updateSession: (id: string, patch: SessionPatch) => invoke<SessionSummary>('agent_update_session', { id, patch }),
   deleteSession: (id: string) => invoke<void>('agent_delete_session', { id }),
   /** Starts a turn; returns the session id (new when `session` is null). */
   send: (

@@ -813,6 +813,20 @@ pub fn agent_session(id: String) -> Result<agent::StoredSession> {
     Ok(s)
 }
 
+/// Tasks matching a search, read off disk away from the UI thread.
+#[tauri::command]
+pub async fn agent_search(query: String) -> Result<Vec<agent::store::Hit>> {
+    tauri::async_runtime::spawn_blocking(move || agent::store::search(&agent::root(), &query, 50))
+        .await
+        .map_err(|e| Error::Other(e.to_string()))
+}
+
+/// Rename, pin or archive a task from the sidebar.
+#[tauri::command]
+pub fn agent_update_session(id: String, patch: agent::store::Patch) -> Result<agent::Summary> {
+    agent::store::update(&agent::root(), &id, patch)
+}
+
 #[tauri::command]
 pub async fn agent_delete_session(runs: State<'_, agent::SharedRuns>, id: String) -> Result<()> {
     agent::stop(&runs, &id).await;

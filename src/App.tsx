@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { api, errorText, isAdmin, type DdzStatus, type LotteryStatus, type Rates, type SavedAccount, type ToolStatus, type User } from './api';
 import { About } from './components/About';
 import { AccountMenu } from './components/AccountMenu';
 import { DiscountBar } from './components/DiscountBar';
-import { Icon } from './components/Icon';
+import { Icon, type IconName } from './components/Icon';
 import { Login } from './components/Login';
 import { Mark } from './components/Mark';
+import { TaskList } from './components/TaskList';
+import { TaskSearch } from './components/TaskSearch';
 import { TaskView } from './components/TaskView';
 import { ToolCard } from './components/ToolCard';
 import { UpdateButton } from './components/UpdateButton';
@@ -26,6 +28,59 @@ import { useAgent } from './useAgent';
 import { useDdz } from './useDdz';
 
 const usd = (n: number) => `$${n.toFixed(2)}`;
+
+const RAIL_KEY = 'cloudborne.sidebar.rail';
+const ADMIN_KEY = 'cloudborne.sidebar.admin';
+const MOD = /Mac/.test(navigator.platform) ? '⌘' : 'Ctrl+';
+
+function readFlag(key: string): boolean {
+  try {
+    return localStorage.getItem(key) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function saveFlag(key: string, on: boolean) {
+  try {
+    localStorage.setItem(key, on ? '1' : '0');
+  } catch {
+    /* the choice just is not remembered */
+  }
+}
+
+/** A sidebar entry; in the icon rail its label becomes the tooltip. */
+function NavButton({
+  icon,
+  label,
+  hint,
+  rail,
+  selected,
+  onClick,
+  children,
+}: {
+  icon: IconName;
+  label: string;
+  /** Keyboard shortcut, shown in the tooltip. */
+  hint?: string;
+  rail: boolean;
+  selected: boolean;
+  onClick: () => void;
+  children?: ReactNode;
+}) {
+  return (
+    <button
+      className={`nav-item ${selected ? 'selected' : ''}`}
+      title={hint ? `${label} (${hint})` : rail ? label : undefined}
+      aria-label={rail ? label : undefined}
+      onClick={onClick}
+    >
+      <Icon name={icon} className="size-[17px]" />
+      <span className="nav-label">{label}</span>
+      {children}
+    </button>
+  );
+}
 
 type View = 'home' | 'task' | 'usage' | 'lottery' | 'ddz' | 'redeem' | 'keys' | 'status' | 'admin' | 'adminUsers' | 'adminUsage' | 'adminLottery' | 'adminDdz';
 
@@ -53,6 +108,41 @@ export function App() {
   const [loginOpts, setLoginOpts] = useState<{ form?: boolean; twoFactor?: string; notice?: string }>({});
   const updater = useUpdater();
   const agent = useAgent(lang, user?.id ?? null);
+  const { setViewing, select: selectTask } = agent;
+  const newTask = useCallback(() => {
+    selectTask(null);
+    setView('task');
+  }, [selectTask]);
+
+  // Tells the task list which task is being read, so it is not marked unread.
+  useEffect(() => setViewing(view === 'task' ? agent.currentId : null), [view, agent.currentId, setViewing]);
+
+  // The sidebar can fold to an icon rail; the admin pages fold into one heading.
+  const [rail, setRail] = useState(() => readFlag(RAIL_KEY));
+  const [adminOpen, setAdminOpen] = useState(() => readFlag(ADMIN_KEY));
+  const [searching, setSearching] = useState(false);
+  const toggleRail = useCallback(() => {
+    setRail((r) => {
+      saveFlag(RAIL_KEY, !r);
+      return !r;
+    });
+  }, []);
+
+  // Shortcuts as in Claude's desktop app: ⌘N new task, ⌘K search, ⌘B sidebar.
+  useEffect(() => {
+    if (!user) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (k === 'n') newTask();
+      else if (k === 'k') setSearching((s) => !s);
+      else if (k === 'b') toggleRail();
+      else return;
+      e.preventDefault();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [user, newTask, toggleRail]);
 
   const loadTools = useCallback(async () => {
     setTools(await api.toolsStatus());
@@ -273,116 +363,93 @@ export function App() {
     );
 
   return (
-    <div className="workspace">
+    <div className={`workspace ${rail ? 'rail' : ''}`}>
       <div className="drag-strip" data-tauri-drag-region />
 
-      <aside className="sidebar">
+      <aside className={`sidebar ${rail ? 'collapsed' : ''}`}>
         <div className="sidebar-brand" data-tauri-drag-region>
           <Mark className="h-[18px]" />
           <span>Cloudborne</span>
-        </div>
-        <nav className="grid gap-0.5" aria-label={t('nav.main')}>
           <button
-            className={`nav-item ${view === 'task' && !agent.currentId ? 'selected' : ''}`}
-            onClick={() => {
-              agent.select(null);
+            className="sidebar-toggle"
+            title={`${t(rail ? 'nav.expand' : 'nav.collapse')} (${MOD}B)`}
+            aria-label={t(rail ? 'nav.expand' : 'nav.collapse')}
+            aria-expanded={!rail}
+            onClick={toggleRail}
+          >
+            <Icon name="sidebar" className="size-[17px]" />
+          </button>
+        </div>
+        {/* Scrolls on its own when a short window cannot fit every entry, so the account stays in view. */}
+        <div className="sidebar-scroll">
+          <nav className="grid gap-0.5" aria-label={t('nav.main')}>
+            <NavButton icon="newTask" label={t('nav.newTask')} hint={`${MOD}N`} rail={rail} selected={view === 'task' && !agent.currentId} onClick={newTask} />
+            <NavButton icon="search" label={t('nav.search')} hint={`${MOD}K`} rail={rail} selected={searching} onClick={() => setSearching(true)} />
+            <NavButton icon="home" label={t('nav.home')} rail={rail} selected={view === 'home'} onClick={() => setView('home')} />
+            <NavButton icon="chart" label={t('nav.usage')} rail={rail} selected={view === 'usage'} onClick={() => setView('usage')} />
+            {lotteryOn && (
+              <NavButton icon="gift" label={t('nav.lottery')} rail={rail} selected={view === 'lottery'} onClick={() => setView('lottery')}>
+                {chests > 0 && (
+                  <span className="nav-badge" aria-label={t('lottery.myChests', { n: chests })}>
+                    {chests > 99 ? '99+' : chests}
+                  </span>
+                )}
+              </NavButton>
+            )}
+            {(ddzOn || ddz.table) && (
+              <NavButton icon="spade" label={t('nav.ddz')} rail={rail} selected={view === 'ddz'} onClick={() => setView('ddz')}>
+                {ddz.table && view !== 'ddz' && <span className="nav-badge nav-badge-dot" aria-label={t('ddz.inGame')} />}
+              </NavButton>
+            )}
+            <NavButton icon="ticket" label={t('nav.redeem')} rail={rail} selected={view === 'redeem'} onClick={() => setView('redeem')} />
+            <NavButton icon="key" label={t('nav.keys')} rail={rail} selected={view === 'keys'} onClick={() => setView('keys')} />
+            <NavButton icon="pulse" label={t('nav.status')} rail={rail} selected={view === 'status'} onClick={() => setView('status')} />
+          </nav>
+          {isAdmin(user) && (
+            <nav className="nav-group" aria-label={t('nav.admin')}>
+              <button
+                className={`nav-group-head ${!adminOpen && view.startsWith('admin') ? 'current' : ''}`}
+                aria-expanded={adminOpen}
+                title={rail ? t('nav.admin') : undefined}
+                onClick={() => {
+                  saveFlag(ADMIN_KEY, !adminOpen);
+                  setAdminOpen(!adminOpen);
+                }}
+              >
+                <span>{t('nav.admin')}</span>
+                <Icon name="chevronDown" className="nav-group-chevron size-3" />
+              </button>
+              {adminOpen && (
+                <>
+                  <NavButton icon="gauge" label={t('nav.adminOverview')} rail={rail} selected={view === 'admin'} onClick={() => setView('admin')} />
+                  <NavButton
+                    icon="users"
+                    label={t('nav.adminUsers')}
+                    rail={rail}
+                    selected={view === 'adminUsers'}
+                    onClick={() => {
+                      setUserFocus(null);
+                      setView('adminUsers');
+                    }}
+                  />
+                  <NavButton icon="chart" label={t('nav.adminUsage')} rail={rail} selected={view === 'adminUsage'} onClick={() => setView('adminUsage')} />
+                  <NavButton icon="dice" label={t('nav.adminLottery')} rail={rail} selected={view === 'adminLottery'} onClick={() => setView('adminLottery')} />
+                  <NavButton icon="spade" label={t('nav.adminDdz')} rail={rail} selected={view === 'adminDdz'} onClick={() => setView('adminDdz')} />
+                </>
+              )}
+            </nav>
+          )}
+        </div>
+        {!rail && (
+          <TaskList
+            agent={agent}
+            active={view === 'task' ? agent.currentId : null}
+            onOpen={(id) => {
+              agent.select(id);
               setView('task');
             }}
-          >
-            <Icon name="newTask" className="size-[17px]" />
-            {t('nav.newTask')}
-          </button>
-          <button className={`nav-item ${view === 'home' ? 'selected' : ''}`} onClick={() => setView('home')}>
-            <Icon name="home" className="size-[17px]" />
-            {t('nav.home')}
-          </button>
-          <button className={`nav-item ${view === 'usage' ? 'selected' : ''}`} onClick={() => setView('usage')}>
-            <Icon name="chart" className="size-[17px]" />
-            {t('nav.usage')}
-          </button>
-          {lotteryOn && (
-            <button className={`nav-item ${view === 'lottery' ? 'selected' : ''}`} onClick={() => setView('lottery')}>
-              <Icon name="gift" className="size-[17px]" />
-              {t('nav.lottery')}
-              {chests > 0 && (
-                <span className="nav-badge" aria-label={t('lottery.myChests', { n: chests })}>
-                  {chests > 99 ? '99+' : chests}
-                </span>
-              )}
-            </button>
-          )}
-          {(ddzOn || ddz.table) && (
-            <button className={`nav-item ${view === 'ddz' ? 'selected' : ''}`} onClick={() => setView('ddz')}>
-              <Icon name="spade" className="size-[17px]" />
-              {t('nav.ddz')}
-              {ddz.table && view !== 'ddz' && <span className="nav-badge nav-badge-dot" aria-label={t('ddz.inGame')} />}
-            </button>
-          )}
-          <button className={`nav-item ${view === 'redeem' ? 'selected' : ''}`} onClick={() => setView('redeem')}>
-            <Icon name="ticket" className="size-[17px]" />
-            {t('nav.redeem')}
-          </button>
-          <button className={`nav-item ${view === 'keys' ? 'selected' : ''}`} onClick={() => setView('keys')}>
-            <Icon name="key" className="size-[17px]" />
-            {t('nav.keys')}
-          </button>
-          <button className={`nav-item ${view === 'status' ? 'selected' : ''}`} onClick={() => setView('status')}>
-            <Icon name="pulse" className="size-[17px]" />
-            {t('nav.status')}
-          </button>
-        </nav>
-        {isAdmin(user) && (
-          <nav className="nav-group" aria-label={t('nav.admin')}>
-            <b>{t('nav.admin')}</b>
-            <button className={`nav-item ${view === 'admin' ? 'selected' : ''}`} onClick={() => setView('admin')}>
-              <Icon name="gauge" className="size-[17px]" />
-              {t('nav.adminOverview')}
-            </button>
-            <button
-              className={`nav-item ${view === 'adminUsers' ? 'selected' : ''}`}
-              onClick={() => {
-                setUserFocus(null);
-                setView('adminUsers');
-              }}
-            >
-              <Icon name="users" className="size-[17px]" />
-              {t('nav.adminUsers')}
-            </button>
-            <button className={`nav-item ${view === 'adminUsage' ? 'selected' : ''}`} onClick={() => setView('adminUsage')}>
-              <Icon name="chart" className="size-[17px]" />
-              {t('nav.adminUsage')}
-            </button>
-            <button className={`nav-item ${view === 'adminLottery' ? 'selected' : ''}`} onClick={() => setView('adminLottery')}>
-              <Icon name="dice" className="size-[17px]" />
-              {t('nav.adminLottery')}
-            </button>
-            <button className={`nav-item ${view === 'adminDdz' ? 'selected' : ''}`} onClick={() => setView('adminDdz')}>
-              <Icon name="spade" className="size-[17px]" />
-              {t('nav.adminDdz')}
-            </button>
-          </nav>
-        )}
-        {agent.summaries.length > 0 && (
-          <div className="recent">
-            <b>{t('nav.recent')}</b>
-            {agent.summaries.map((s) => (
-              <div key={s.id} className={`recent-item ${view === 'task' && agent.currentId === s.id ? 'selected' : ''}`}>
-                <button
-                  className="recent-open"
-                  onClick={() => {
-                    agent.select(s.id);
-                    setView('task');
-                  }}
-                >
-                  {agent.isRunning(s.id) && <span className="recent-live" />}
-                  <span className="truncate">{s.title || t('agent.untitled')}</span>
-                </button>
-                <button className="recent-delete" aria-label={t('agent.delete')} title={t('agent.delete')} onClick={() => agent.remove(s.id)}>
-                  <Icon name="trash" className="size-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
+            onToast={setToast}
+          />
         )}
         <div className="sidebar-footer">
           <AccountMenu
@@ -492,6 +559,17 @@ export function App() {
             {toast}
           </div>
         </div>
+      )}
+
+      {searching && (
+        <TaskSearch
+          recent={[...agent.summaries.filter((x) => !x.archived && x.pinned), ...agent.summaries.filter((x) => !x.archived && !x.pinned)].slice(0, 8)}
+          onOpen={(id) => {
+            agent.select(id);
+            setView('task');
+          }}
+          onClose={() => setSearching(false)}
+        />
       )}
 
       {about && <About version={updater.current} onClose={() => setAbout(false)} />}

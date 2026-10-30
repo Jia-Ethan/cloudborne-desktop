@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { agentApi, applyEvent, type AgentModels, type Attachment, type Effort, type Session, type SessionSummary, type Turn } from './agent';
+import { agentApi, applyEvent, type AgentModels, type Attachment, type Effort, type Session, type SessionPatch, type SessionSummary, type Turn } from './agent';
 import { errorText } from './api';
 
 const MODEL_KEY = 'cloudborne.agent.model';
@@ -25,7 +25,9 @@ export function titleOf(prompt: string): string {
  * per install; the model list depends on the account's groups, so it reloads
  * when `account` (the signed-in user id) changes. A running turn keeps the key
  * it started with. Unsent drafts are kept per task (and one for the new-task
- * page) so leaving the page doesn't lose them.
+ * page) so leaving the page doesn't lose them. A task that ends while the
+ * user is not looking at it is marked unread until they open it (in memory
+ * only, like Claude's sidebar dot).
  */
 export function useAgent(lang: string, account: number | null) {
   const [summaries, setSummaries] = useState<SessionSummary[]>([]);
@@ -38,6 +40,24 @@ export function useAgent(lang: string, account: number | null) {
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const running = useRef(new Set<string>());
   const [, bump] = useState(0);
+  const [unread, setUnread] = useState<ReadonlySet<string>>(new Set());
+  const viewing = useRef<string | null>(null);
+  const summariesRef = useRef(summaries);
+  summariesRef.current = summaries;
+
+  const markRead = (id: string) =>
+    setUnread((u) => {
+      if (!u.has(id)) return u;
+      const next = new Set(u);
+      next.delete(id);
+      return next;
+    });
+
+  /** The task on screen right now (null when the task page is not showing). */
+  const setViewing = useCallback((id: string | null) => {
+    viewing.current = id;
+    if (id) markRead(id);
+  }, []);
 
   useEffect(() => {
     setModels(null);
@@ -89,6 +109,20 @@ export function useAgent(lang: string, account: number | null) {
       return { ...o, [id]: { ...s, turns } };
     });
 
+  /** Rename, pin or archive; shown at once, rolled back if the save fails. */
+  const update = useCallback(async (id: string, patch: SessionPatch) => {
+    const before = summariesRef.current;
+    setSummaries((l) => l.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+    if (patch.title !== undefined) setOpen((o) => (o[id] ? { ...o, [id]: { ...o[id], title: patch.title! } } : o));
+    try {
+      const saved = await agentApi.updateSession(id, patch);
+      setSummaries((l) => l.map((x) => (x.id === id ? saved : x)));
+    } catch (e) {
+      setSummaries(before);
+      throw e;
+    }
+  }, []);
+
   const send = useCallback(
     async (prompt: string, images: Attachment[]) => {
       const id = currentId ?? crypto.randomUUID();
@@ -100,15 +134,18 @@ export function useAgent(lang: string, account: number | null) {
       });
       setSummaries((list) => {
         const prev = list.find((x) => x.id === id);
-        return [{ id, title: prev?.title ?? titleOf(prompt), updated_at: now }, ...list.filter((x) => x.id !== id)];
+        return [{ ...prev, id, title: prev?.title ?? titleOf(prompt), updated_at: now }, ...list.filter((x) => x.id !== id)];
       });
       setCurrentId(id);
       running.current.add(id);
       bump((n) => n + 1);
       const finish = () => {
         running.current.delete(id);
+        if (viewing.current !== id) setUnread((u) => new Set(u).add(id));
         bump((n) => n + 1);
       };
+      // Writing to an archived task brings it back to the list.
+      if (summariesRef.current.find((x) => x.id === id)?.archived) await update(id, { archived: false }).catch(() => {});
       try {
         await agentApi.send({ session: id, prompt, images, model, effort, lang }, (e) => {
           patchLast(id, (t) => applyEvent(t, e));
@@ -119,7 +156,7 @@ export function useAgent(lang: string, account: number | null) {
         finish();
       }
     },
-    [currentId, model, effort, lang],
+    [currentId, model, effort, lang, update],
   );
 
   const stop = useCallback(() => {
@@ -132,6 +169,7 @@ export function useAgent(lang: string, account: number | null) {
       setSummaries((l) => l.filter((x) => x.id !== id));
       setOpen(({ [id]: _, ...rest }) => rest);
       setDrafts(({ [id]: _, ...rest }) => rest);
+      markRead(id);
       if (currentId === id) setCurrentId(null);
     },
     [currentId],
@@ -142,6 +180,9 @@ export function useAgent(lang: string, account: number | null) {
     current: currentId ? (open[currentId] ?? null) : null,
     currentId,
     isRunning: (id: string | null) => !!id && running.current.has(id),
+    isUnread: (id: string) => unread.has(id),
+    setViewing,
+    update,
     draft: drafts[draftKey] ?? EMPTY_DRAFT,
     setDraft,
     models,

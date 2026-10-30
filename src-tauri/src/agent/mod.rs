@@ -163,6 +163,8 @@ pub async fn run_turn(runs: SharedRuns, opts: SendOptions, prep: Prepared, ch: C
         updated_at: now,
         thread_id: None,
         turns: vec![],
+        pinned: false,
+        archived: false,
     });
     store::settle_interrupted(&mut session);
     session.updated_at = now;
