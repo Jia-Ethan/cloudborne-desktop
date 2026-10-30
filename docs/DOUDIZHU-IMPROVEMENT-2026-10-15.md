@@ -227,3 +227,5 @@ relay 增加赢家服务费政策快照、进入收费局的版本确认、整�
 
 **验证**：前端 96 个测试（新增赖子判牌、读法与提示 6 个，含 1500 组 relay 用例）、构建通过；浏览器里用模拟牌桌看过大厅切换、叫地主（只显示天赖子）、出牌时的读法选择与发出的 `pattern`、跟牌和提示、对手打出的赖子、结算明细、规则页签，以及暗色模式。尚未在 Tauri 客户端连 relay 实机验收。
 
+**发布**：2026-10-30 11:20（北京时间）[v0.9.26 Release](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.26) 公开并设为 Latest，[CI](https://github.com/Jia-Ethan/cloudborne-desktop/actions/runs/40996105929) 的 macOS / Windows 测试与打包成功，Rust 80 个测试通过（2 个忽略）。安装包哈希、三个平台的更新签名和 macOS 双架构核验记录在工作区 `releases/ddz-laizi-v0.9.26-20261030/RELEASE.md`。上线时 relay 的赖子场开关仍为 `off`，由站长先切到「仅管理员试玩」试打。回滚到 v0.9.25 只能停止新下载，已更新的客户端不会降级；v0.9.25 会带回闯关，也进不了赖子场的房间。
+
