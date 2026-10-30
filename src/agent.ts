@@ -1,9 +1,23 @@
 import { Channel, invoke } from '@tauri-apps/api/core';
 
-/** One step of a Codex run, as `codex exec --json` reports it. */
+/** A question the agent asked mid-turn (Codex's request_user_input). */
+export interface Question {
+  id: string;
+  header: string;
+  question: string;
+  /** The recommended option comes first, its label ending in "(Recommended)". */
+  options?: { label: string; description: string }[] | null;
+  isSecret?: boolean;
+}
+
+/**
+ * One step of a Codex run, in the shape `codex exec --json` reported it (the
+ * app-server runner converts to it). `status` on messages and reasoning, and
+ * `duration_ms`, come only from the app-server runner.
+ */
 export type AgentItem =
-  | { id: string; type: 'agent_message'; text: string }
-  | { id: string; type: 'reasoning'; text: string }
+  | { id: string; type: 'agent_message'; text: string; status?: 'in_progress' | 'completed' }
+  | { id: string; type: 'reasoning'; text: string; status?: 'in_progress' | 'completed'; duration_ms?: number }
   | {
       id: string;
       type: 'command_execution';
@@ -21,6 +35,16 @@ export type AgentItem =
   | { id: string; type: 'mcp_tool_call'; server: string; tool: string; status: 'in_progress' | 'completed' | 'failed' }
   | { id: string; type: 'web_search'; query: string }
   | { id: string; type: 'todo_list'; items: { text: string; completed: boolean }[] }
+  | {
+      id: string;
+      type: 'question';
+      /** What `agent_answer` needs to reach the turn that asked. */
+      request: string;
+      questions: Question[];
+      /** Chosen labels or typed text by question id; secret answers are masked. */
+      answers?: Record<string, string[]>;
+      status: 'pending' | 'answered' | 'expired';
+    }
   | { id: string; type: 'error'; message: string };
 
 /** Why a turn failed, so the card can say what to do about it. */
@@ -29,6 +53,8 @@ export type FailureKind = 'balance' | 'auth' | 'rate' | 'runtime' | 'network' | 
 export type AgentEvent =
   | { type: 'runtime'; percent: number | null }
   | { type: 'item'; item: AgentItem }
+  /** Streamed text: `field` of item `id` grows by `text`. */
+  | { type: 'delta'; id: string; item_type: AgentItem['type']; field: 'text' | 'aggregated_output'; text: string }
   | { type: 'done' }
   | { type: 'stopped' }
   | { type: 'failed'; kind: FailureKind; message: string };
@@ -92,11 +118,24 @@ export const agentApi = {
     return invoke<string>('agent_send', { options: opts, channel });
   },
   stop: (id: string) => invoke<void>('agent_stop', { id }),
+  answer: (session: string, request: string, answers: Record<string, string[]>) =>
+    invoke<void>('agent_answer', { session, request, answers }),
 };
 
 /** Codex re-sends an item as it grows; replace by id, else append. */
 export function applyItem(items: AgentItem[], item: AgentItem): AgentItem[] {
   const i = items.findIndex((x) => x.id === item.id);
+  if (i === -1) return [...items, item];
+  const next = items.slice();
+  next[i] = item;
+  return next;
+}
+
+/** Appends streamed text, creating the item if its first piece got here before it. */
+export function applyDelta(items: AgentItem[], e: Extract<AgentEvent, { type: 'delta' }>): AgentItem[] {
+  const i = items.findIndex((x) => x.id === e.id);
+  const base = (i === -1 ? { id: e.id, type: e.item_type, status: 'in_progress' } : items[i]) as Record<string, unknown>;
+  const item = { ...base, [e.field]: String(base[e.field] ?? '') + e.text } as AgentItem;
   if (i === -1) return [...items, item];
   const next = items.slice();
   next[i] = item;
@@ -109,6 +148,8 @@ export function applyEvent(turn: Turn, e: AgentEvent): Turn {
       return { ...turn, runtime: e.percent };
     case 'item':
       return { ...turn, runtime: undefined, items: applyItem(turn.items, e.item) };
+    case 'delta':
+      return { ...turn, runtime: undefined, items: applyDelta(turn.items, e) };
     case 'done':
       return { ...turn, status: 'done', runtime: undefined };
     case 'stopped':

@@ -2233,6 +2233,179 @@ html[data-glass='mica'] {
     border-color: var(--color-ok);
   }
 
+  /* Thinking while it is written: the latest lines, older ones fading out above. */
+  .thinking-live {
+    display: grid;
+    gap: 6px;
+  }
+  .thinking-live-text {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    max-height: 7.9em;
+    overflow: hidden;
+    padding-left: 14px;
+    margin-left: 7px;
+    border-left: 2px solid var(--line);
+  }
+  .thinking-live-text.clipped {
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 2.6em);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 2.6em);
+  }
+  .thinking-live-text .md {
+    color: var(--ink-3);
+    font-size: 13px;
+    line-height: 21px;
+  }
+
+  /* A question the agent stopped to ask. */
+  .ask-card {
+    display: grid;
+    gap: 14px;
+    padding: 14px 16px 16px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    font-size: 14px;
+    animation: rise-in 0.36s cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+  }
+  .ask-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--ink-3);
+    font-size: 12.5px;
+  }
+  .ask-head b {
+    font-weight: 650;
+  }
+  .ask-q {
+    display: grid;
+    gap: 10px;
+  }
+  .ask-q > p {
+    color: var(--ink);
+    font-weight: 600;
+    line-height: 1.5;
+  }
+  .ask-chip {
+    display: inline-block;
+    margin-right: 8px;
+    padding: 1px 7px;
+    color: var(--ink-2);
+    background: color-mix(in srgb, var(--ink) 7%, transparent);
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    vertical-align: 1px;
+  }
+  .ask-options {
+    display: grid;
+    gap: 6px;
+  }
+  .ask-option {
+    display: grid;
+    gap: 2px;
+    padding: 9px 12px;
+    text-align: left;
+    background: var(--field);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    cursor: pointer;
+    transition:
+      border-color 0.14s ease,
+      background-color 0.14s ease,
+      transform 0.12s ease;
+  }
+  .ask-option:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--ink) 22%, transparent);
+  }
+  .ask-option:active:not(:disabled) {
+    transform: scale(0.995);
+  }
+  .ask-option.on {
+    background: color-mix(in srgb, var(--ink) 6%, var(--field));
+    border-color: var(--ink-2);
+  }
+  .ask-option:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+  .ask-option-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--ink);
+    font-size: 13.5px;
+    font-weight: 600;
+  }
+  .ask-option-label em {
+    padding: 0 6px;
+    color: var(--color-ok);
+    background: color-mix(in srgb, var(--color-ok) 12%, transparent);
+    border-radius: 5px;
+    font-size: 11px;
+    font-style: normal;
+    font-weight: 650;
+  }
+  .ask-option small {
+    color: var(--ink-3);
+    font-size: 12.5px;
+    line-height: 1.45;
+  }
+  .ask-option.other .ask-option-label {
+    color: var(--ink-2);
+    font-weight: 500;
+  }
+  .ask-free {
+    display: flex;
+    gap: 8px;
+    animation: slide-in 0.18s ease-out;
+  }
+  .ask-free .field {
+    flex: 1;
+    min-width: 0;
+    height: 36px;
+    padding: 0 11px;
+    border-radius: 9px;
+    font-size: 13.5px;
+  }
+  .ask-actions {
+    display: flex;
+    justify-content: flex-end;
+  }
+  .ask-error {
+    color: var(--danger);
+    font-size: 12.5px;
+  }
+  .ask-card.done {
+    gap: 8px;
+    padding: 10px 14px;
+    background: transparent;
+    animation: none;
+  }
+  .ask-card.done .ask-head {
+    color: var(--color-ok);
+  }
+  .ask-card.expired .ask-head {
+    color: var(--ink-3);
+  }
+  .ask-summary {
+    display: grid;
+    gap: 4px;
+    font-size: 13px;
+  }
+  .ask-summary li {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    color: var(--ink-3);
+  }
+  .ask-summary b {
+    color: var(--ink-2);
+    font-weight: 600;
+  }
+
   .fail-card {
     padding: 14px 16px;
     color: #7b5a2a;

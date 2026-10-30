@@ -866,6 +866,17 @@ pub async fn agent_stop(runs: State<'_, agent::SharedRuns>, id: String) -> Resul
     Ok(())
 }
 
+/// The user's answer to a question the agent asked mid-turn.
+#[tauri::command]
+pub async fn agent_answer(
+    runs: State<'_, agent::SharedRuns>,
+    session: String,
+    request: String,
+    answers: std::collections::BTreeMap<String, Vec<String>>,
+) -> Result<()> {
+    agent::answer(&runs, &session, request, answers).await
+}
+
 #[cfg(test)]
 mod agent_tests {
     use super::*;

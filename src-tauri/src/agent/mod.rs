@@ -1,14 +1,18 @@
 //! New task: the user describes a problem and an agent fixes it on this
-//! computer. Each turn runs our own copy of the Codex CLI (`codex exec --json`)
-//! against the relay with a dedicated key, in a Codex home of our own so the
-//! user's `~/.codex` and its history are left alone. Events stream to the UI
-//! over a channel; the UI-facing transcript is saved in `store`.
+//! computer. Each turn runs our own copy of the Codex CLI against the relay
+//! with a dedicated key, in a Codex home of our own so the user's `~/.codex`
+//! and its history are left alone. Turns go through `codex app-server`
+//! (`appserver`), which streams text and lets the model ask questions;
+//! `CLOUDBORNE_AGENT_RUNNER=exec` switches back to `codex exec --json`.
+//! Events stream to the UI over a channel; the UI-facing transcript is saved
+//! in `store`.
 
+mod appserver;
 mod instructions;
 mod runtime;
 pub mod store;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
@@ -17,8 +21,8 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::ipc::Channel;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::sync::{oneshot, Mutex};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
+use tokio::sync::{mpsc, oneshot, Mutex};
 
 use crate::error::{Error, Result};
 use crate::lang::tr;
@@ -32,6 +36,9 @@ pub enum Event {
     /// The Codex runtime is being downloaded; `percent` is None before the size is known.
     Runtime { percent: Option<u8> },
     Item { item: Value },
+    /// Streamed text for an item: `field` of the item with `id` grows by
+    /// `text`, and the item is created with `item_type` if it isn't there yet.
+    Delta { id: String, item_type: &'static str, field: &'static str, text: String },
     Done,
     Stopped,
     Failed { kind: &'static str, message: String },
@@ -54,10 +61,11 @@ pub struct SendOptions {
     pub lang: String,
 }
 
-/// Running turns by session id, so Stop can reach them.
+/// Running turns by session id, so Stop and answers to questions can reach them.
 #[derive(Default)]
 pub struct Runs {
     stops: Mutex<HashMap<String, oneshot::Sender<()>>>,
+    answers: Mutex<HashMap<String, mpsc::UnboundedSender<appserver::Answer>>>,
     /// Serialises runtime downloads.
     install: Mutex<()>,
 }
@@ -79,12 +87,20 @@ const PROVIDER: &str = "cloudborne";
 const KEY_ENV: &str = "CLOUDBORNE_AGENT_KEY";
 
 /// Our Codex home's config: the relay as the only provider, nothing that
-/// phones home or nags about updates.
-fn write_config(home: &Path, origin: &str) -> Result<()> {
+/// phones home or nags about updates. The model may ask the user questions
+/// in any turn, not only in plan mode. Memories stay off: on startup they run
+/// a hidden consolidation agent on another model, billed to the user's key.
+///
+/// Codex trusts the folder it runs in and then layers `<folder>/.codex/config.toml`
+/// over this file. Run in the home folder, that is the user's own Codex config
+/// (their MCP servers, memories, features), so `work` is marked untrusted.
+fn write_config(home: &Path, origin: &str, work: &Path) -> Result<()> {
     let base = format!("{}/v1", origin.trim_end_matches('/'));
+    let work = toml_string(&work.to_string_lossy());
     let text = format!(
         "model_provider = \"{PROVIDER}\"\n\
          check_for_update_on_startup = false\n\
+         suppress_unstable_features_warning = true\n\
          \n\
          [model_providers.{PROVIDER}]\n\
          name = \"Cloudborne\"\n\
@@ -96,7 +112,14 @@ fn write_config(home: &Path, origin: &str) -> Result<()> {
          enabled = false\n\
          \n\
          [feedback]\n\
-         enabled = false\n"
+         enabled = false\n\
+         \n\
+         [features]\n\
+         default_mode_request_user_input = true\n\
+         memories = false\n\
+         \n\
+         [projects.{work}]\n\
+         trust_level = \"untrusted\"\n"
     );
     crate::fsx::write_atomic(&home.join("config.toml"), &text)
 }
@@ -178,9 +201,18 @@ pub async fn run_turn(runs: SharedRuns, opts: SendOptions, prep: Prepared, ch: C
     store::save(&root, &session)?;
 
     let (stop_tx, stop_rx) = oneshot::channel();
+    let (answer_tx, answer_rx) = mpsc::unbounded_channel();
     runs.stops.lock().await.insert(opts.session.clone(), stop_tx);
-    let outcome = drive(&runs, &root, &opts, &prep, &mut session, &ch, stop_rx).await;
+    runs.answers.lock().await.insert(opts.session.clone(), answer_tx);
+    let outcome = match runtime_bin(&runs, &root, &ch).await {
+        Ok(bin) if std::env::var("CLOUDBORNE_AGENT_RUNNER").is_ok_and(|v| v == "exec") => {
+            drive_exec(&root, &bin, &opts, &prep, &mut session, &ch, stop_rx).await
+        }
+        Ok(bin) => appserver::drive(&root, &bin, &opts, &prep, &mut session, &ch, stop_rx, answer_rx).await,
+        Err(e) => Err(e),
+    };
     runs.stops.lock().await.remove(&opts.session);
+    runs.answers.lock().await.remove(&opts.session);
 
     let turn = session.turns.last_mut().expect("turn just pushed");
     let event = match outcome {
@@ -217,35 +249,80 @@ enum Outcome {
     Failed(&'static str, String),
 }
 
-async fn drive(
-    runs: &Runs,
+/// Our Codex binary, downloading it first if this is the first task.
+async fn runtime_bin(runs: &Runs, root: &Path, ch: &Channel<Event>) -> Result<PathBuf> {
+    if let Some(b) = runtime::installed(root) {
+        return Ok(b);
+    }
+    let _guard = runs.install.lock().await;
+    let _ = ch.send(Event::Runtime { percent: None });
+    let ch2 = ch.clone();
+    runtime::ensure(root, move |pct| {
+        let _ = ch2.send(Event::Runtime { percent: Some(pct) });
+    })
+    .await
+}
+
+/// The Codex process for one turn, before its subcommand: our Codex home
+/// (config rewritten each time), the agent's key, the user's usual PATH and
+/// piped stdio.
+fn codex_command(root: &Path, bin: &Path, prep: &Prepared, work: &Path) -> Result<tokio::process::Command> {
+    let home = codex_home(root);
+    write_config(&home, &prep.origin, work)?;
+    let mut cmd = tokio::process::Command::new(bin);
+    // A GUI app's PATH is minimal; give the agent the user's usual tool dirs,
+    // plus the ripgrep that ships with the runtime.
+    let mut path: Vec<PathBuf> = tools::detect::search_path(work);
+    if let Some(v) = runtime::vendor(root) {
+        path.insert(0, v.join("codex-path"));
+    }
+    if let Ok(joined) = std::env::join_paths(path) {
+        cmd.env("PATH", joined);
+    }
+    cmd.env("CODEX_HOME", &home)
+        .env(KEY_ENV, &prep.api_key)
+        .current_dir(work)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    Ok(cmd)
+}
+
+/// The last 20 lines of a stream (Codex's stderr), for failure messages.
+async fn tail(r: impl AsyncRead + Unpin) -> String {
+    let mut lines = BufReader::new(r).lines();
+    let mut tail: Vec<String> = Vec::new();
+    while let Ok(Some(l)) = lines.next_line().await {
+        tail.push(l);
+        if tail.len() > 20 {
+            tail.remove(0);
+        }
+    }
+    tail.join("\n")
+}
+
+/// The older runner: one `codex exec --json` per turn, kept behind
+/// `CLOUDBORNE_AGENT_RUNNER=exec`. It cannot stream text or ask questions.
+async fn drive_exec(
     root: &Path,
+    bin: &Path,
     opts: &SendOptions,
     prep: &Prepared,
     session: &mut store::Session,
     ch: &Channel<Event>,
     mut stop_rx: oneshot::Receiver<()>,
 ) -> Result<Outcome> {
-    let bin = match runtime::installed(root) {
-        Some(b) => b,
-        None => {
-            let _guard = runs.install.lock().await;
-            let _ = ch.send(Event::Runtime { percent: None });
-            let ch2 = ch.clone();
-            runtime::ensure(root, move |pct| {
-                let _ = ch2.send(Event::Runtime { percent: Some(pct) });
-            })
-            .await?
-        }
-    };
-
-    let home = codex_home(root);
-    write_config(&home, &prep.origin)?;
     let work = tools::home_dir();
     let tmp = root.join("tmp").join(&opts.session);
     let images = save_images(&tmp, &opts.images)?;
 
-    let mut cmd = tokio::process::Command::new(&bin);
+    let mut cmd = codex_command(root, bin, prep, &work)?;
     cmd.arg("exec")
         .arg("--json")
         .arg("--skip-git-repo-check")
@@ -256,6 +333,9 @@ async fn drive(
         .arg(&opts.model)
         .arg("-c")
         .arg(format!("model_reasoning_effort={:?}", opts.effort))
+        // Codex's catalog asks for no thinking summary unless told to.
+        .arg("-c")
+        .arg("model_reasoning_summary=\"auto\"")
         .arg("-c")
         .arg(format!(
             "developer_instructions={}",
@@ -274,29 +354,7 @@ async fn drive(
     }
     cmd.arg("-");
 
-    // A GUI app's PATH is minimal; give the agent the user's usual tool dirs,
-    // plus the ripgrep that ships with the runtime.
-    let mut path: Vec<PathBuf> = tools::detect::search_path(&work);
-    if let Some(v) = runtime::vendor(root) {
-        path.insert(0, v.join("codex-path"));
-    }
-    if let Ok(joined) = std::env::join_paths(path) {
-        cmd.env("PATH", joined);
-    }
-    cmd.env("CODEX_HOME", &home)
-        .env(KEY_ENV, &prep.api_key)
-        .current_dir(&work)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    #[cfg(windows)]
-    {
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
-
-    let mut child = cmd.spawn().map_err(|e| Error::io(&bin, e))?;
+    let mut child = cmd.spawn().map_err(|e| Error::io(bin, e))?;
     {
         let mut stdin = child.stdin.take().expect("piped stdin");
         let prompt = opts.prompt.clone();
@@ -305,17 +363,7 @@ async fn drive(
         });
     }
     let stderr = child.stderr.take().expect("piped stderr");
-    let stderr_tail = tokio::spawn(async move {
-        let mut lines = BufReader::new(stderr).lines();
-        let mut tail: Vec<String> = Vec::new();
-        while let Ok(Some(l)) = lines.next_line().await {
-            tail.push(l);
-            if tail.len() > 20 {
-                tail.remove(0);
-            }
-        }
-        tail.join("\n")
-    });
+    let stderr_tail = tokio::spawn(tail(stderr));
     let mut lines = BufReader::new(child.stdout.take().expect("piped stdout")).lines();
 
     let mut failure: Option<String> = None;
@@ -413,6 +461,14 @@ pub async fn stop(runs: &Runs, id: &str) {
     }
 }
 
+/// Passes the user's answer to a question to the turn that asked it.
+pub async fn answer(runs: &Runs, session: &str, request: String, answers: BTreeMap<String, Vec<String>>) -> Result<()> {
+    match runs.answers.lock().await.get(session) {
+        Some(tx) if tx.send((request, answers)).is_ok() => Ok(()),
+        _ => Err(Error::Other(tr("这个问题已经失效", "This question is no longer open").into())),
+    }
+}
+
 pub fn not_available() -> Error {
     Error::Other(tr("你的账号下没有可用的 GPT 分组", "Your account has no GPT group").into())
 }
@@ -439,6 +495,17 @@ mod tests {
         upsert(&mut items, serde_json::json!({"id": "a", "status": "completed"}));
         assert_eq!(items.len(), 2);
         assert_eq!(items[0]["status"], "completed");
+    }
+
+    #[test]
+    fn config_keeps_the_users_own_codex_config_out() {
+        let dir = tempfile::tempdir().unwrap();
+        write_config(dir.path(), "https://api.example.com/", Path::new("/Users/a \"b\"")).unwrap();
+        let doc: toml_edit::DocumentMut = std::fs::read_to_string(dir.path().join("config.toml")).unwrap().parse().unwrap();
+        assert_eq!(doc["model_providers"]["cloudborne"]["base_url"].as_str(), Some("https://api.example.com/v1"));
+        assert_eq!(doc["projects"]["/Users/a \"b\""]["trust_level"].as_str(), Some("untrusted"));
+        assert_eq!(doc["features"]["memories"].as_bool(), Some(false));
+        assert_eq!(doc["features"]["default_mode_request_user_input"].as_bool(), Some(true));
     }
 
     #[test]

@@ -41,7 +41,7 @@ export function TaskView({ agent, onSignIn }: { agent: Agent; onSignIn: () => vo
 
   return (
     <div className="task-session">
-      <Conversation session={session} onSignIn={onSignIn} />
+      <Conversation session={session} onSignIn={onSignIn} onAnswer={agent.answer} />
       <div className="composer-dock">
         <Composer agent={agent} continuing />
       </div>

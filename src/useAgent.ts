@@ -163,6 +163,13 @@ export function useAgent(lang: string, account: number | null) {
     if (currentId) agentApi.stop(currentId).catch(() => {});
   }, [currentId]);
 
+  /** Answers a question the agent asked in the open task's running turn. */
+  const answer = useCallback(
+    (request: string, answers: Record<string, string[]>) =>
+      currentId ? agentApi.answer(currentId, request, answers) : Promise.resolve(),
+    [currentId],
+  );
+
   const remove = useCallback(
     async (id: string) => {
       await agentApi.deleteSession(id).catch(() => {});
@@ -194,6 +201,7 @@ export function useAgent(lang: string, account: number | null) {
     select,
     send,
     stop,
+    answer,
     remove,
   };
 }

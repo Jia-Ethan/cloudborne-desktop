@@ -97,6 +97,7 @@ pub fn run() {
             commands::agent_delete_session,
             commands::agent_send,
             commands::agent_stop,
+            commands::agent_answer,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
