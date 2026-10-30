@@ -334,6 +334,9 @@ async fn follow(
     let mut turn_id = turn.pointer("/turn/id").and_then(Value::as_str).unwrap_or("").to_string();
 
     let mut began: HashMap<String, i64> = HashMap::new();
+    // When the previous step finished (or the turn began). A reasoning item only
+    // starts once its summary does, so thinking is timed from here instead.
+    let mut mark = chrono::Utc::now().timestamp_millis();
     // Open questions: request id as the UI knows it -> the JSON-RPC id to answer.
     let mut asking: HashMap<String, Value> = HashMap::new();
     let mut last_error: Option<String> = None;
@@ -374,6 +377,7 @@ async fn follow(
                         let _ = ch.send(Event::Item { item: item.clone() });
                     }
                     store::save_if_present(root, session)?;
+                    mark = chrono::Utc::now().timestamp_millis();
                 }
                 continue;
             }
@@ -426,14 +430,15 @@ async fn follow(
             }
             "item/completed" => {
                 let item = &p["item"];
-                let ms = item
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .and_then(|id| began.get(id))
-                    .zip(p.get("completedAtMs").and_then(Value::as_i64))
-                    .map(|(a, b)| (b - a).max(0));
+                let done = p.get("completedAtMs").and_then(Value::as_i64);
+                let start = item.get("id").and_then(Value::as_str).and_then(|id| began.get(id).copied());
+                let start = if item["type"] == "reasoning" { Some(start.map_or(mark, |s| s.min(mark))) } else { start };
+                let ms = start.zip(done).map(|(a, b)| (b - a).max(0));
                 if let Some(v) = convert(item, true, ms) {
                     emit(session, ch, v);
+                }
+                if let Some(done) = done {
+                    mark = done;
                 }
             }
             "item/agentMessage/delta" => {
@@ -631,6 +636,71 @@ mod tests {
             assert!(matches!(o, Outcome::Stopped));
             assert!(started.elapsed() < Duration::from_secs(10), "stop took {:?}", started.elapsed());
         });
+    }
+
+    /// One real turn through the relay, for live checks with a capped
+    /// temporary key: `CLOUDBORNE_TEST_CODEX`, `CLOUDBORNE_TEST_UPSTREAM`,
+    /// `CLOUDBORNE_TEST_KEY`, `CLOUDBORNE_TEST_MODEL`. The prompt asks the
+    /// agent to ask one question and to touch nothing; the test answers with
+    /// the first option and prints what came back (never the key).
+    #[test]
+    #[ignore]
+    fn live_turn_through_the_relay() {
+        use std::sync::{Arc, Mutex};
+        let env = |k: &str| std::env::var(k).unwrap_or_else(|_| panic!("{k}"));
+        let bin = PathBuf::from(env("CLOUDBORNE_TEST_CODEX"));
+        let prep = Prepared { api_key: env("CLOUDBORNE_TEST_KEY"), origin: env("CLOUDBORNE_TEST_UPSTREAM") };
+        let root = tempfile::tempdir().unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        // Built from JSON so the test does not depend on every field Session has.
+        let mut session: store::Session = serde_json::from_value(json!({ "id": id, "title": "t", "updated_at": 0 })).unwrap();
+        store::save(root.path(), &session).unwrap();
+        let prompt = "我想把 Claude Code 接到 Cloudborne。不要读取或修改任何文件，也不要运行任何命令。\
+                      请先用提问工具问我一个问题，确认我想用哪种方式接入（例如桌面客户端一键连接，或手动改配置），\
+                      等我回答后，再用两三句话告诉我下一步怎么做。";
+        let opts = SendOptions {
+            session: id,
+            prompt: prompt.into(),
+            images: vec![],
+            model: env("CLOUDBORNE_TEST_MODEL"),
+            effort: "medium".into(),
+            lang: "zh-CN".into(),
+        };
+        session.turns.push(store::Turn { prompt: prompt.into(), images: vec![], items: vec![], status: "running".into(), failure: None });
+        let events: Arc<Mutex<Vec<Value>>> = Arc::default();
+        let (answer_tx, answer_rx) = mpsc::unbounded_channel::<Answer>();
+        let seen = events.clone();
+        let ch = Channel::new(move |body| {
+            let tauri::ipc::InvokeResponseBody::Json(s) = body else { return Ok(()) };
+            let v: Value = serde_json::from_str(&s).unwrap();
+            if v.pointer("/item/type") == Some(&json!("question")) && v.pointer("/item/status") == Some(&json!("pending")) {
+                let request = v.pointer("/item/request").and_then(Value::as_str).unwrap().to_string();
+                let answers = v.pointer("/item/questions").and_then(Value::as_array).unwrap().iter().map(|q| {
+                    let pick = q.pointer("/options/0/label").and_then(Value::as_str).unwrap_or("桌面客户端一键连接");
+                    (q["id"].as_str().unwrap().to_string(), vec![pick.to_string()])
+                });
+                answer_tx.send((request, answers.collect())).unwrap();
+            }
+            seen.lock().unwrap().push(v);
+            Ok(())
+        });
+        let (_stop, stop_rx) = oneshot::channel();
+        let started = std::time::Instant::now();
+        let outcome = tauri::async_runtime::block_on(drive(root.path(), &bin, &opts, &prep, &mut session, &ch, stop_rx, answer_rx)).unwrap();
+        let ev = events.lock().unwrap().clone();
+        let deltas = |t: &str| ev.iter().filter(|e| e["type"] == "delta" && e["item_type"] == t).count();
+        let items = &session.turns[0].items;
+        let summary = json!({
+            "outcome": match &outcome { Outcome::Done => "done".to_string(), Outcome::Stopped => "stopped".into(), Outcome::Failed(k, m) => format!("failed {k}: {}", m.chars().take(300).collect::<String>()) },
+            "seconds": started.elapsed().as_secs(),
+            "items": items.iter().map(|x| x["type"].clone()).collect::<Vec<_>>(),
+            "reasoning": items.iter().filter(|x| x["type"] == "reasoning").map(|x| json!({ "chars": x["text"].as_str().map(|s| s.chars().count()), "status": x["status"], "duration_ms": x["duration_ms"], "head": x["text"].as_str().map(|s| s.chars().take(120).collect::<String>()) })).collect::<Vec<_>>(),
+            "questions": items.iter().filter(|x| x["type"] == "question").map(|x| json!({ "status": x["status"], "questions": x["questions"], "answers": x["answers"] })).collect::<Vec<_>>(),
+            "commands": items.iter().filter(|x| x["type"] == "command_execution").map(|x| x["command"].clone()).collect::<Vec<_>>(),
+            "reply": items.iter().filter(|x| x["type"] == "agent_message").map(|x| x["text"].clone()).collect::<Vec<_>>(),
+            "deltas": { "reasoning": deltas("reasoning"), "agent_message": deltas("agent_message") },
+        });
+        println!("LIVE_RESULT {}", serde_json::to_string(&summary).unwrap());
     }
 
     #[test]

@@ -326,8 +326,10 @@ function Failure({ turn, onSignIn }: { turn: Turn; onSignIn: () => void }) {
 
 function TurnView({ turn, onSignIn, onAnswer }: { turn: Turn; onSignIn: () => void; onAnswer: OnAnswer }) {
   const { t } = useI18n();
-  const blocks = toBlocks(turn.items);
-  const last = turn.items[turn.items.length - 1];
+  // Models sometimes send a whitespace-only message before the real one; it would only leave a gap.
+  const shown = turn.items.filter((x) => !(x.type === 'agent_message' && !x.text.trim()));
+  const blocks = toBlocks(shown);
+  const last = shown[shown.length - 1];
   const live = turn.status === 'running';
   // Something already shows the work under way: a running step, or a question waiting on the user.
   const busy = !!last && 'status' in last && (last.status === 'in_progress' || last.status === 'pending');
