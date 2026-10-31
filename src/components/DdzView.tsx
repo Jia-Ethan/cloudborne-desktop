@@ -138,7 +138,7 @@ const fmtX = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(n * 10 
  * runs the game and sends a snapshot of the table on every change; this view
  * only draws it and sends the player's actions back.
  */
-export function DdzView({ balance, table, conn, send, userId = 0, previewStatus }: { balance: number; table: Table | null; conn: DdzConn; send: (a: Action) => void; userId?: number; previewStatus?: DdzStatus | null }) {
+export function DdzView({ balance, table, conn, send, userId = 0, previewStatus, onManage }: { balance: number; table: Table | null; conn: DdzConn; send: (a: Action) => void; userId?: number; previewStatus?: DdzStatus | null; onManage?: () => void }) {
   const { t } = useI18n();
   const [rulesFor, setRulesFor] = useState<Action | 'read' | null>(null);
   const [status, setStatus] = useState<DdzStatus | null>(previewStatus ?? null);
@@ -173,7 +173,7 @@ export function DdzView({ balance, table, conn, send, userId = 0, previewStatus 
     finally {busy.current=false;}
   };
   let body: ReactNode;
-  if (!table) body=<Lobby balance={balance} conn={conn} onEnter={a=>void enter(a)} onRules={()=>{setPolicy(status?.fee_policy ?? FREE_POLICY);setRulesFor('read');}} policy={status?.fee_policy} minBalanceTimes={status?.min_balance_times} laiziBalanceTimes={status?.laizi_min_balance_times} modes={status?.modes} />;
+  if (!table) body=<Lobby balance={balance} conn={conn} onEnter={a=>void enter(a)} onRules={()=>{setPolicy(status?.fee_policy ?? FREE_POLICY);setRulesFor('read');}} policy={status?.fee_policy} minBalanceTimes={status?.min_balance_times} laiziBalanceTimes={status?.laizi_min_balance_times} modes={status?.modes} onManage={onManage} />;
   else if (table.phase === 'waiting' && !table.code) body=<Matching table={table} send={send} />;
   else body=<TableScene table={table} conn={conn} send={a=>void enter(a)} />;
   return <>{error && <div className="ddz-entry-error" role="alert">{error}</div>}{body}{rulesFor && <RulesDialog policy={policy} laizi={!!status?.modes?.includes('laizi') || table?.mode === 'laizi'} agree={rulesFor!=='read'} onClose={()=>setRulesFor(null)} onAgree={()=>{
@@ -185,7 +185,7 @@ export function DdzView({ balance, table, conn, send, userId = 0, previewStatus 
 
 // ---------------------------------------------------------------- lobby
 
-function Lobby({ balance, conn, onEnter, onRules, policy, minBalanceTimes, laiziBalanceTimes, modes }: { balance: number; conn: DdzConn; onEnter: (a: Action) => void; onRules: () => void; policy?: FeePolicy; minBalanceTimes?: number; laiziBalanceTimes?: number; modes?: Mode[] }) {
+function Lobby({ balance, conn, onEnter, onRules, policy, minBalanceTimes, laiziBalanceTimes, modes, onManage }: { balance: number; conn: DdzConn; onEnter: (a: Action) => void; onRules: () => void; policy?: FeePolicy; minBalanceTimes?: number; laiziBalanceTimes?: number; modes?: Mode[]; onManage?: () => void }) {
   const { t } = useI18n();
   const quality = useMemo(readDdzQuality, []);
   const [base, setBase] = useState(STAKES[0]);
@@ -246,6 +246,13 @@ function Lobby({ balance, conn, onEnter, onRules, policy, minBalanceTimes, laizi
               <h1>{t('ddz.title')}</h1>
               <p>{t('ddz.tagline')}</p>
               {rulesLink}
+              {/* Admins get a way to the switch, so a closed 赖子场 is not just missing. */}
+              {onManage && (
+                <button className="text-link ddz-rules-link ml-5" onClick={onManage}>
+                  {t('ddz.mode.laiziOff')}
+                  <Icon name="chevronRight" className="size-3.5" />
+                </button>
+              )}
             </div>
             <div className="ddz-intro-fan" aria-hidden>
               {FAN.map((c, i) => (

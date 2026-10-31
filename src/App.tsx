@@ -495,7 +495,7 @@ export function App() {
         ) : view === 'lottery' ? (
           <LotteryView balance={user.balance} onBalance={refetchMe} onStatus={lotteryStatus} />
         ) : view === 'ddz' ? (
-          <DdzView userId={user.id} balance={user.balance} table={ddz.table} conn={ddz.conn} send={ddz.send} previewStatus={ddzStatus} />
+          <DdzView userId={user.id} balance={user.balance} table={ddz.table} conn={ddz.conn} send={ddz.send} previewStatus={ddzStatus} onManage={isAdmin(user) ? () => setView('adminDdz') : undefined} />
         ) : view === 'admin' && isAdmin(user) ? (
           <AdminOverview onOpenUser={openUser} onOpenLottery={() => setView('adminLottery')} />
         ) : view === 'adminUsers' && isAdmin(user) ? (
