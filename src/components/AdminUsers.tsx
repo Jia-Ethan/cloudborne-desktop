@@ -67,7 +67,8 @@ export function AdminUsers({ focus, onToast }: { focus: { id: number; email: str
     const g = ++generation.current;
     setBusy(true);
     try {
-      const p = await api.adminUsers(page, PAGE, query, 'current_concurrency', 'desc');
+      // Highest allocated concurrency first, whatever is in flight right now.
+      const p = await api.adminUsers(page, PAGE, query, 'concurrency', 'desc');
       if (g !== generation.current) return;
       setItems(p.items);
       setTotal(p.total);
@@ -83,13 +84,13 @@ export function AdminUsers({ focus, onToast }: { focus: { id: number; email: str
     load();
   }, [load]);
 
-  // A background re-sort: it never shows the spinner or an error over the
+  // A background refresh: it never shows the spinner or an error over the
   // last good page, and a manual load or a new search/page always wins.
   const reorder = useCallback(async () => {
     if (busy) return;
     const g = generation.current;
     try {
-      const p = await api.adminUsers(page, PAGE, query, 'current_concurrency', 'desc');
+      const p = await api.adminUsers(page, PAGE, query, 'concurrency', 'desc');
       if (g !== generation.current) return;
       setItems(p.items);
       setTotal(p.total);
