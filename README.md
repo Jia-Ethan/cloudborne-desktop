@@ -6,8 +6,13 @@ Cloudborne（栖云）中转站的桌面客户端：用中转站账号登录、�
 
 ## 状态
 
-v0.9.29 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
+v0.9.30 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
 
+- 新任务分组、用户列表排序、赖子场入口（v0.9.30）：
+  - 新任务不再停在「你的账号下没有可用的 GPT 分组」：以前固定用账号能用的第一个 OpenAI 分组，能看到视频、图片分组的账号（这两个分组排在最前）拿到的模型列表里没有对话模型。现在先用已有 Agent 密钥的分组，再用账号其他密钥所在的分组，最后才试别的分组；列表里没有 GPT 对话模型的分组跳过，为试探新建的密钥会删掉。
+  - 管理端「用户」按分配的并发上限从高到低排（上限相同的新用户在前），不再按当前并发排，列表不会每几秒换一次顺序。
+  - 赖子场关着时，管理员在斗地主大厅「规则与图鉴」旁边能看到「赖子场未开放 · 去斗地主管理开启」，点了直接去斗地主管理；普通用户看不到。
+  - 不需要更新 relay。
 - 新任务边想边答、会主动提问，侧边栏对齐 Claude，赖子场放到大厅最前面（v0.9.29；v0.9.28 只出过草稿，没有发布）：
   - 新任务改用 `codex app-server` 跑：回答逐字出现，思考过程运行时展开显示最新几行，答完收成「思考了 N 秒」。模型遇到有歧义、要确认计划或要删东西、装软件、要管理员权限时，会弹出 1 到 3 个问题，每题有选项（推荐的排第一）和「其他」输入框，答完在同一轮接着做。
   - 修了 v0.9.27 就有的问题：Codex 把用户自己的 `~/.codex/config.toml` 当成项目配置叠加进来，开了 memories 的用户每次启动都会在后台多跑一个模型调用，费用记在 Agent 密钥上。
@@ -141,6 +146,6 @@ brand/render.sh          # 用本机 Chrome 渲染 app-icon-1024.png 和 preview
 3. CI 构建 macOS 通用包和 Windows 安装包，生成 `.app.tar.gz` / `-setup.exe` 的签名和 `latest.json`，挂到一个 draft Release 上。
 4. 检查 draft 没问题后点 Publish（不要勾 pre-release，保持 Latest）。发布那一刻起，已安装的客户端在下次检查时就会看到更新。
 
-当前公开版本：[`v0.9.29`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.29)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.29/Cloudborne-Windows-setup.exe)。
+当前公开版本：[`v0.9.30`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.30)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.30/Cloudborne-Windows-setup.exe)。
 
 更新私钥在本机 `~/.cloudborne-desktop-signing/`（权限 700），CI 里是 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 两个 secret。私钥丢了，已装的客户端就收不到后续更新，只能手动重装，所以要另外备份。0.2.0 及更早的版本没有更新功能，需要手动装一次 0.2.1。
