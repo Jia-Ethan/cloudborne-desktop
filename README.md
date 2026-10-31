@@ -6,8 +6,15 @@ Cloudborne（栖云）中转站的桌面客户端：用中转站账号登录、�
 
 ## 状态
 
-v0.9.30 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
+v0.9.31 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
 
+- 公告（v0.9.31）：
+  - 侧边栏「Cloudborne」右边多了铃铛，有未读公告时带圆点；收起成图标栏时铃铛在折叠按钮下方。
+  - 点开是两栏对话框，和网页控制台一致：左边是正文（Markdown，开头的 2:1 封面图按正文宽度缩放），右边按发布日期从新到旧列出全部公告，未读的日期旁有圆点，可「全部已读」。窗口窄于 880 像素时一次只显示一栏，带「返回公告列表」。
+  - 登录（含切换账号、启动时恢复登录）3 秒后读一次；有未读的弹窗公告就自动打开在最新那条上，点「我知道了」或关掉即把这一批标为已读。之后切页面或回到窗口时重读，最多每 20 分钟一次。坐在斗地主牌桌上时弹窗等离桌再出，免得挡住出牌倒计时。
+  - 公告显示在屏幕上就算已读；窄窗只看列表不算。接口：`GET /api/v1/announcements`、`POST /api/v1/announcements/:id/read`。
+  - CSP 的 `img-src` 只多放开了 `https://api.cloudborne.cn`（公告配图在它的 `/media/announcements/`），加载失败的图片不显示。
+  - 不需要更新 relay。
 - 新任务分组、用户列表排序、赖子场入口（v0.9.30）：
   - 新任务不再停在「你的账号下没有可用的 GPT 分组」：以前固定用账号能用的第一个 OpenAI 分组，能看到视频、图片分组的账号（这两个分组排在最前）拿到的模型列表里没有对话模型。现在先用已有 Agent 密钥的分组，再用账号其他密钥所在的分组，最后才试别的分组；列表里没有 GPT 对话模型的分组跳过，为试探新建的密钥会删掉。
   - 管理端「用户」按分配的并发上限从高到低排（上限相同的新用户在前），不再按当前并发排，列表不会每几秒换一次顺序。
@@ -106,7 +113,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
 - `CLOUDBORNE_HOME=<目录>`：所有配置读写都改到这个目录，测试时不碰自己的真实配置。
-- `CLOUDBORNE_ORIGIN=<地址>`：换中转站地址，默认 `https://api.cloudborne.cn`；设了它时管理接口也走这个地址（默认走 `https://ops.cloudborne.cn`）。
+- `CLOUDBORNE_ORIGIN=<地址>`：换中转站地址，默认 `https://api.cloudborne.cn`；设了它时管理接口也走这个地址（默认走 `https://ops.cloudborne.cn`）。公告配图仍只能从 `https://api.cloudborne.cn` 加载（CSP 在 `tauri.conf.json` 里，编译时固定），换了地址时图片不显示、文字照常。
 - `cargo run --example roundtrip`（配合 `CLOUDBORNE_HOME`）：对每个工具各做一次连接和断开。
 - 新任务有两个默认跳过的测试，升级 Codex 后要跑：`drives_turns_against_a_mock_upstream` 用 `CLOUDBORNE_TEST_CODEX`（Codex 可执行文件）和 `CLOUDBORNE_TEST_UPSTREAM`（本地假上游，要求见测试注释）跑完提问、回答和停止；`live_turn_through_the_relay` 另加 `CLOUDBORNE_TEST_KEY`、`CLOUDBORNE_TEST_MODEL`，走真实中转站，会扣费，只用限额的临时密钥。
 
@@ -146,6 +153,6 @@ brand/render.sh          # 用本机 Chrome 渲染 app-icon-1024.png 和 preview
 3. CI 构建 macOS 通用包和 Windows 安装包，生成 `.app.tar.gz` / `-setup.exe` 的签名和 `latest.json`，挂到一个 draft Release 上。
 4. 检查 draft 没问题后点 Publish（不要勾 pre-release，保持 Latest）。发布那一刻起，已安装的客户端在下次检查时就会看到更新。
 
-当前公开版本：[`v0.9.30`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.30)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.30/Cloudborne-Windows-setup.exe)。
+当前公开版本：[`v0.9.31`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.31)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.31/Cloudborne-Windows-setup.exe)。
 
 更新私钥在本机 `~/.cloudborne-desktop-signing/`（权限 700），CI 里是 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 两个 secret。私钥丢了，已装的客户端就收不到后续更新，只能手动重装，所以要另外备份。0.2.0 及更早的版本没有更新功能，需要手动装一次 0.2.1。
