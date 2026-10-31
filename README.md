@@ -103,13 +103,14 @@ cargo test --manifest-path src-tauri/Cargo.toml
 - `CLOUDBORNE_HOME=<目录>`：所有配置读写都改到这个目录，测试时不碰自己的真实配置。
 - `CLOUDBORNE_ORIGIN=<地址>`：换中转站地址，默认 `https://api.cloudborne.cn`；设了它时管理接口也走这个地址（默认走 `https://ops.cloudborne.cn`）。
 - `cargo run --example roundtrip`（配合 `CLOUDBORNE_HOME`）：对每个工具各做一次连接和断开。
+- 新任务有两个默认跳过的测试，升级 Codex 后要跑：`drives_turns_against_a_mock_upstream` 用 `CLOUDBORNE_TEST_CODEX`（Codex 可执行文件）和 `CLOUDBORNE_TEST_UPSTREAM`（本地假上游，要求见测试注释）跑完提问、回答和停止；`live_turn_through_the_relay` 另加 `CLOUDBORNE_TEST_KEY`、`CLOUDBORNE_TEST_MODEL`，走真实中转站，会扣费，只用限额的临时密钥。
 
 CI（`.github/workflows/ci.yml`）在 macOS 和 Windows 上跑测试，并打包未签名的 `.dmg`（universal）和 `.exe`（NSIS）。推 `v*` 标签时，安装包会附到一个草稿 Release 上。
 
 ## 目录
 
 - `src/`：界面（React + Tailwind）。
-- `src-tauri/src/`：`api.rs` 中转站接口，`session.rs` 登录、令牌存储和刷新，`accounts.rs` 已保存账号的列表，`tools/` 各工具的读写，`install.rs` 一键安装，`fsx.rs` 备份、原子写入和标记段。
+- `src-tauri/src/`：`api.rs` 中转站接口，`session.rs` 登录、令牌存储和刷新，`accounts.rs` 已保存账号的列表，`tools/` 各工具的读写，`install.rs` 一键安装，`fsx.rs` 备份、原子写入和标记段，`agent/` 新任务（自带的 Codex、app-server 驱动、任务记录）。
 - `brand/`：图标和 logo，全部从 `brand/build.mjs` 里的几何参数生成，不手改 SVG。
 - `docs/PLAN.md`：v0.1 的范围、技术栈和接口。
 - `docs/DOUDIZHU-IMPROVEMENT-2026-10-15.md`：斗地主设计、布局修复、发布证据与回滚边界。
@@ -135,7 +136,7 @@ brand/render.sh          # 用本机 Chrome 渲染 app-icon-1024.png 和 preview
 
 ## 发版与推送更新
 
-1. 改 `package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml` 三处版本号，提交。
+1. 改 `package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml` 三处版本号，跑一次 `npm install` 和 `cargo test` 让 `package-lock.json`、`src-tauri/Cargo.lock` 跟着变，一起提交。
 2. 打带说明的 tag 并推送：`git tag -a v0.2.1 -m "更新说明"`、`git push origin v0.2.1`。tag 说明会成为更新提示里的 notes。
 3. CI 构建 macOS 通用包和 Windows 安装包，生成 `.app.tar.gz` / `-setup.exe` 的签名和 `latest.json`，挂到一个 draft Release 上。
 4. 检查 draft 没问题后点 Publish（不要勾 pre-release，保持 Latest）。发布那一刻起，已安装的客户端在下次检查时就会看到更新。
