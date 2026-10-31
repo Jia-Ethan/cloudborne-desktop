@@ -35,6 +35,10 @@ export function Markdown({ text }: { text: string }) {
         remarkPlugins={[remarkGfm]}
         components={{
           pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
+          // Only the relay's own origin may serve images (CSP img-src); one that does not load is left out.
+          img: ({ src, alt }) => (
+            <img src={typeof src === 'string' ? src : undefined} alt={alt ?? ''} draggable={false} onError={(e) => (e.currentTarget.hidden = true)} />
+          ),
           a: ({ href, children }) => (
             <a
               href={href}

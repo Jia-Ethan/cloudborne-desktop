@@ -1,3 +1,4 @@
+import type { Announcement } from './announcements';
 import type { FeePolicy, Mode } from './ddz';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -685,6 +686,8 @@ export const api = {
   invites: () => invoke<Invites>('invites'),
   inviteCreate: () => invoke<Invite>('invite_create'),
   inviteRevoke: (id: number) => invoke<{ id: number }>('invite_revoke', { id }),
+  announcements: () => invoke<Announcement[]>('announcements'),
+  announcementRead: (id: number) => invoke<unknown>('announcement_read', { id }),
   adminOverview: (today: string, start: string, timezone: string) =>
     invoke<AdminOverview>('admin_overview', { today, start, timezone }),
   adminUsers: (page: number, pageSize: number, search: string, sortBy = 'created_at', sortOrder: 'asc' | 'desc' = 'desc') =>

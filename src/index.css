@@ -627,6 +627,24 @@ html[data-glass='mica'] {
     color: var(--ink);
     background: var(--quiet);
   }
+  /* Announcements bell, beside the sidebar toggle; in the icon rail it sits under it. */
+  .sidebar-bell {
+    position: relative;
+  }
+  .sidebar-bell + .sidebar-toggle {
+    margin-left: 0;
+  }
+  .bell-dot {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 7px;
+    height: 7px;
+    background: var(--ann-accent);
+    border-radius: 999px;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--paper) 94%, var(--ink));
+    animation: bell-dot-in 0.24s ease-out backwards;
+  }
   .sidebar-scroll {
     display: flex;
     flex: 0 1 auto;
@@ -657,6 +675,13 @@ html[data-glass='mica'] {
   }
   .sidebar.collapsed .sidebar-toggle {
     margin-left: 0;
+  }
+  .sidebar.collapsed .sidebar-brand {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .sidebar.collapsed .sidebar-bell {
+    order: 1;
   }
   .sidebar.collapsed .nav-item {
     position: relative;
@@ -9178,4 +9203,327 @@ html[data-glass='mica'] {
   .ddz-short .ddz-result-details summary { padding: 4px 0; }
   .ddz-short .ddz-result-rows { padding-top: 8px; }
   .ddz-short .ddz-result-actions { margin-top: 8px; padding-top: 8px; }
+}
+
+/* Announcements: a two-column dialog after the web console's (body on the
+   left, dated list on the right), one column at a time on narrow windows. */
+:root {
+  --ann-accent: #f0703a;
+  --ann-link: #b04a1c;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ann-accent: #ff9b66;
+    --ann-link: #ffb48a;
+  }
+}
+@layer components {
+  .ann-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 72;
+    display: grid;
+    place-items: center;
+    padding: 36px 24px;
+    background: rgb(0 0 0 / 0.22);
+    animation: ann-fade 0.2s ease-out both;
+  }
+  .ann-backdrop.leaving {
+    pointer-events: none;
+    animation: ann-fade-out 0.18s ease-in both;
+  }
+  .ann-panel {
+    display: flex;
+    flex-direction: column;
+    width: min(980px, 100%);
+    height: min(660px, 100%);
+    overflow: hidden;
+    background: var(--menu-solid);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    box-shadow: var(--menu-shadow);
+    outline: none;
+    animation: ann-lift 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .ann-backdrop.leaving .ann-panel {
+    animation: ann-sink 0.18s ease-in both;
+  }
+  .ann-panel.single,
+  .ann-panel.one-column {
+    width: min(720px, 100%);
+  }
+  .ann-head {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+    height: 54px;
+    padding: 0 12px 0 24px;
+    border-bottom: 1px solid var(--line);
+  }
+  .ann-head h2 {
+    flex: 1;
+    min-width: 0;
+    font-size: 15px;
+    font-weight: 650;
+  }
+  .ann-icon-btn {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    color: var(--ink-3);
+    border-radius: 8px;
+    transition:
+      color 0.15s ease,
+      background-color 0.15s ease;
+    cursor: pointer;
+  }
+  .ann-icon-btn:hover {
+    color: var(--ink);
+    background: var(--quiet);
+  }
+  .ann-back {
+    margin-left: -10px;
+  }
+  .ann-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+  .ann-detail {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+  }
+  /* Text fades out above the button instead of being cut mid-line. */
+  .ann-scroll {
+    flex: 1;
+    min-height: 0;
+    padding: 28px 36px 20px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+    animation: ann-fade 0.16s ease-out;
+  }
+  .ann-scroll > time {
+    display: block;
+    color: var(--ink-3);
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .ann-scroll > h3 {
+    margin: 6px 0 18px;
+    font-size: 21px;
+    font-weight: 720;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+    overflow-wrap: anywhere;
+    user-select: text;
+  }
+  .ann-foot {
+    display: flex;
+    flex: none;
+    padding: 14px 36px 22px;
+  }
+  .ann-ok {
+    height: 38px;
+    padding: 0 22px;
+    border-radius: 999px;
+  }
+  .ann-list {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    width: 300px;
+    min-height: 0;
+    background: color-mix(in srgb, var(--ink) 2.5%, transparent);
+    border-left: 1px solid var(--line);
+  }
+  .ann-list-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 18px 18px 8px 22px;
+    color: var(--ink-3);
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+  .ann-list-head button {
+    color: var(--ink-2);
+    transition: color 0.15s ease;
+    cursor: pointer;
+  }
+  .ann-list-head button:hover {
+    color: var(--ink);
+  }
+  .ann-list ul {
+    flex: 1;
+    min-height: 0;
+    margin: 0;
+    padding: 0 8px 12px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .ann-item {
+    display: block;
+    width: 100%;
+    padding: 10px 14px 11px;
+    text-align: left;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease;
+    cursor: pointer;
+  }
+  .ann-item:hover {
+    background: var(--quiet);
+  }
+  .ann-item.active {
+    background: var(--quiet-hover);
+    border-color: var(--line);
+  }
+  .ann-item-meta {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .ann-item time {
+    color: var(--ink-3);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .ann-item-title {
+    display: -webkit-box;
+    margin-top: 3px;
+    overflow: hidden;
+    color: var(--ink-2);
+    font-size: 13.5px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .ann-item.active .ann-item-title {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .ann-dot {
+    flex: none;
+    width: 7px;
+    height: 7px;
+    background: var(--ann-accent);
+    border-radius: 999px;
+  }
+  .ann-empty {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--ink-3);
+    font-size: 14px;
+  }
+  /* The body: Markdown led by a 2:1 cover, scaled to the column. */
+  .ann-md .md {
+    gap: 12px;
+    color: var(--ink-2);
+    font-size: 14.5px;
+    line-height: 1.75;
+  }
+  .ann-md .md h1,
+  .ann-md .md h2,
+  .ann-md .md h3,
+  .ann-md .md h4 {
+    margin-top: 10px;
+    color: var(--ink);
+    font-size: 16px;
+    line-height: 1.45;
+  }
+  .ann-md .md strong {
+    color: var(--ink);
+    font-weight: 650;
+  }
+  .ann-md .md a {
+    color: var(--ann-link);
+    text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+    transition: text-decoration-color 0.15s ease;
+  }
+  .ann-md .md a:hover {
+    text-decoration-color: currentColor;
+  }
+  .ann-md .md img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+  /* The leading cover keeps its 2:1 space while loading, so the text does not jump. */
+  .ann-md .md > p:first-child > img:only-child {
+    width: 100%;
+    aspect-ratio: auto 2 / 1;
+  }
+  .ann-md .md hr {
+    margin: 10px 0;
+    border: 0;
+    border-top: 1px dashed color-mix(in srgb, var(--ink) 16%, transparent);
+  }
+  .ann-md .md table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  .ann-panel.one-column .ann-list {
+    width: 100%;
+    background: none;
+    border-left: 0;
+  }
+  .ann-panel.show-list .ann-detail,
+  .ann-panel.show-detail .ann-list {
+    display: none;
+  }
+  @media (max-width: 879px) {
+    .ann-scroll {
+      padding: 24px 28px 20px;
+    }
+    .ann-scroll > h3 {
+      font-size: 19px;
+    }
+    .ann-foot {
+      padding: 12px 28px 20px;
+    }
+  }
+}
+@keyframes ann-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes ann-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes ann-lift {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+}
+@keyframes ann-sink {
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
+}
+@keyframes bell-dot-in {
+  from {
+    opacity: 0;
+    scale: 0.4;
+  }
 }

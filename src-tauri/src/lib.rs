@@ -68,6 +68,8 @@ pub fn run() {
             commands::invites,
             commands::invite_create,
             commands::invite_revoke,
+            commands::announcements,
+            commands::announcement_read,
             commands::admin_overview,
             commands::admin_users,
             commands::admin_user,

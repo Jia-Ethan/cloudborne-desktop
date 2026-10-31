@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { api, errorText, isAdmin, type DdzStatus, type LotteryStatus, type Rates, type SavedAccount, type ToolStatus, type User } from './api';
+import { newestFirst } from './announcements';
 import { About } from './components/About';
+import { AnnouncementDialog } from './components/AnnouncementDialog';
 import { AccountMenu } from './components/AccountMenu';
 import { DiscountBar } from './components/DiscountBar';
 import { Icon, type IconName } from './components/Icon';
@@ -25,6 +27,7 @@ import { UsageRecordsView } from './components/UsageRecordsView';
 import { useI18n } from './i18n';
 import { useUpdater } from './update';
 import { useAgent } from './useAgent';
+import { useAnnouncements } from './useAnnouncements';
 import { useDdz } from './useDdz';
 
 const usd = (n: number) => `$${n.toFixed(2)}`;
@@ -324,6 +327,19 @@ export function App() {
     api.me().then((u) => u && u.id === uid && setUser(u), () => {});
   }, [uid]);
   const ddz = useDdz(uid ?? null, view === 'ddz', setToast, refetchMe);
+  const ann = useAnnouncements(uid ?? null);
+  const [annOpen, setAnnOpen] = useState(false);
+  const { load: loadAnnouncements } = ann;
+  // Moving between pages re-reads them, at most every 20 minutes.
+  useEffect(() => {
+    loadAnnouncements();
+  }, [view, loadAnnouncements]);
+  // The sign-in popup waits while a 斗地主 seat is taken: it would cover the table and its turn clock.
+  const annPopup = ann.popup.length > 0 && !ddz.table;
+  const closeAnnouncements = useCallback(() => {
+    if (annPopup) ann.dismissPopup();
+    setAnnOpen(false);
+  }, [annPopup, ann.dismissPopup]);
   const openUser = useCallback((u: { id: number; email: string }) => {
     setUserFocus(u);
     setView('adminUsers');
@@ -370,6 +386,18 @@ export function App() {
         <div className="sidebar-brand" data-tauri-drag-region>
           <Mark className="h-[18px]" />
           <span>Cloudborne</span>
+          <button
+            className="sidebar-toggle sidebar-bell"
+            title={t('ann.title')}
+            aria-label={ann.unread > 0 ? t('ann.titleUnread', { n: ann.unread }) : t('ann.title')}
+            onClick={() => {
+              setAnnOpen(true);
+              loadAnnouncements();
+            }}
+          >
+            <Icon name="bell" className="size-[17px]" />
+            {ann.unread > 0 && <span className="bell-dot" aria-hidden />}
+          </button>
           <button
             className="sidebar-toggle"
             title={`${t(rail ? 'nav.expand' : 'nav.collapse')} (${MOD}B)`}
@@ -573,6 +601,15 @@ export function App() {
       )}
 
       {about && <About version={updater.current} onClose={() => setAbout(false)} />}
+
+      <AnnouncementDialog
+        open={annOpen || annPopup}
+        items={ann.items}
+        startId={annPopup ? newestFirst(ann.popup)[0].id : null}
+        onClose={closeAnnouncements}
+        onView={(id) => ann.markRead(id).catch(() => {})}
+        onReadAll={() => ann.markAllRead().catch((e) => setToast(errorText(e, t('common.genericError'))))}
+      />
     </div>
   );
 }

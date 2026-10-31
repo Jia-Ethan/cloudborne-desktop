@@ -375,6 +375,15 @@ impl Client {
         self.send(self.http.delete(self.url(&format!("/api/v1/invites/{id}"))).bearer_auth(access)).await
     }
 
+    /// Announcements this account can see now, unread first: `[{ id, title, content, notify_mode, read_at, created_at }]`.
+    pub async fn announcements(&self, access: &str) -> Result<Value> {
+        self.send(self.http.get(self.url("/api/v1/announcements")).bearer_auth(access)).await
+    }
+
+    pub async fn announcement_read(&self, access: &str, id: i64) -> Result<Value> {
+        self.send(self.http.post(self.url(&format!("/api/v1/announcements/{id}/read"))).bearer_auth(access)).await
+    }
+
     pub async fn login(&self, email: &str, password: &str) -> Result<(LoginOutcome, Option<Tokens>)> {
         let v: Value = self
             .send_public(self.http.post(self.url("/api/v1/auth/login")).json(&json!({
@@ -639,6 +648,63 @@ mod tests {
     #[test]
     fn key_costs_ask_for_seven_days() {
         assert_eq!(key_costs_body(&[3, 4]), json!({ "api_key_ids": [3, 4], "days": 7 }));
+    }
+
+    /// Answers each connection with `body` and reports the request line and Authorization header.
+    async fn mock_relay(body: &'static str, hits: usize) -> (String, tokio::task::JoinHandle<Vec<(String, String)>>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let task = tokio::spawn(async move {
+            let mut seen = vec![];
+            for _ in 0..hits {
+                let (mut sock, _) = listener.accept().await.unwrap();
+                let mut buf = vec![0; 8192];
+                let n = sock.read(&mut buf).await.unwrap();
+                let req = String::from_utf8_lossy(&buf[..n]).to_string();
+                let line = req.lines().next().unwrap_or_default().to_string();
+                let auth = req
+                    .lines()
+                    .find_map(|l| l.strip_prefix("authorization: ").or_else(|| l.strip_prefix("Authorization: ")))
+                    .unwrap_or_default()
+                    .to_string();
+                seen.push((line, auth));
+                let resp = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                sock.write_all(resp.as_bytes()).await.unwrap();
+            }
+            seen
+        });
+        (origin, task)
+    }
+
+    #[tokio::test]
+    async fn announcements_list_and_mark_read() {
+        let (origin, seen) = mock_relay(
+            r#"{"code":0,"message":"success","data":[{"id":18,"title":"t","content":"c","notify_mode":"popup","created_at":"2026-10-29T12:33:22+08:00"}]}"#,
+            2,
+        )
+        .await;
+        let c = Client::new(&origin, &origin, "d").unwrap();
+        let list = c.announcements("acc").await.unwrap();
+        assert_eq!(list[0]["id"], 18);
+        assert_eq!(list[0]["notify_mode"], "popup");
+        c.announcement_read("acc", 18).await.unwrap();
+        let seen = seen.await.unwrap();
+        assert_eq!(seen[0], ("GET /api/v1/announcements HTTP/1.1".into(), "Bearer acc".into()));
+        assert_eq!(seen[1], ("POST /api/v1/announcements/18/read HTTP/1.1".into(), "Bearer acc".into()));
+    }
+
+    // Announcement covers are served by the relay; the webview may load images from it and nowhere else remote.
+    #[test]
+    fn csp_lets_relay_images_load() {
+        let conf: Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let csp = conf["app"]["security"]["csp"].as_str().unwrap();
+        let directive = |name: &str| csp.split(';').map(str::trim).find(|d| d.starts_with(name)).unwrap().to_string();
+        assert_eq!(directive("img-src"), format!("img-src 'self' data: {DEFAULT_ORIGIN}"));
+        assert_eq!(directive("connect-src"), "connect-src 'self' ipc: http://ipc.localhost");
     }
 
     #[test]

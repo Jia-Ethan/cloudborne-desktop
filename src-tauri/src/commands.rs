@@ -534,6 +534,20 @@ pub async fn invite_revoke(s: State<'_, Session>, id: i64) -> Result<serde_json:
     s.authed(|a| async move { c.invite_revoke(&a, id).await }).await
 }
 
+// ---- Announcements ----
+
+#[tauri::command]
+pub async fn announcements(s: State<'_, Session>) -> Result<serde_json::Value> {
+    let c = &s.client;
+    s.authed(|a| async move { c.announcements(&a).await }).await
+}
+
+#[tauri::command]
+pub async fn announcement_read(s: State<'_, Session>, id: i64) -> Result<serde_json::Value> {
+    let c = &s.client;
+    s.authed(|a| async move { c.announcement_read(&a, id).await }).await
+}
+
 // ---- Admin (ops origin) ----
 
 type Query = Vec<(String, String)>;
