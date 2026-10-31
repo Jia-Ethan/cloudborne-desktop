@@ -748,22 +748,71 @@ pub fn set_language(code: String) {
 
 const AGENT_KEY_NAME: &str = "Cloudborne Desktop · Agent";
 
-/// The account's first active OpenAI group and a key in it for the agent.
-async fn agent_key(s: &Session) -> Result<ApiKey> {
+/// An active OpenAI group the agent might use, with the agent's key there and
+/// another of the account's keys there, if it has them.
+struct AgentCandidate {
+    group: i64,
+    own: Option<ApiKey>,
+    other: Option<ApiKey>,
+}
+
+/// Groups to try, in order: those the agent already has a key in, then those
+/// another key can show the models of, then the rest; the relay's group order
+/// holds within each.
+fn agent_candidates(groups: Vec<Group>, keys: &[ApiKey]) -> Vec<AgentCandidate> {
+    let live = |k: &ApiKey, group: i64| k.status == "active" && k.group_id == Some(group);
+    let mut out: Vec<AgentCandidate> = groups
+        .into_iter()
+        .filter(|g| g.platform == "openai" && (g.status.is_empty() || g.status == "active"))
+        .map(|g| AgentCandidate {
+            group: g.id,
+            own: keys.iter().find(|k| live(k, g.id) && k.name == AGENT_KEY_NAME).cloned(),
+            other: keys.iter().find(|k| live(k, g.id) && k.name != AGENT_KEY_NAME).cloned(),
+        })
+        .collect();
+    out.sort_by_key(|c| if c.own.is_some() { 0 } else if c.other.is_some() { 1 } else { 2 });
+    out
+}
+
+/// The agent's key and models, from the first active OpenAI group that serves
+/// GPT chat models. Video and image groups are OpenAI groups too but list
+/// none, so a group's list is read before the agent settles there; a key made
+/// in a group that turns out to have none is removed again.
+async fn agent_key(s: &Session) -> Result<(ApiKey, AgentModels)> {
     let c = &s.client;
     let groups = s.authed(|a| async move { c.groups(&a).await }).await?;
-    let group = groups
-        .into_iter()
-        .find(|g| g.platform == "openai" && (g.status.is_empty() || g.status == "active"))
-        .ok_or_else(agent::not_available)?;
     let keys = s.authed(|a| async move { c.keys(&a).await }).await?;
-    if let Some(k) = keys
-        .into_iter()
-        .find(|k| k.name == AGENT_KEY_NAME && k.group_id == Some(group.id) && k.status == "active")
-    {
-        return Ok(k);
+    for AgentCandidate { group, own, other } in agent_candidates(groups, &keys) {
+        if let Some(k) = own {
+            let models = agent_model_list(c.models(&k.key).await?);
+            if models.models.is_empty() {
+                continue;
+            }
+            return Ok((k, models));
+        }
+        // A key that cannot list models (an IP allowlist, say) tells nothing;
+        // the group is then tried with a key of the agent's own.
+        let listed = match &other {
+            Some(k) => c.models(&k.key).await.ok(),
+            None => None,
+        };
+        if let Some(ids) = listed {
+            let models = agent_model_list(ids);
+            if models.models.is_empty() {
+                continue;
+            }
+            let k = s.authed(|a| async move { c.create_key(&a, AGENT_KEY_NAME, group).await }).await?;
+            return Ok((k, models));
+        }
+        let k = s.authed(|a| async move { c.create_key(&a, AGENT_KEY_NAME, group).await }).await?;
+        let models = agent_model_list(c.models(&k.key).await?);
+        if !models.models.is_empty() {
+            return Ok((k, models));
+        }
+        let id = k.id;
+        let _ = s.authed(|a| async move { c.delete_key(&a, id).await }).await;
     }
-    s.authed(|a| async move { c.create_key(&a, AGENT_KEY_NAME, group.id).await }).await
+    Err(agent::not_available())
 }
 
 #[derive(Serialize)]
@@ -796,8 +845,7 @@ fn version_key(id: &str) -> Vec<u32> {
 
 #[tauri::command]
 pub async fn agent_models(s: State<'_, Session>) -> Result<AgentModels> {
-    let key = agent_key(s.inner()).await?;
-    Ok(agent_model_list(s.client.models(&key.key).await?))
+    Ok(agent_key(s.inner()).await?.1)
 }
 
 #[tauri::command]
@@ -842,7 +890,7 @@ pub async fn agent_send(
 ) -> Result<String> {
     let id = options.session.clone();
     let key = match agent_key(s.inner()).await {
-        Ok(k) => k,
+        Ok((k, _)) => k,
         Err(e) => {
             let kind = if matches!(e, Error::Unauthorized) { "auth" } else { agent::classify(&e.to_string()) };
             let _ = channel.send(agent::Event::Failed { kind, message: e.to_string() });
@@ -918,6 +966,42 @@ mod agent_tests {
     #[test]
     fn empty_query_values_are_dropped() {
         assert_eq!(q(&[("date", ""), ("page", "2")]), vec![("page".to_string(), "2".to_string())]);
+    }
+
+    #[test]
+    fn agent_tries_groups_it_has_keys_in_first() {
+        let key = |id: i64, name: &str, group: i64, status: &str| ApiKey {
+            id,
+            key: format!("sk-{id}"),
+            name: name.into(),
+            group_id: Some(group),
+            status: status.into(),
+        };
+        // Relay order: a video group first, as an admin who can see it gets them.
+        let groups = vec![
+            group(109, "openai", 1.0, "active"),
+            group(114, "openai", 1.0, "active"),
+            group(3, "anthropic", 1.0, "active"),
+            group(115, "openai", 1.0, "active"),
+            group(102, "openai", 1.0, "active"),
+            group(8, "openai", 1.0, "disabled"),
+            group(57, "openai", 1.0, "active"),
+        ];
+        let keys = [
+            key(1, "mine", 102, "active"),
+            key(2, AGENT_KEY_NAME, 57, "active"),
+            key(3, AGENT_KEY_NAME, 115, "active"),
+            key(4, AGENT_KEY_NAME, 114, "inactive"),
+            key(5, "old", 109, "inactive"),
+        ];
+        let order: Vec<_> = agent_candidates(groups, &keys)
+            .into_iter()
+            .map(|c| (c.group, c.own.map(|k| k.id), c.other.map(|k| k.id)))
+            .collect();
+        assert_eq!(
+            order,
+            [(115, Some(3), None), (57, Some(2), None), (102, None, Some(1)), (109, None, None), (114, None, None)]
+        );
     }
 
     #[test]
