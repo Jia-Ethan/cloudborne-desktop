@@ -6,7 +6,14 @@ Cloudborne（栖云）中转站的桌面客户端：用中转站账号登录、�
 
 ## 状态
 
-v0.9.31 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
+v0.9.32 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
+
+- 斗地主管理页重新排版（v0.9.32）：
+  - 设置一项一行：左边名称和说明，右边控件。服务费是「不收 / 收取」加费率，两个入场门槛带「倍底分」单位，赖子场说明随所选状态变化。
+  - 底部一条保存栏代替原来三个保存按钮：改过的行有橙点，可撤销；只把改了的字段一次发给中转站；超出范围的值（费率 0–10%、门槛 10–100 整数）就地标红，不能保存。
+  - 数据：时间范围在「数据」标题旁；四张卡片是平台合计、服务费收入（附玩家毛赢和净到账）、AI 座位盈亏、对局（附真人玩家数）；时间范围内有赖子场对局时多一张「按玩法」表。
+  - 最近对局：每个座位名字在上、金额在下，地主座位浅橙底加皇冠，AI 座位带「AI」标记，24 小时制时间，默认 10 局，可展开全部 30 局。
+  - 统计口径不变，不需要更新 relay。
 
 - 公告（v0.9.31）：
   - 侧边栏「Cloudborne」右边多了铃铛，有未读公告时带圆点；收起成图标栏时铃铛在折叠按钮下方。
@@ -153,6 +160,6 @@ brand/render.sh          # 用本机 Chrome 渲染 app-icon-1024.png 和 preview
 3. CI 构建 macOS 通用包和 Windows 安装包，生成 `.app.tar.gz` / `-setup.exe` 的签名和 `latest.json`，挂到一个 draft Release 上。
 4. 检查 draft 没问题后点 Publish（不要勾 pre-release，保持 Latest）。发布那一刻起，已安装的客户端在下次检查时就会看到更新。
 
-当前公开版本：[`v0.9.31`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.31)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.31/Cloudborne-Windows-setup.exe)。
+当前公开版本：[`v0.9.32`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.32)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.32/Cloudborne-Windows-setup.exe)。
 
 更新私钥在本机 `~/.cloudborne-desktop-signing/`（权限 700），CI 里是 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 两个 secret。私钥丢了，已装的客户端就收不到后续更新，只能手动重装，所以要另外备份。0.2.0 及更早的版本没有更新功能，需要手动装一次 0.2.1。
