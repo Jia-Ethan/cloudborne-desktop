@@ -37,18 +37,25 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
   const [summary, setSummary] = useState<DdzSummary | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Kept apart from `error` so a later successful summary load cannot hide why the settings stay locked.
+  const [settingsError, setSettingsError] = useState('');
   const [allDeals, setAllDeals] = useState(false);
   const seq = useRef(0);
 
-  useEffect(() => {
-    api
-      .adminDdzSettings()
-      .then((st) => {
-        setSettings(st);
-        setDraft(draftOf(st));
-      })
-      .catch((e) => setError(errorText(e, t('common.genericError'))));
+  const loadSettings = useCallback(async () => {
+    try {
+      const st = await api.adminDdzSettings();
+      setSettings(st);
+      setDraft(draftOf(st));
+      setSettingsError('');
+    } catch (e) {
+      setSettingsError(errorText(e, t('common.genericError')));
+    }
   }, [t]);
+
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
 
   const loadSummary = useCallback(async () => {
     const n = ++seq.current;
@@ -113,7 +120,7 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
   return (
     <div className="main-scroll">
       <div className="main-column">
-        {error && <div className="usage-error rise">{error}</div>}
+        {(settingsError || error) && <div className="usage-error rise">{settingsError || error}</div>}
 
         <section className="card ddz-adm-card rise" style={rise(0)}>
           <header className="ddz-adm-head">
@@ -146,7 +153,7 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
             <Row label={t('admin.ddz.fee')} hint={t('admin.ddz.feeHint')} changed={changed('fee_enabled', 'fee_bps')} error={errorFor('fee_rate')}>
               <Choice
                 label={t('admin.ddz.fee')}
-                value={draft?.fee_enabled ? 'on' : 'off'}
+                value={draft ? (draft.fee_enabled ? 'on' : 'off') : null}
                 options={[
                   ['off', t('admin.ddz.feeOff')],
                   ['on', t('admin.ddz.feeOn')],
@@ -176,12 +183,12 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
             </Row>
             <Row
               label={t('admin.ddz.laizi')}
-              hint={`${t(`admin.ddz.laiziHint.${draft?.laizi ?? 'off'}`)}${draft?.laizi === 'off' ? '' : t('admin.ddz.laiziOld')}`}
+              hint={draft ? `${t(`admin.ddz.laiziHint.${draft.laizi}`)}${draft.laizi === 'off' ? '' : t('admin.ddz.laiziOld')}` : t('admin.ddz.laiziOld')}
               changed={changed('laizi')}
             >
               <Choice
                 label={t('admin.ddz.laizi')}
-                value={draft?.laizi ?? 'off'}
+                value={draft?.laizi ?? null}
                 options={LAIZI_STATES.map((v) => [v, t(`admin.ddz.laizi.${v}`)] as const)}
                 disabled={locked}
                 onChange={(v) => edit({ laizi: v })}
@@ -199,7 +206,7 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
             </Row>
 
             <footer className={`ddz-adm-save ${patch ? 'dirty' : ''}`}>
-              <span aria-live="polite">{patch ? t('admin.ddz.unsaved', { n: Object.keys(patch).length }) : t('admin.ddz.allSaved')}</span>
+              <span aria-live="polite">{!draft ? t('admin.ddz.notLoaded') : patch ? t('admin.ddz.unsaved', { n: Object.keys(patch).length }) : t('admin.ddz.allSaved')}</span>
               <button type="button" className="btn btn-quiet" disabled={!patch || saving} onClick={() => settings && setDraft(draftOf(settings))}>
                 {t('admin.ddz.revert')}
               </button>
@@ -220,7 +227,13 @@ export function AdminDdz({ onOpenUser, onToast }: { onOpenUser: (u: { id: number
                 </button>
               ))}
             </div>
-            <button className="usage-refresh" title={t('admin.ddz.refresh')} aria-label={t('admin.ddz.refresh')} disabled={busy} onClick={loadSummary}>
+            <button className="usage-refresh" title={t('admin.ddz.refresh')} aria-label={t('admin.ddz.refresh')} disabled={busy}
+              onClick={() => {
+                // Settings only reload here when they failed to load; otherwise an unsaved draft would be thrown away.
+                if (!settings) loadSettings();
+                loadSummary();
+              }}
+            >
               <Icon name="refresh" className={`size-[15px] ${busy ? 'animate-spin' : ''}`} />
             </button>
           </div>
@@ -352,7 +365,8 @@ function Choice<V extends string>({
   onChange,
 }: {
   label: string;
-  value: V;
+  /** Null while the settings are not loaded: nothing is shown as chosen. */
+  value: V | null;
   options: readonly (readonly [V, string])[];
   disabled: boolean;
   onChange: (v: V) => void;
