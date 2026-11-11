@@ -9,7 +9,11 @@ const PAGE = 20;
 
 type Action = { kind: 'add' | 'subtract'; user: AdminUser } | { kind: 'status'; user: AdminUser } | null;
 
+// In-flight counts come from a light endpoint and stay live.
 const CONCURRENCY_REFRESH_MS = 5000;
+// The list also carries each user's 30-day spend, which the server sums from
+// usage rows and keeps for 30 seconds, so asking more often only adds load.
+const LIST_REFRESH_MS = 30_000;
 
 function concurrencyFor(user: AdminUser, live: Record<string, UserConcurrencyInfo>): UserConcurrencyInfo | null {
   return live[String(user.id)] ?? null;
@@ -125,12 +129,18 @@ export function AdminUsers({ focus, onToast }: { focus: { id: number; email: str
 
   useEffect(() => {
     void tick.current.refreshConcurrency();
-    const id = window.setInterval(() => {
+    const live = window.setInterval(() => {
       if (document.hidden) return;
       void tick.current.refreshConcurrency();
-      if (!dialogOpen.current) void tick.current.reorder();
     }, CONCURRENCY_REFRESH_MS);
-    return () => window.clearInterval(id);
+    const list = window.setInterval(() => {
+      if (document.hidden || dialogOpen.current) return;
+      void tick.current.reorder();
+    }, LIST_REFRESH_MS);
+    return () => {
+      window.clearInterval(live);
+      window.clearInterval(list);
+    };
   }, []);
 
   const pages = Math.max(1, Math.ceil(total / PAGE));
