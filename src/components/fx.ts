@@ -405,3 +405,133 @@ export function lightning(canvas: HTMLCanvasElement, opts: { x: number; y: numbe
     () => ctx.clearRect(0, 0, width, height),
   );
 }
+
+/**
+ * 3D-perspective paper confetti exploding upward out of a freshly torn foil pack
+ * mouth, then fanning out under realistic quadratic drag and tumbling drift.
+ */
+export function packConfetti(
+  canvas: HTMLCanvasElement,
+  opts: {
+    /** Mouth center in viewport pixels. */
+    ox: number;
+    oy: number;
+    /** Mouth width in pixels. */
+    mouthWidth: number;
+    colors: readonly string[];
+    count?: number;
+  },
+) {
+  const { ctx, width, height } = fit(canvas);
+  if (!ctx) return () => {};
+
+  const shapes = [new Path2D(), new Path2D(), new Path2D('M0-6 1.3-1.3 6 0 1.3 1.3 0 6-1.3 1.3-6 0-1.3-1.3Z')];
+  shapes[0].arc(0, 0, 4.2, 0, Math.PI * 2);
+  shapes[1].roundRect(-3.4, -5.8, 6.8, 11.6, 1.8);
+
+  const count = opts.count ?? 180;
+  const cx = width / 2;
+  const cy = height * 0.4;
+  const baseX = opts.ox - cx;
+  const baseY = opts.oy - cy;
+  const randRange = (a: number, b: number) => a + Math.random() * (b - a);
+  const spreadScale = Math.min(1, Math.max(0.55, width / 1000));
+
+  type Bit = {
+    kind: number;
+    fill: string;
+    x: number;
+    y: number;
+    z: number;
+    vx: number;
+    vy: number;
+    vz: number;
+    r: number;
+    r0: number;
+    spin: number;
+    drag: number;
+    slip: number;
+    glide: number;
+    sc: number;
+    ph: number;
+    age: number;
+  };
+
+  const bits: Bit[] = Array.from({ length: count }, (_, i) => {
+    const lane = randRange(-0.46, 0.46);
+    const vt = 250 + 380 * Math.random() ** 1.5;
+    const angle = (lane * 2 + randRange(-0.45, 0.45)) * spreadScale;
+    const speed = randRange(580, 2300);
+    const r0 = randRange(0, 360);
+    return {
+      kind: i % 3,
+      fill: opts.colors[i % opts.colors.length],
+      x: baseX + lane * opts.mouthWidth,
+      y: baseY + randRange(-8, 14),
+      z: randRange(10, 90),
+      vx: Math.sin(angle) * speed,
+      vy: -Math.cos(angle) * speed,
+      vz: randRange(-40, 180),
+      r: r0,
+      r0,
+      spin: randRange(-680, 680),
+      drag: 2500 / (vt * vt),
+      slip: randRange(850, 2400),
+      glide: Math.sign(lane || 1) * randRange(-180, 780),
+      sc: randRange(0.85, 1.75),
+      ph: randRange(0, Math.PI * 2),
+      age: i < 55 ? 0 : -randRange(0, 0.2),
+    };
+  });
+
+  const dpr = canvas.width / Math.max(1, width);
+  const RAD = Math.PI / 180;
+
+  return loop(
+    (dtFrame) => {
+      const dt = (dtFrame * 16.67) / 1000;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      let alive = 0;
+      for (const b of bits) {
+        b.age += dt;
+        if (b.age < 0) {
+          alive++;
+          continue;
+        }
+        b.z += b.vz * dt;
+        b.vy += 2450 * dt;
+        b.vx += (Math.sin(b.ph) * b.slip + b.glide) * dt;
+        const v = Math.hypot(b.vx, b.vy);
+        const f = 1 / (1 + b.drag * Math.min(1, 0.07 + b.age / 0.45) * v * dt);
+        const turn = 0.35 + v / 820;
+        b.vx *= f;
+        b.vy *= f;
+        b.x += b.vx * dt;
+        b.y += b.vy * dt;
+        b.r += b.spin * turn * dt;
+        b.ph += 7 * turn * dt;
+
+        const screenY = cy + b.y * (1400 / Math.max(200, 1400 - b.z));
+        if (screenY >= height + 40) continue;
+        alive++;
+
+        const persp = 1400 / Math.max(220, 1400 - b.z);
+        const k = dpr * persp * b.sc;
+        const cr = Math.cos(b.r * RAD);
+        const sr = Math.sin(b.r * RAD);
+        const cq = Math.cos((b.r - b.r0) * 0.7 * RAD);
+        ctx.setTransform(k * cr, k * sr, -k * sr * cq, k * cr * cq, (cx + b.x * persp) * dpr, (cy + b.y * persp) * dpr);
+        ctx.fillStyle = b.fill;
+        ctx.fill(shapes[b.kind]);
+      }
+
+      return alive > 0;
+    },
+    () => {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    },
+  );
+}

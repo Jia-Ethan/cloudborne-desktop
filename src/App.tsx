@@ -416,7 +416,7 @@ export function App() {
             <NavButton icon="home" label={t('nav.home')} rail={rail} selected={view === 'home'} onClick={() => setView('home')} />
             <NavButton icon="chart" label={t('nav.usage')} rail={rail} selected={view === 'usage'} onClick={() => setView('usage')} />
             {lotteryOn && (
-              <NavButton icon="gift" label={t('nav.lottery')} rail={rail} selected={view === 'lottery'} onClick={() => setView('lottery')}>
+              <NavButton icon="pack" label={t('nav.lottery')} rail={rail} selected={view === 'lottery'} onClick={() => setView('lottery')}>
                 {chests > 0 && (
                   <span className="nav-badge" aria-label={t('lottery.myChests', { n: chests })}>
                     {chests > 99 ? '99+' : chests}
