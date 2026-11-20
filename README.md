@@ -6,7 +6,15 @@ Cloudborne（栖云）中转站的桌面客户端：用中转站账号登录、�
 
 ## 状态
 
-v0.9.32 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
+v0.9.33 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
+
+- 抽奖升级为「撕卡包」交互与全息收藏卡（v0.9.33）：
+  - 原「宝箱」统一升级为「卡包」（中英文文案与侧边栏卡包图标同步切换），业务规则、每日低消、消费返包、购买卡包与保底/加成机制不变，不需要更新 relay。
+  - 3D 铝箔卡包：暖色画廊舞台（深色模式自动切暖炭灰画廊），支持沿封条横向拖拽手撕（0%–55% 可松手反悔不扣次数，越过提交点才请求开包）、12 片卷曲金属内衬撕条、锯齿金属断口、极光/稀有度光瀑、6 套栖云限定涂装轮换，以及首开 ×2 贴纸、保底预告条和连抽叠包腰封；也支持轻点卡包或点顶部按钮直接撕开。
+  - 5:7 收藏卡与全窗揭晓舞台：撕断后无缝进入全窗口画廊，卡包下坠、彩纸从袋口喷涌、卡牌旋出铺开（单抽居中特写，2–5 张弧形扇面，6–10 张双排陈列），四档稀有度专属全息/微钻/双窗厚釉材质与 3D 浮起奖品徽章（Token 包带对应厂商图标），保留老虎机数字滚轮；支持在画廊内连续「再撕一包」。
+  - 连抽大奖悬念翻面：2–10 连撕中的史诗和传说卡先以发光神秘卡背落地，顶部汇总不剧透隐藏金额，点击单张或「全部翻开」后 3D 翻面揭晓并触发电弧/金币雨/微闪特效。
+  - 内置零资源 Web Audio 合成音效（随手速调制的撕铝箔声、和弦与翻牌声，右上角可一键静音并记住偏好），支持键盘导航与系统「减少动态效果」降级。
+  - 同版带出此前合入 `main` 的管理端修复与优化：斗地主管理设置加载失败时保持报错并允许刷新重试；用户列表改为每 30 秒重载，实时并发计数保持每 5 秒刷新。
 
 - 斗地主管理页重新排版（v0.9.32）：
   - 设置一项一行：左边名称和说明，右边控件。服务费是「不收 / 收取」加费率，两个入场门槛带「倍底分」单位，赖子场说明随所选状态变化。
@@ -160,6 +168,6 @@ brand/render.sh          # 用本机 Chrome 渲染 app-icon-1024.png 和 preview
 3. CI 构建 macOS 通用包和 Windows 安装包，生成 `.app.tar.gz` / `-setup.exe` 的签名和 `latest.json`，挂到一个 draft Release 上。
 4. 检查 draft 没问题后点 Publish（不要勾 pre-release，保持 Latest）。发布那一刻起，已安装的客户端在下次检查时就会看到更新。
 
-当前公开版本：[`v0.9.32`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.32)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.32/Cloudborne-Windows-setup.exe)。
+当前公开版本：[`v0.9.33`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.33)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.33/Cloudborne-Windows-setup.exe)。
 
 更新私钥在本机 `~/.cloudborne-desktop-signing/`（权限 700），CI 里是 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 两个 secret。私钥丢了，已装的客户端就收不到后续更新，只能手动重装，所以要另外备份。0.2.0 及更早的版本没有更新功能，需要手动装一次 0.2.1。
