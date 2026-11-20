@@ -6,7 +6,11 @@ Cloudborne（栖云）中转站的桌面客户端：用中转站账号登录、�
 
 ## 状态
 
-v0.9.34 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
+v0.9.35 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
+
+- 彻底修复 macOS 毛玻璃窗口撕卡包与连抽画廊卡顿（v0.9.35）：
+  - 修复 v0.9.34 在真实前台 macOS `NSVisualEffectView` 透明毛玻璃窗口下点开单包/十包仍卡在 22–36 FPS（频繁 200–370ms 卡顿）的根因：揭晓画廊打开时用 `content-visibility: hidden` 跳过背景工作区（含侧边栏、晨光渐变动画与卡片 `backdrop-filter`）的合成并保留滚动位置，将画廊背景拆为实底 + GPU 提升径向渐晕层，彻底消除后台毛玻璃重采样。
+  - 将撕裂时 72 个带 `conic-gradient` 遮罩和动态 `clip-path` 的 3D DOM 撕条切片替换为单层 Canvas 2D 透视卷曲渲染器，消除 WebKit `GPUProcess` 合成背压；移除画廊中段 `preserve-3d` → `flat` 切换（改用 `z-index` 分层）与首帧闪现，延后开包结果同步至卡牌落位后，并在进入卡包页时离关键路径预热 Web Audio 引擎，将单包/十包点击开包、翻牌与悬停全程稳定至 59–60 FPS。不需要更新 relay。
 
 - 撕卡包与连抽画廊性能大幅优化（v0.9.34）：
   - 针对 macOS WKWebView（及 Windows WebView2）全链路渲染与合成重构，原生透明毛玻璃窗口 10 连抽实测从 17–37 FPS 提升至稳定 59–61 FPS，DOM 节点从约 1,400 降至 431，静止后物理循环自动休眠至零占用。
@@ -173,6 +177,6 @@ brand/render.sh          # 用本机 Chrome 渲染 app-icon-1024.png 和 preview
 3. CI 构建 macOS 通用包和 Windows 安装包，生成 `.app.tar.gz` / `-setup.exe` 的签名和 `latest.json`，挂到一个 draft Release 上。
 4. 检查 draft 没问题后点 Publish（不要勾 pre-release，保持 Latest）。发布那一刻起，已安装的客户端在下次检查时就会看到更新。
 
-当前公开版本：[`v0.9.34`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.34)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.34/Cloudborne-Windows-setup.exe)。
+当前公开版本：[`v0.9.35`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.35)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.35/Cloudborne-Windows-setup.exe)。
 
 更新私钥在本机 `~/.cloudborne-desktop-signing/`（权限 700），CI 里是 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 两个 secret。私钥丢了，已装的客户端就收不到后续更新，只能手动重装，所以要另外备份。0.2.0 及更早的版本没有更新功能，需要手动装一次 0.2.1。
