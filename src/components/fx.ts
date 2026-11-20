@@ -454,6 +454,21 @@ export interface FxEngine {
  * Automatically hides the canvas when no effects are active so macOS CoreAnimation
  * skips compositing an empty full-screen alpha texture over resting 3D cards.
  */
+function fitViewport(canvas: HTMLCanvasElement, maxDpr = MAX_FX_DPR) {
+  const dpr = Math.min(maxDpr, window.devicePixelRatio || 1);
+  const width = window.innerWidth || 1;
+  const height = window.innerHeight || 1;
+  const w = Math.max(1, Math.round(width * dpr));
+  const h = Math.max(1, Math.round(height * dpr));
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+  }
+  const ctx = canvas.getContext('2d');
+  ctx?.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, width, height, dpr };
+}
+
 export function createFxEngine(canvas: HTMLCanvasElement): FxEngine {
   const layers: FxLayer[] = [];
   let rafId = 0;
@@ -467,17 +482,18 @@ export function createFxEngine(canvas: HTMLCanvasElement): FxEngine {
   canvas.style.visibility = 'hidden';
 
   const ensureSized = () => {
-    const fitted = fit(canvas, MAX_FX_DPR);
+    const fitted = fitViewport(canvas, MAX_FX_DPR);
     ctx = fitted.ctx;
     width = fitted.width;
     height = fitted.height;
     dpr = fitted.dpr;
   };
+  ensureSized();
 
   const onResize = () => {
-    if (layers.length > 0) ensureSized();
+    ensureSized();
   };
-  window.addEventListener('resize', onResize);
+  window.addEventListener('resize', onResize, { passive: true });
 
   const stopLoop = () => {
     if (rafId) {

@@ -434,21 +434,30 @@ function buildEngine(ctx: AudioContext): SoundEngine {
   };
 }
 
-export function unlockLotterySound(): void {
-  if (typeof window === 'undefined') return;
-  if (engine) {
-    if (engine.ctx.state === 'suspended') void engine.ctx.resume().catch(() => {});
-    return;
-  }
+function ensureEngine(): SoundEngine | null {
+  if (typeof window === 'undefined' || !enabled) return null;
+  if (engine) return engine;
   const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  if (!AC) return;
+  if (!AC) return null;
   try {
     const ctx = new AC({ latencyHint: 'balanced' });
     engine = buildEngine(ctx);
-    if (ctx.state === 'suspended') void ctx.resume().catch(() => {});
+    return engine;
   } catch {
     engine = null;
+    return null;
   }
+}
+
+/** Pre-allocates the AudioContext and procedural buffers off the critical click path. */
+export function warmLotterySound(): void {
+  ensureEngine();
+}
+
+export function unlockLotterySound(): void {
+  const eng = ensureEngine();
+  if (!eng) return;
+  if (eng.ctx.state === 'suspended') void eng.ctx.resume().catch(() => {});
 }
 
 function safeCall<K extends keyof Omit<SoundEngine, 'ctx' | 'setMuted'>>(

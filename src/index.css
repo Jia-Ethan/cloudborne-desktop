@@ -3135,6 +3135,15 @@ html[data-glass='mica'] {
       background: #1d1b22;
     }
   }
+  /* Skip rendering & compositing the entire workspace behind fullscreen PackPortal
+     while preserving scroll positions and avoiding re-triggering entrance animations on close. */
+  html.pk-portal-open .workspace {
+    content-visibility: hidden;
+    pointer-events: none;
+  }
+  html.pk-portal-open .aurora-header::before {
+    animation-play-state: paused;
+  }
 
   .pk-behind-portal {
     visibility: hidden;
@@ -3318,6 +3327,10 @@ html[data-glass='mica'] {
   .pk-wrap.pk-suspended {
     visibility: hidden;
     pointer-events: none;
+  }
+  .pk-wrap.pk-suspended .pk-pack.is-pity-hot::after,
+  .pk-wrap.pk-suspended .pk-core-star-svg {
+    animation-play-state: paused;
   }
   .pk-scene {
     position: absolute;
@@ -3740,37 +3753,16 @@ html[data-glass='mica'] {
       #fff;
   }
 
-  /* 12-slice curling tear strip & metallic foil underside */
-  .pk-flap {
+  /* Single Canvas 2D curling tear strip & metallic foil underside */
+  .pk-flap-canvas {
     position: absolute;
-    inset: 0;
-    transform-style: preserve-3d;
+    left: -25%;
+    top: -45%;
+    width: 150%;
+    height: 95%;
+    transform: translateZ(calc(var(--d) / 2 + 1.2px));
     visibility: hidden;
     pointer-events: none;
-  }
-  .pk-flap.on {
-    visibility: visible;
-  }
-  .pk-ply {
-    position: absolute;
-    inset: 0;
-    transform-style: preserve-3d;
-    transform-origin: 0 0;
-  }
-  /* Lightweight skins for the 12 curling tear strip slices (top ~20% only: no bottom crimp or bottom creases). */
-  .pk-ply .pk-skin {
-    background:
-      repeating-linear-gradient(90deg, rgb(0 0 0 / 0.19) 0 1px, rgb(255 255 255 / 0.09) 1px 2px, transparent 2px 5px) 0 0 / 100% var(--crimp) no-repeat,
-      var(--pack);
-    mask:
-      conic-gradient(from 135deg at 50% 0, #0000, #000 1deg 89deg, #0000 90deg) 0 0 / var(--tooth) calc(var(--tooth) / 2) repeat-x,
-      linear-gradient(#000, #000) 0 calc(var(--tooth) / 2) / 100% 100% no-repeat;
-    -webkit-mask:
-      conic-gradient(from 135deg at 50% 0, #0000, #000 1deg 89deg, #0000 90deg) 0 0 / var(--tooth) calc(var(--tooth) / 2) repeat-x,
-      linear-gradient(#000, #000) 0 calc(var(--tooth) / 2) / 100% 100% no-repeat;
-  }
-  .pk-ply .pk-front {
-    transform: translateZ(0.4px);
   }
   .pk-skin.pk-foil {
     transform: rotateY(180deg) translateZ(0.4px);
@@ -3839,9 +3831,17 @@ html[data-glass='mica'] {
     z-index: 60;
     overflow: hidden;
     color: var(--pk-ink);
-    background: radial-gradient(120% 90% at 50% 38%, var(--pk-bg-1), var(--pk-bg-2) 58%, var(--pk-bg-3));
+    background: var(--pk-bg-2);
     user-select: none;
     -webkit-user-select: none;
+  }
+  .pk-portal::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(120% 90% at 50% 38%, var(--pk-bg-1), var(--pk-bg-2) 58%, var(--pk-bg-3));
+    transform: translateZ(0);
+    pointer-events: none;
   }
   @media (prefers-color-scheme: dark) {
     .pk-portal {
@@ -3931,9 +3931,6 @@ html[data-glass='mica'] {
     inset: 0;
     perspective: 1400px;
     perspective-origin: 50% 40%;
-    transform-style: preserve-3d;
-  }
-  .pk-portal-scene.flat {
     transform-style: flat;
   }
   .pk-drop-pouch,
@@ -3946,6 +3943,21 @@ html[data-glass='mica'] {
     transform-style: preserve-3d;
     pointer-events: none;
     will-change: transform;
+  }
+  /* Lightweight top-strip mask for the flying torn strip (no bottom crimp or bottom SVG creases). */
+  .pk-fly-strip .pk-skin {
+    background:
+      repeating-linear-gradient(90deg, rgb(0 0 0 / 0.19) 0 1px, rgb(255 255 255 / 0.09) 1px 2px, transparent 2px 5px) 0 0 / 100% var(--crimp) no-repeat,
+      var(--pack);
+    mask:
+      conic-gradient(from 135deg at 50% 0, #0000, #000 1deg 89deg, #0000 90deg) 0 0 / var(--tooth) calc(var(--tooth) / 2) repeat-x,
+      linear-gradient(#000, #000) 0 calc(var(--tooth) / 2) / 100% 100% no-repeat;
+    -webkit-mask:
+      conic-gradient(from 135deg at 50% 0, #0000, #000 1deg 89deg, #0000 90deg) 0 0 / var(--tooth) calc(var(--tooth) / 2) repeat-x,
+      linear-gradient(#000, #000) 0 calc(var(--tooth) / 2) / 100% 100% no-repeat;
+  }
+  .pk-fly-strip .pk-skin.pk-foil {
+    background: linear-gradient(97deg, #e3e8f2, #fff 12%, #cfd7e6 26%, #fff 44%, #dbe1ee 58%, #fff 76%, #d3dbe9);
   }
   .pk-inspect-scrim {
     position: fixed;

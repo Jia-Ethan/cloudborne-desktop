@@ -140,6 +140,28 @@ export function metalBand(pts: readonly { x: number; y: number; metal: number }[
   return [...forward, ...back];
 }
 
+/** Fast body-only clip paths used during live tearing (curling flap renders on Canvas 2D). */
+export function computeBodyClips(points: readonly TearPoint[], progress: number, dir: 1 | -1) {
+  const p = clamp(progress, 0, 1);
+  const xt = dir > 0 ? p * 100 : 100 - p * 100;
+  const yt = yAt(points, xt);
+  const tip = { x: xt, y: yt, metal: 0.45 };
+
+  const torn = points.filter((q) => (dir > 0 ? q.x < xt : q.x > xt));
+  const tornPts: Pt[] = torn.map((q) => [q.x, q.y]);
+
+  const rest: Pt[] =
+    dir > 0
+      ? [[xt, 0], [100, 0], [100, 100], [0, 100], ...tornPts, [xt, yt]]
+      : [[0, 0], [xt, 0], [xt, yt], ...tornPts, [100, 100], [0, 100]];
+
+  const frontBodyClip = poly(rest);
+  const lipPts = dir > 0 ? [...torn, tip] : [tip, ...torn];
+  const bodyLipClip = lipPts.length >= 2 ? poly(metalBand(lipPts, 1)) : 'polygon(0 0)';
+
+  return { xt, yt, frontBodyClip, bodyLipClip };
+}
+
 /** Computes body clip paths, torn lip clip path, flap origin, and curling slice transforms. */
 export function computeTearGeometry(opts: {
   points: readonly TearPoint[];

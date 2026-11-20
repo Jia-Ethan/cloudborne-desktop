@@ -173,6 +173,18 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wakeSimRef = useRef<() => void>(() => {});
   const refreshOptRef = useRef<() => void>(() => {});
+  const appliedHandoffRef = useRef<PackHandoff>(initialHandoff);
+  const acceptedHandoffRef = useRef<PackHandoff | null>(null);
+  const latestHandoffRef = useRef<PackHandoff>(handoff);
+  latestHandoffRef.current = handoff;
+  const onResultAcceptedRef = useRef(onResultAccepted);
+  onResultAcceptedRef.current = onResultAccepted;
+
+  const acceptResult = useCallback((target: PackHandoff) => {
+    if (acceptedHandoffRef.current === target) return;
+    acceptedHandoffRef.current = target;
+    onResultAcceptedRef.current(target.status);
+  }, []);
 
   // Refs synced to latest React state for the physics loop.
   const inspectedRef = useRef<number | null>(inspectedIdx);
@@ -299,8 +311,11 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
     wakeSimRef.current();
   }, [flippedSet, inspectedIdx]);
 
-  // Reset per-reveal state whenever a fresh handoff arrives (including consecutive in-portal rips).
+  // Reset per-reveal state only when a NEW handoff arrives (consecutive in-portal rips);
+  // initial mount state is already initialized synchronously in useState above.
   useEffect(() => {
+    if (appliedHandoffRef.current === handoff) return;
+    appliedHandoffRef.current = handoff;
     const nextFlipped = new Set<number>();
     orderedDraws.forEach((d, i) => {
       if (!isMysteryDraw(d, orderedDraws.length)) nextFlipped.add(i);
@@ -310,9 +325,19 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
     setSpreadReady(reducedMotion());
     setInspectedIdx(null);
     setPortalError('');
-    // Notify parent right away so balances & history stay synced.
-    onResultAccepted(handoff.status);
-  }, [handoff, orderedDraws, onResultAccepted]);
+  }, [handoff, orderedDraws]);
+
+  // Sync balance & history to App/LotteryView AFTER cards have landed (avoiding mid-flight React + api.me re-renders),
+  // and guarantee flush on unmount if the user closes early.
+  useEffect(() => {
+    if (spreadReady) acceptResult(handoff);
+  }, [spreadReady, handoff, acceptResult]);
+
+  useEffect(() => {
+    return () => {
+      acceptResult(latestHandoffRef.current);
+    };
+  }, [acceptResult]);
 
   // Main 3D ejection -> orbital unwind -> sleepable interactive hover-tilt simulation.
   useEffect(() => {
@@ -390,8 +415,12 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
     refreshOpt();
     refreshOptRef.current = refreshOpt;
 
-    if (sceneRef.current) {
-      sceneRef.current.classList.toggle('flat', reduce);
+    if (dropPackRef.current) {
+      dropPackRef.current.style.visibility = reduce ? 'hidden' : 'visible';
+      dropPackRef.current.style.zIndex = '15';
+    }
+    if (flyStripRef.current) {
+      flyStripRef.current.style.visibility = reduce ? 'hidden' : 'visible';
     }
 
     // Launch perspective confetti straight out of the pack mouth on the single shared canvas!
@@ -513,7 +542,8 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
 
     const startUnwind = () => {
       unwound = true;
-      sceneRef.current?.classList.add('flat');
+      // Drop the falling pouch behind orbiting cards via z-index (zero transform-style rebuild stall!).
+      if (dropPackRef.current) dropPackRef.current.style.zIndex = '0';
       if (n > 1) lotterySfx.swirl(orbitDur);
       for (const c of cards) {
         c.phase = 'orbit';
@@ -589,13 +619,13 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
           fallRz += (handoff.tearDir * 10 - fallRz) * Math.min(1, dt * 8);
         }
         dropPackRef.current.style.transform = `translate3d(${startX.toFixed(1)}px,${(startY + fallY).toFixed(1)}px,0) rotateZ(${fallRz.toFixed(2)}deg)`;
-        if (startY + fallY > vh + ph) {
+        if (startY + fallY > vh / 2 + ph) {
           packDropped = true;
           dropPackRef.current.style.visibility = 'hidden';
         }
       }
 
-      // Launch the torn foil strip upward and tumble it off-screen.
+      // Launch the torn foil strip upward and hide as soon as it clears the top edge.
       if (!stripDone && flyStripRef.current) {
         stripVy += 2600 * dt;
         stripX += stripVx * dt;
@@ -603,7 +633,7 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
         stripRz += handoff.tearDir * 480 * dt;
         stripRx -= 300 * dt;
         flyStripRef.current.style.transform = `translate3d(${stripX.toFixed(1)}px,${stripY.toFixed(1)}px,20px) rotateZ(${stripRz.toFixed(1)}deg) rotateX(${stripRx.toFixed(1)}deg)`;
-        if (t > 1.45) {
+        if (stripY < -vh / 2 - ph || t > 0.85) {
           stripDone = true;
           flyStripRef.current.style.visibility = 'hidden';
         }
@@ -847,10 +877,12 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
   );
   const unflippedCount = unflippedIndices.length;
 
-  const leftPacks = status.chests;
+  const liveStatus = handoff.status ?? status;
+  const leftPacks = liveStatus.chests;
   const nextBatch = batchSize(leftPacks);
 
   const openAnother = (count: number) => {
+    acceptResult(handoff);
     lotterySfx.tick();
     fxEngineRef.current?.clear();
     flipTimersRef.current.forEach(clearTimeout);
@@ -875,18 +907,31 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
     };
   }, [handoff]);
 
-  const portalStyle = useMemo(() => {
+  // Precompute Frame-0 handoff geometry so pouch, strip, and cards paint at exact pack coordinates on Frame 0 (zero center flash).
+  const initFrame = useMemo(() => {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const pw = handoff.rect.width || 245;
+    const ph = handoff.rect.height || 355;
+    const startX = handoff.rect.left + pw / 2 - vw / 2;
+    const startY = handoff.rect.top + ph / 2 - vh / 2;
     const cw =
       orderedDraws.length === 1
-        ? clamp(Math.min(window.innerWidth - 120, (window.innerHeight - 210) / 1.4), 210, 272)
-        : clamp(Math.min(window.innerHeight * 0.56, 400) * 0.69 * 0.88, 175, 240);
+        ? clamp(Math.min(vw - 120, (vh - 210) / 1.4), 210, 272)
+        : clamp(Math.min(vh * 0.56, 400) * 0.69 * 0.88, 175, 240);
+    const reduce = reducedMotion();
+    const slots = reduce ? computeCardLayout(orderedDraws.length, vw, vh, cw) : null;
+    return { pw, ph, startX, startY, cw, reduce, slots };
+  }, [handoff, orderedDraws.length]);
+
+  const portalStyle = useMemo(() => {
     const glitterUrl = getGlitterDataUrl();
     return {
-      '--pk-cw': `${cw.toFixed(1)}px`,
-      '--pk-ch': `${(cw * 1.4).toFixed(1)}px`,
+      '--pk-cw': `${initFrame.cw.toFixed(1)}px`,
+      '--pk-ch': `${(initFrame.cw * 1.4).toFixed(1)}px`,
       ...(glitterUrl ? { '--pk-glitter': glitterUrl } : {}),
     } as CSSProperties;
-  }, [handoff, orderedDraws.length]);
+  }, [initFrame]);
 
   const slabCount: 1 | 2 = orderedDraws.length === 1 ? 2 : 1;
 
@@ -952,12 +997,15 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
             className="pk-drop-pouch"
             style={
               {
-                width: `${handoff.rect.width || 245}px`,
-                height: `${handoff.rect.height || 355}px`,
-                marginLeft: `${-(handoff.rect.width || 245) / 2}px`,
-                marginTop: `${-(handoff.rect.height || 355) / 2}px`,
-                '--pw': `${handoff.rect.width || 245}px`,
-                '--ph': `${handoff.rect.height || 355}px`,
+                width: `${initFrame.pw}px`,
+                height: `${initFrame.ph}px`,
+                marginLeft: `${-initFrame.pw / 2}px`,
+                marginTop: `${-initFrame.ph / 2}px`,
+                zIndex: 15,
+                visibility: initFrame.reduce ? 'hidden' : 'visible',
+                transform: `translate3d(${initFrame.startX.toFixed(1)}px,${initFrame.startY.toFixed(1)}px,0)`,
+                '--pw': `${initFrame.pw}px`,
+                '--ph': `${initFrame.ph}px`,
                 '--pack': handoff.skin.pack,
                 '--shine': handoff.creases.shine,
                 '--shade': handoff.creases.shade,
@@ -978,18 +1026,20 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
           </div>
 
           {/* Torn top foil strip flying upward & tumbling off-screen */}
-          {!reducedMotion() && (
+          {!initFrame.reduce && (
             <div
               ref={flyStripRef}
               className="pk-fly-strip"
               style={
                 {
-                  width: `${handoff.rect.width || 245}px`,
-                  height: `${handoff.rect.height || 355}px`,
-                  marginLeft: `${-(handoff.rect.width || 245) / 2}px`,
-                  marginTop: `${-(handoff.rect.height || 355) / 2}px`,
-                  '--pw': `${handoff.rect.width || 245}px`,
-                  '--ph': `${handoff.rect.height || 355}px`,
+                  width: `${initFrame.pw}px`,
+                  height: `${initFrame.ph}px`,
+                  marginLeft: `${-initFrame.pw / 2}px`,
+                  marginTop: `${-initFrame.ph / 2}px`,
+                  zIndex: 16,
+                  transform: `translate3d(${initFrame.startX.toFixed(1)}px,${initFrame.startY.toFixed(1)}px,20px) rotateZ(${(handoff.tearDir * 18).toFixed(1)}deg) rotateX(-24deg)`,
+                  '--pw': `${initFrame.pw}px`,
+                  '--ph': `${initFrame.ph}px`,
                   '--pack': handoff.skin.pack,
                 } as CSSProperties
               }
@@ -1009,6 +1059,10 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
             const faceDown = !flippedSet.has(idx);
             const revealed = landedAll && !faceDown;
             const isInspected = inspectedIdx === idx;
+            const slot = initFrame.slots?.[idx];
+            const initTransform = slot
+              ? `translate3d(${slot.x.toFixed(2)}px,${slot.y.toFixed(2)}px,${slot.z.toFixed(2)}px) rotateZ(${slot.rz.toFixed(2)}deg) scale(${slot.s.toFixed(4)})`
+              : `translate3d(${initFrame.startX.toFixed(2)}px,${(initFrame.startY + initFrame.ph * 0.04).toFixed(2)}px,${(6 - idx * 1.6).toFixed(2)}px) scale(0.76)`;
             return (
               <div
                 key={`${draw.id}-${idx}`}
@@ -1016,6 +1070,7 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
                   cardElsRef.current[idx] = el;
                 }}
                 className="pk-card-node"
+                style={{ transform: initTransform, zIndex: orderedDraws.length - idx }}
                 tabIndex={spreadReady ? 0 : -1}
                 role="button"
                 aria-label={faceDown ? t('lottery.mysteryCardAria', { rarity: t(`rarity.${draw.rarity}`) }) : draw.name}
@@ -1052,8 +1107,8 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
             packCount={Math.min(nextPackCount, Math.max(1, leftPacks))}
             enterFromRight
             excludeSkinId={handoff.skin.id}
-            bonus={status.bonus}
-            dailyUnopened={status.daily?.unopened ?? 0}
+            bonus={liveStatus.bonus}
+            dailyUnopened={liveStatus.daily?.unopened ?? 0}
             onCommitOpen={onCommitOpen}
             onOpened={(nextHandoff) => {
               setHandoff(nextHandoff);

@@ -14,7 +14,7 @@ import {
   zheVars,
   type Phase as ActivityPhase,
 } from '../lottery';
-import { lotterySfx, setLotterySoundOn, useLotterySoundOn } from '../lottery/lotterySound';
+import { lotterySfx, setLotterySoundOn, useLotterySoundOn, warmLotterySound } from '../lottery/lotterySound';
 import { getGlitterDataUrl } from '../lottery/tearGeometry';
 import { Dialog } from './Dialog';
 import { FoilPack, type FoilPackHandle, type PackHandoff, type PackIdleState, type PackOpenResult } from './FoilPack';
@@ -73,9 +73,11 @@ export function LotteryView({
   useEffect(() => {
     alive.current = true;
     load();
-    // Pre-bake the 160x160 glitter PNG sprite off the critical path so opening PackPortal has zero stall.
+    // Pre-bake the 160x160 glitter PNG sprite and procedural audio engine off the critical path
+    // so the first pack click and PackPortal open have zero synchronous cold-start stall.
     const warmId = setTimeout(() => {
       getGlitterDataUrl();
+      warmLotterySound();
     }, 250);
     return () => {
       alive.current = false;

@@ -6,6 +6,7 @@ import {
   Y_MAX,
   Y_MIN,
   arrangeBatchCards,
+  computeBodyClips,
   computeCardLayout,
   computeTearGeometry,
   createRimSpecs,
@@ -89,6 +90,10 @@ describe('tear geometry', () => {
       expect(res.frontBodyClip.startsWith('polygon(')).toBe(true);
       expect(res.backBodyClip.startsWith('polygon(')).toBe(true);
       expect(res.bodyLipClip.startsWith('polygon(')).toBe(true);
+      const fast = computeBodyClips(points, 0.6, dir);
+      expect(fast.frontBodyClip).toBe(res.frontBodyClip);
+      expect(fast.bodyLipClip).toBe(res.bodyLipClip);
+      expect(fast.xt).toBeCloseTo(dir > 0 ? 60 : 40, 4);
       const visible = res.slices.filter((s) => s.visible);
       expect(visible.length).toBeGreaterThan(5);
       expect(visible.every((s) => s.transform.includes('rotateY('))).toBe(true);

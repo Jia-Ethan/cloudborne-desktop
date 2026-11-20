@@ -10,12 +10,13 @@ import {
   TEAR_SEGMENTS,
   TEAR_SLICES,
   Y_MAX,
-  computeTearGeometry,
+  computeBodyClips,
   createRimSpecs,
   createTearPath,
   generateFoilCreases,
   randomPickExcluding,
   steerTearPath,
+  yAt,
   type TearPath,
 } from '../lottery/tearGeometry';
 
@@ -76,6 +77,53 @@ const RAYS_MIN_X = -160;
 const RAYS_MIN_Y = -260;
 const RAYS_W = 420;
 const RAYS_H = 360;
+// Flap Canvas 2D logical bounds relative to pack box (covers curled strip & overhang with zero DOM layer overhead).
+const FLAP_LEFT_RATIO = -0.25;
+const FLAP_TOP_RATIO = -0.45;
+const FLAP_W_RATIO = 1.5;
+const FLAP_H_RATIO = 0.95;
+const FLAP_TEETH = 26;
+const DEG = Math.PI / 180;
+
+type Mat4 = [
+  number, number, number, number,
+  number, number, number, number,
+  number, number, number, number,
+];
+
+const matMul = (a: Mat4, b: Mat4): Mat4 => [
+  a[0] * b[0] + a[1] * b[4] + a[2] * b[8],
+  a[0] * b[1] + a[1] * b[5] + a[2] * b[9],
+  a[0] * b[2] + a[1] * b[6] + a[2] * b[10],
+  a[0] * b[3] + a[1] * b[7] + a[2] * b[11] + a[3],
+
+  a[4] * b[0] + a[5] * b[4] + a[6] * b[8],
+  a[4] * b[1] + a[5] * b[5] + a[6] * b[9],
+  a[4] * b[2] + a[5] * b[6] + a[6] * b[10],
+  a[4] * b[3] + a[5] * b[7] + a[6] * b[11] + a[7],
+
+  a[8] * b[0] + a[9] * b[4] + a[10] * b[8],
+  a[8] * b[1] + a[9] * b[5] + a[10] * b[9],
+  a[8] * b[2] + a[9] * b[6] + a[10] * b[10],
+  a[8] * b[3] + a[9] * b[7] + a[10] * b[11] + a[11],
+];
+
+const matTranslate = (tx: number, ty: number, tz = 0): Mat4 => [1, 0, 0, tx, 0, 1, 0, ty, 0, 0, 1, tz];
+const matRotX = (deg: number): Mat4 => {
+  const c = Math.cos(deg * DEG);
+  const s = Math.sin(deg * DEG);
+  return [1, 0, 0, 0, 0, c, -s, 0, 0, s, c, 0];
+};
+const matRotY = (deg: number): Mat4 => {
+  const c = Math.cos(deg * DEG);
+  const s = Math.sin(deg * DEG);
+  return [c, 0, s, 0, 0, 1, 0, 0, -s, 0, c, 0];
+};
+const matRotZ = (deg: number): Mat4 => {
+  const c = Math.cos(deg * DEG);
+  const s = Math.sin(deg * DEG);
+  return [c, -s, 0, 0, s, c, 0, 0, 0, 0, 1, 0];
+};
 
 const reducedMotion = () =>
   typeof window !== 'undefined' && (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false);
@@ -129,22 +177,12 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
   const glintRef = useRef<HTMLElement>(null);
   const creaseShineRef = useRef<HTMLElement>(null);
   const bodyLipRef = useRef<HTMLElement>(null);
-  const flapRef = useRef<HTMLDivElement>(null);
+  const flapCanvasRef = useRef<HTMLCanvasElement>(null);
   const flowRef = useRef<HTMLDivElement>(null);
   const raysCanvasRef = useRef<HTMLCanvasElement>(null);
   const starRef = useRef<HTMLDivElement>(null);
   const hitRef = useRef<HTMLButtonElement>(null);
   const rimRefs = useRef<(HTMLElement | null)[]>([]);
-  const plyRefs = useRef<
-    {
-      el: HTMLDivElement | null;
-      front: HTMLDivElement | null;
-      foil: HTMLDivElement | null;
-      lip: HTMLElement | null;
-      shade: HTMLElement | null;
-      under: HTMLElement | null;
-    }[]
-  >([]);
 
   // Mutable simulation state stored in refs for zero-GC 240Hz spring stepping.
   const simRef = useRef({
@@ -156,8 +194,10 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
     ph: 355,
     stageRect: null as null | { left: number; top: number; width: number; height: number },
     tearPath: createTearPath(TEAR_SEGMENTS),
-    frozenSlices: new Array<boolean>(TEAR_SLICES).fill(false),
     rimTrimmed: new Array<boolean>(RIMS.length).fill(false),
+    flapCtx: null as CanvasRenderingContext2D | null,
+    flapDpr: 1,
+    flapVisible: false,
     P: createPose({ x: 0, y: 0, rx: 0, ry: 0, rz: 0 }, 0.68, 0.28),
     star: createPose({ x: 0, y: 0 }, 0.18, 0.3),
     tearP: new Spring(0, 0.1, 0),
@@ -354,6 +394,30 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
     refreshSpringsList();
   };
 
+  /** Re-tints active light ribbons in place without reallocating springs or canvas state. */
+  const retintRibbons = (palette: readonly string[], paletteKey: string) => {
+    const sim = simRef.current;
+    const ctx = sim.raysCtx;
+    if (!ctx || sim.ribbons.length !== RIBBON_COUNT) {
+      rebuildRibbons(palette, paletteKey, true);
+      return;
+    }
+    sim.ribbonPaletteKey = paletteKey;
+    const hot = 26 + sim.Y0 - 62.5;
+    const k0 = Math.floor(rand(0, palette.length));
+    for (let j = 0; j < sim.ribbons.length; j++) {
+      const b = sim.ribbons[j];
+      const col = palette[(j + k0) % palette.length];
+      const hotCol = tintWhite(col, 0.72);
+      const grad = ctx.createLinearGradient(b.gx, sim.Y0, b.gx + b.ux * hot, sim.Y0 + b.uy * hot);
+      grad.addColorStop(0, hotCol);
+      grad.addColorStop(1, col);
+      b.col = col;
+      b.hotCol = hotCol;
+      b.grad = grad;
+    }
+  };
+
   /** Resets visual clips and simulation to a fresh sealed pack. */
   const resetPack = (freshAppearance: boolean, flyIn: boolean) => {
     const sim = simRef.current;
@@ -364,7 +428,6 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
       setCreases(generateFoilCreases());
     }
     sim.tearPath = createTearPath(TEAR_SEGMENTS);
-    sim.frozenSlices.fill(false);
     sim.rimTrimmed.fill(false);
     sim.committed = false;
     sim.pendingResult = null;
@@ -390,9 +453,14 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
       backSkinRef.current.style.visibility = flyIn && !reducedMotion() ? 'visible' : 'hidden';
     }
     if (bodyLipRef.current) bodyLipRef.current.style.clipPath = 'polygon(0 0)';
-    if (flapRef.current) {
-      flapRef.current.classList.remove('on');
-      flapRef.current.style.transform = '';
+    if (flapCanvasRef.current) {
+      flapCanvasRef.current.classList.remove('on');
+      flapCanvasRef.current.style.visibility = 'hidden';
+      sim.flapVisible = false;
+      if (sim.flapCtx) {
+        sim.flapCtx.setTransform(1, 0, 0, 1, 0, 0);
+        sim.flapCtx.clearRect(0, 0, flapCanvasRef.current.width, flapCanvasRef.current.height);
+      }
     }
     if (packRef.current) packRef.current.classList.remove('pk-held', 'pk-hurt', 'pk-tug');
     if (raysCanvasRef.current) {
@@ -407,12 +475,6 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
     for (let i = 0; i < RIMS.length; i++) {
       const el = rimRefs.current[i];
       if (el) el.style.top = `${RIMS[i].top}%`;
-    }
-    for (const p of plyRefs.current) {
-      if (p?.el) {
-        p.el.hidden = true;
-        p.el.style.transform = '';
-      }
     }
 
     rebuildRibbons(AURORA_BANDS, 'aurora', false);
@@ -433,25 +495,279 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
     }
   };
 
-  /** Applies jagged clip paths and 12-slice curling strip geometry at progress `p`. */
+  /** Ensures the single-layer curling foil strip canvas matches the pack's current dimensions. */
+  const ensureFlapCanvas = () => {
+    const canvas = flapCanvasRef.current;
+    if (!canvas) return null;
+    const sim = simRef.current;
+    const dpr = Math.min(1.5, window.devicePixelRatio || 1);
+    const w = Math.max(1, Math.round(sim.pw * FLAP_W_RATIO * dpr));
+    const h = Math.max(1, Math.round(sim.ph * FLAP_H_RATIO * dpr));
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+    sim.flapDpr = dpr;
+    if (!sim.flapCtx) sim.flapCtx = canvas.getContext('2d');
+    return sim.flapCtx;
+  };
+
+  /**
+   * Draws the 12-slice 3D curling foil strip onto ONE lightweight Canvas 2D layer,
+   * replacing 72 full-pack masked preserve-3d DOM nodes that stalled macOS WebKit's GPUProcess.
+   */
+  const drawFlap = (p: number, flapRz: number, flapRx: number) => {
+    const canvas = flapCanvasRef.current;
+    const ctx = ensureFlapCanvas();
+    if (!canvas || !ctx) return;
+    const sim = simRef.current;
+
+    if (!sim.flapVisible) {
+      canvas.style.visibility = 'visible';
+      sim.flapVisible = true;
+    }
+
+    const dpr = sim.flapDpr;
+    const pw = sim.pw;
+    const ph = sim.ph;
+    const ox = pw * FLAP_LEFT_RATIO;
+    const oy = ph * FLAP_TOP_RATIO;
+    const dir = sim.tearDir;
+    const pts = sim.tearPath.points;
+    const xt = dir > 0 ? p * 100 : 100 - p * 100;
+    const yt = yAt(pts, xt);
+    const xtPx = (xt / 100) * pw;
+    const ytPx = (yt / 100) * ph;
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const w = 100 / TEAR_SLICES;
+    const k0 = clamp(Math.floor((dir > 0 ? xt - 1e-6 : xt) / w), 0, TEAR_SLICES - 1);
+    const bend = (9.5 + 11 * p) * sim.tearPath.roll;
+    const jit = Math.min(1, Math.abs(sim.tearP.v) * 0.4) * 2.2;
+    const toothW = 100 / FLAP_TEETH;
+    const toothHPct = ((pw / FLAP_TEETH) * 0.5 / ph) * 100;
+    const crimpPct = 6.8;
+    const cx = pw * 0.5;
+    const cy = ph * 0.42;
+    const perspD = 1400;
+
+    // Base transform: parent flap rotation around tear tip (xtPx, ytPx, 0).
+    let M = matMul(
+      matMul(matTranslate(xtPx, ytPx, 0), matMul(matRotZ(flapRz), matRotX(flapRx))),
+      matTranslate(-xtPx, -ytPx, 0),
+    );
+
+    const project = (m: Mat4, xPct: number, yPct: number): [number, number, number] => {
+      const px = (xPct / 100) * pw;
+      const py = (yPct / 100) * ph;
+      const X = m[0] * px + m[1] * py + m[3];
+      const Y = m[4] * px + m[5] * py + m[7];
+      const Z = m[8] * px + m[9] * py + m[11];
+      const k = perspD / Math.max(220, perspD - Z);
+      return [cx + (X - cx) * k - ox, cy + (Y - cy) * k - oy, Z];
+    };
+
+    type RenderedSlice = {
+      poly: [number, number][];
+      lip: [number, number][];
+      crimpPoly: [number, number][] | null;
+      isFront: boolean;
+      avgZ: number;
+      shade: number;
+      p0: [number, number];
+      p1: [number, number];
+    };
+
+    const slices: RenderedSlice[] = [];
+    let sumAngle = 0;
+    const lap = 0.35;
+
+    for (let n = 0, k = k0; k >= 0 && k < TEAR_SLICES; n++, k -= dir) {
+      const lo = dir > 0 ? k * w : Math.max(k * w, xt);
+      const hi = dir > 0 ? Math.min((k + 1) * w, xt) : (k + 1) * w;
+      if (hi <= lo) continue;
+
+      const hingeX = ((n ? (dir > 0 ? k + 1 : k) * w : xt) / 100) * pw;
+      // Progressive peel curl that arches past 90deg to expose the brushed silver inner foil,
+      // tapering cleanly once folded over (~162deg) so the strip opens gracefully instead of coiling tight.
+      const remaining = Math.max(0, 162 - Math.abs(sumAngle));
+      const rawStep = bend * (0.65 + 0.45 * n) + Math.sin(sim.t * 16 + n * 0.9) * jit;
+      const angle = dir * Math.min(rawStep, Math.max(2, remaining * 0.55));
+      sumAngle += angle;
+      const rz = (dir * 1.15 * n) / 4;
+
+      const stepM = matMul(
+        matTranslate(hingeX, 0, 0),
+        matMul(matMul(matRotY(angle), matRotZ(rz)), matTranslate(-hingeX, 0, 0)),
+      );
+      M = matMul(M, stepM);
+
+      const L = dir < 0 && lo === xt ? lo : Math.max(0, lo - lap);
+      const R = dir > 0 && hi === xt ? hi : Math.min(100, hi + lap);
+
+      // Build top serrated teeth edge from L to R.
+      const topPts: [number, number][] = [];
+      const firstTooth = Math.floor(L / toothW);
+      const lastTooth = Math.ceil(R / toothW);
+      const toothY = (x: number) => {
+        const u = ((x / toothW) % 1 + 1) % 1;
+        return u < 0.5 ? toothHPct * (1 - 2 * u) : toothHPct * (2 * u - 1);
+      };
+      topPts.push([L, toothY(L)]);
+      for (let ti = firstTooth; ti <= lastTooth; ti++) {
+        const peakX = (ti + 0.5) * toothW;
+        const valleyX = (ti + 1) * toothW;
+        if (peakX > L && peakX < R) topPts.push([peakX, 0]);
+        if (valleyX > L && valleyX < R) topPts.push([valleyX, toothHPct]);
+      }
+      topPts.push([R, toothY(R)]);
+
+      // Build jagged bottom tear edge from R back to L.
+      const botPts: [number, number][] = [[R, yAt(pts, R)]];
+      for (let i = pts.length - 1; i >= 0; i--) {
+        const q = pts[i];
+        if (q.x > L && q.x < R) botPts.push([q.x, q.y]);
+      }
+      botPts.push([L, yAt(pts, L)]);
+
+      const projPoly: [number, number][] = [];
+      const projLip: [number, number][] = [];
+      let sumZ = 0;
+      let countZ = 0;
+      for (const [x, y] of topPts) {
+        const [sx, sy, sz] = project(M, x, y);
+        projPoly.push([sx, sy]);
+        sumZ += sz;
+        countZ++;
+      }
+      for (const [x, y] of botPts) {
+        const [sx, sy, sz] = project(M, x, y);
+        projPoly.push([sx, sy]);
+        projLip.push([sx, sy]);
+        sumZ += sz;
+        countZ++;
+      }
+
+      // Orientation test: positive cross product => front facing, negative => exposed metallic silver underside.
+      const o = project(M, L, 0);
+      const vx = project(M, L + 2, 0);
+      const vy = project(M, L, 2);
+      const cross = (vx[0] - o[0]) * (vy[1] - o[1]) - (vx[1] - o[1]) * (vy[0] - o[0]);
+      const isFront = cross >= 0;
+
+      let crimpPoly: [number, number][] | null = null;
+      if (isFront) {
+        const cr = project(M, R, crimpPct);
+        const cl = project(M, L, crimpPct);
+        crimpPoly = [...projPoly.slice(0, topPts.length), [cr[0], cr[1]], [cl[0], cl[1]]];
+      }
+
+      const pLeft = project(M, L, 4);
+      const pRight = project(M, R, 8);
+
+      slices.push({
+        poly: projPoly,
+        lip: projLip,
+        crimpPoly,
+        isFront,
+        avgZ: sumZ / Math.max(1, countZ),
+        shade: isFront
+          ? Math.min(0.5, Math.abs(sumAngle) / 200)
+          : Math.max(0, 0.32 - Math.abs(sumAngle) / 420),
+        p0: [pLeft[0], pLeft[1]],
+        p1: [pRight[0], pRight[1]],
+      });
+    }
+
+    // Painter's order: draw farthest slices first so curled front/silver layers overlap naturally.
+    slices.sort((a, b) => a.avgZ - b.avgZ);
+
+    const packColor = propsRef.current.packState === 'ready'
+      ? propsRef.current.skin.pack
+      : propsRef.current.packState === 'locked'
+        ? '#63687a'
+        : '#7a7e8a';
+
+    // Subtle grounding shadow cast by the curled strip onto the pack below.
+    ctx.save();
+    ctx.fillStyle = 'rgba(11, 13, 28, 0.16)';
+    for (const s of slices) {
+      if (s.poly.length < 3) continue;
+      ctx.beginPath();
+      ctx.moveTo(s.poly[0][0] + 2, s.poly[0][1] + 5);
+      for (let i = 1; i < s.poly.length; i++) ctx.lineTo(s.poly[i][0] + 2, s.poly[i][1] + 5);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+
+    for (const s of slices) {
+      if (s.poly.length < 3) continue;
+      ctx.beginPath();
+      ctx.moveTo(s.poly[0][0], s.poly[0][1]);
+      for (let i = 1; i < s.poly.length; i++) ctx.lineTo(s.poly[i][0], s.poly[i][1]);
+      ctx.closePath();
+
+      if (s.isFront) {
+        ctx.fillStyle = packColor;
+        ctx.fill();
+        if (s.crimpPoly && s.crimpPoly.length >= 3) {
+          ctx.beginPath();
+          ctx.moveTo(s.crimpPoly[0][0], s.crimpPoly[0][1]);
+          for (let i = 1; i < s.crimpPoly.length; i++) ctx.lineTo(s.crimpPoly[i][0], s.crimpPoly[i][1]);
+          ctx.closePath();
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
+          ctx.fill();
+        }
+        // Re-trace full slice path for directional fold shading.
+        if (s.shade > 0.01) {
+          ctx.beginPath();
+          ctx.moveTo(s.poly[0][0], s.poly[0][1]);
+          for (let i = 1; i < s.poly.length; i++) ctx.lineTo(s.poly[i][0], s.poly[i][1]);
+          ctx.closePath();
+          ctx.fillStyle = `rgba(11, 13, 28, ${s.shade.toFixed(2)})`;
+          ctx.fill();
+        }
+      } else {
+        // Metallic brushed silver inner foil gradient matching `.pk-skin.pk-foil`.
+        const g = ctx.createLinearGradient(s.p0[0], s.p0[1], s.p1[0], s.p1[1]);
+        g.addColorStop(0, '#dde3ef');
+        g.addColorStop(0.22, '#ffffff');
+        g.addColorStop(0.48, '#cbd4e5');
+        g.addColorStop(0.76, '#f7f9ff');
+        g.addColorStop(1, '#cfd7e6');
+        ctx.fillStyle = g;
+        ctx.fill();
+        if (s.shade > 0.01) {
+          ctx.fillStyle = `rgba(11, 13, 28, ${s.shade.toFixed(2)})`;
+          ctx.fill();
+        }
+      }
+
+      // Crisp metallic torn lip glint along the jagged bottom tear edge.
+      if (s.lip.length >= 2) {
+        ctx.beginPath();
+        ctx.moveTo(s.lip[0][0], s.lip[0][1]);
+        for (let i = 1; i < s.lip.length; i++) ctx.lineTo(s.lip[i][0], s.lip[i][1]);
+        ctx.strokeStyle = s.isFront ? 'rgba(244, 247, 255, 0.88)' : 'rgba(255, 255, 255, 0.65)';
+        ctx.lineWidth = 1.6;
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+      }
+    }
+  };
+
+  /** Applies jagged clip paths to the pack body and trims side rims once per rim. */
   const applyClips = (p: number) => {
     const sim = simRef.current;
-    const geo = computeTearGeometry({
-      points: sim.tearPath.points,
-      progress: p,
-      dir: sim.tearDir,
-      slices: TEAR_SLICES,
-      pw: sim.pw,
-      roll: sim.tearPath.roll,
-      velocity: sim.tearP.v,
-      time: sim.t,
-      frozenMask: sim.frozenSlices,
-    });
+    const geo = computeBodyClips(sim.tearPath.points, p, sim.tearDir);
 
     if (frontSkinRef.current) frontSkinRef.current.style.clipPath = geo.frontBodyClip;
-    // Skip updating `backSkinRef` clipPath during tear: it's backface-hidden at 180deg while tearing.
+    // Skip updating `backSkinRef` clipPath during tear: it's hidden while front-facing.
     if (bodyLipRef.current) bodyLipRef.current.style.clipPath = geo.bodyLipClip;
-    if (flapRef.current) flapRef.current.style.transformOrigin = geo.flapOrigin;
 
     // Trim each 3D side rim AT MOST ONCE when the tear passes the left or right edge.
     const xt = geo.xt;
@@ -467,32 +783,12 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
         sim.rimTrimmed[i] = true;
       }
     }
-
-    for (let k = 0; k < TEAR_SLICES; k++) {
-      const s = geo.slices[k];
-      const dom = plyRefs.current[k];
-      if (!dom?.el) continue;
-      if (!s.visible) {
-        if (!dom.el.hidden) dom.el.hidden = true;
-        continue;
-      }
-      if (dom.el.hidden) dom.el.hidden = false;
-      if (s.frontClip && dom.front && dom.foil && dom.lip) {
-        dom.front.style.clipPath = s.frontClip;
-        dom.foil.style.clipPath = s.foilClip ?? '';
-        dom.lip.style.clipPath = s.lipClip ?? '';
-      }
-      if (s.frozen) sim.frozenSlices[k] = true;
-      dom.el.style.transform = s.transform;
-      if (dom.shade) dom.shade.style.opacity = String(s.frontShade);
-      if (dom.under) dom.under.style.opacity = String(s.underShade);
-    }
   };
 
   /** Begins the visual tear cues (flap visible, sparkle winces). */
   const startTearVisual = () => {
     const pack = packRef.current;
-    const flap = flapRef.current;
+    const flap = flapCanvasRef.current;
     if (!pack || !flap) return;
     if (!pack.classList.contains('pk-hurt')) lotterySfx.tugStart();
     flap.classList.add('on');
@@ -533,9 +829,9 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
         const top = bestRarity(res.draws);
         simRef.current.resolvedRarity = top;
 
-        // Rarity foreshadowing! Shift the pouring light ribbons to the true rarity palette.
+        // Rarity foreshadowing! Shift the pouring light ribbons to the true rarity palette in place.
         if (!reduce && (top === 'rare' || top === 'epic' || top === 'legendary')) {
-          rebuildRibbons(RARITY_BANDS[top], top, true);
+          retintRibbons(RARITY_BANDS[top], top);
         }
 
         if (reduce) {
@@ -598,7 +894,7 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
         sim.state = 'idle';
       }
       if (!sim.tearP.to) sim.tearDir = Math.random() < 0.5 ? -1 : 1;
-      commitTear(count, sim.tearP.to > 0 ? 0.18 : 0.44);
+      commitTear(count, sim.tearP.to > 0 ? 0.18 : 0.52);
     },
   }));
 
@@ -885,15 +1181,17 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
           applyClips(p);
         }
         const draft = sim.drag ? 0 : motion * (Math.sin(sim.t * 5.3) + Math.sin(sim.t * 8.7) * 0.5);
-        if (flapRef.current) {
-          flapRef.current.style.transform = `rotateZ(${(sim.tearTh.x + draft) * sim.tearDir}deg) rotateX(${sim.tearPh.x + draft * 1.5}deg)`;
-        }
+        drawFlap(p, (sim.tearTh.x + draft) * sim.tearDir, sim.tearPh.x + draft * 1.5);
         if (sim.state === 'committing' && p >= 0.985 && sim.pendingResult) {
           completeHandoff(sim.pendingResult);
           return;
         }
       } else {
         lotterySfx.rip(0);
+        if (sim.flapVisible && flapCanvasRef.current) {
+          flapCanvasRef.current.style.visibility = 'hidden';
+          sim.flapVisible = false;
+        }
       }
 
       sim.glow.to = sim.tearP.x > 0.01 ? 1 : 0;
@@ -1262,56 +1560,8 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
               />
             ))}
 
-            {/* ---- 12-slice curling tear strip showing metallic silver inner foil ---- */}
-            <div ref={flapRef} className="pk-flap" aria-hidden>
-              {Array.from({ length: TEAR_SLICES }, (_, k) => (
-                <div
-                  key={k}
-                  ref={(el) => {
-                    if (!plyRefs.current[k]) {
-                      plyRefs.current[k] = { el: null, front: null, foil: null, lip: null, shade: null, under: null };
-                    }
-                    plyRefs.current[k].el = el;
-                  }}
-                  className="pk-ply"
-                  hidden
-                >
-                  <div
-                    ref={(el) => {
-                      if (plyRefs.current[k]) plyRefs.current[k].front = el;
-                    }}
-                    className="pk-skin pk-front"
-                  >
-                    <span className="pk-tag">{tearLabel}</span>
-                    <i
-                      ref={(el) => {
-                        if (plyRefs.current[k]) plyRefs.current[k].lip = el;
-                      }}
-                      className="pk-lip"
-                    />
-                    <i
-                      ref={(el) => {
-                        if (plyRefs.current[k]) plyRefs.current[k].shade = el;
-                      }}
-                      className="pk-tone"
-                    />
-                  </div>
-                  <div
-                    ref={(el) => {
-                      if (plyRefs.current[k]) plyRefs.current[k].foil = el;
-                    }}
-                    className="pk-skin pk-foil"
-                  >
-                    <i
-                      ref={(el) => {
-                        if (plyRefs.current[k]) plyRefs.current[k].under = el;
-                      }}
-                      className="pk-tone"
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
+            {/* ---- Single Canvas 2D curling tear strip (replaces 72 masked 3D DOM slices) ---- */}
+            <canvas ref={flapCanvasRef} className="pk-flap pk-flap-canvas" aria-hidden />
 
             {/* ---- Interactive grab/tear/click hitbox ---- */}
             <button
