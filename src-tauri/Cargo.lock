@@ -509,7 +509,7 @@ dependencies = [
 
 [[package]]
 name = "cloudborne-desktop"
-version = "0.9.33"
+version = "0.9.34"
 dependencies = [
  "base64 0.22.1",
  "chrono",

@@ -6,7 +6,12 @@ Cloudborne（栖云）中转站的桌面客户端：用中转站账号登录、�
 
 ## 状态
 
-v0.9.33 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
+v0.9.34 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
+
+- 撕卡包与连抽画廊性能大幅优化（v0.9.34）：
+  - 针对 macOS WKWebView（及 Windows WebView2）全链路渲染与合成重构，原生透明毛玻璃窗口 10 连抽实测从 17–37 FPS 提升至稳定 59–61 FPS，DOM 节点从约 1,400 降至 431，静止后物理循环自动休眠至零占用。
+  - 卡面与包面全息光学层改用纯 GPU `transform`/`opacity` 合成与离屏预烘焙 PNG 微钻贴图，移除逐帧继承 CSS 变量、SVG `feTurbulence`/`feGaussianBlur` 滤镜与全屏 `backdrop-filter`；撕裂时的 53 条 SVG 光瀑迁移为独立 Canvas 2D 渲染器，4 层全屏 2× 特效画布合并为单一 DPR 限幅引擎，并在揭晓舞台打开时对透明窗口铺不透明画廊底色、暂停后台倒计时与遮罩外重绘。
+  - 修复 macOS WebKit 下 `-webkit-mask` 破坏 `backface-visibility: hidden` 导致卡包背面文字偶发透到正面的问题；将 Web Audio 卷积混响与动态压缩器替换为轻量双抽头立体声延迟总线与按需起停的撕条噪声，避免争抢 macOS `GPUProcess`。不需要更新 relay。
 
 - 抽奖升级为「撕卡包」交互与全息收藏卡（v0.9.33）：
   - 原「宝箱」统一升级为「卡包」（中英文文案与侧边栏卡包图标同步切换），业务规则、每日低消、消费返包、购买卡包与保底/加成机制不变，不需要更新 relay。
@@ -168,6 +173,6 @@ brand/render.sh          # 用本机 Chrome 渲染 app-icon-1024.png 和 preview
 3. CI 构建 macOS 通用包和 Windows 安装包，生成 `.app.tar.gz` / `-setup.exe` 的签名和 `latest.json`，挂到一个 draft Release 上。
 4. 检查 draft 没问题后点 Publish（不要勾 pre-release，保持 Latest）。发布那一刻起，已安装的客户端在下次检查时就会看到更新。
 
-当前公开版本：[`v0.9.33`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.33)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.33/Cloudborne-Windows-setup.exe)。
+当前公开版本：[`v0.9.34`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.34)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.34/Cloudborne-Windows-setup.exe)。
 
 更新私钥在本机 `~/.cloudborne-desktop-signing/`（权限 700），CI 里是 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 两个 secret。私钥丢了，已装的客户端就收不到后续更新，只能手动重装，所以要另外备份。0.2.0 及更早的版本没有更新功能，需要手动装一次 0.2.1。
