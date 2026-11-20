@@ -69,8 +69,13 @@ interface FoilPackProps {
 
 const [MARK_X, MARK_Y, MARK_W, MARK_H] = markPath.viewBox;
 const RIMS = createRimSpecs();
-const RIBBON_COUNT = 26;
+const RIBBON_COUNT = 22;
 const RIBBON_SPAN = 1200;
+// Logical coordinate bounds matching the original SVG viewBox (x: -160..260, y: -260..100).
+const RAYS_MIN_X = -160;
+const RAYS_MIN_Y = -260;
+const RAYS_W = 420;
+const RAYS_H = 360;
 
 const reducedMotion = () =>
   typeof window !== 'undefined' && (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false);
@@ -81,10 +86,10 @@ const tintWhite = (hex: string, k: number) => {
 };
 
 /**
- * Interactive 3D metallic foil booster pack with steerable 96-segment jagged tearing,
- * 12-slice curling foil strip exposing silver inner foil, live SVG light ribbons
- * pouring out of the opening, and a commit-threshold API handoff that never
- * consumes packs on aborted half-tears.
+ * Interactive 3D metallic foil booster pack with steerable jagged tearing,
+ * 12-slice curling foil strip exposing silver inner foil, Canvas 2D light ribbons
+ * pouring out of the opening (zero SVG filter repaints), and a commit-threshold
+ * API handoff that never consumes packs on aborted half-tears.
  */
 export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilPack(
   {
@@ -115,16 +120,18 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
   const [creases, setCreases] = useState(() => generateFoilCreases());
   const [nudgeTick, setNudgeTick] = useState(0);
 
-  // DOM refs mutated directly at 60/120fps without React re-renders.
+  // DOM refs mutated directly without React re-renders or inherited CSS variable invalidations.
   const wrapRef = useRef<HTMLDivElement>(null);
   const packRef = useRef<HTMLDivElement>(null);
   const groundRef = useRef<HTMLElement>(null);
   const frontSkinRef = useRef<HTMLDivElement>(null);
   const backSkinRef = useRef<HTMLDivElement>(null);
+  const glintRef = useRef<HTMLElement>(null);
+  const creaseShineRef = useRef<HTMLElement>(null);
   const bodyLipRef = useRef<HTMLElement>(null);
   const flapRef = useRef<HTMLDivElement>(null);
   const flowRef = useRef<HTMLDivElement>(null);
-  const raysSvgRef = useRef<SVGSVGElement>(null);
+  const raysCanvasRef = useRef<HTMLCanvasElement>(null);
   const starRef = useRef<HTMLDivElement>(null);
   const hitRef = useRef<HTMLButtonElement>(null);
   const rimRefs = useRef<(HTMLElement | null)[]>([]);
@@ -147,8 +154,10 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
     nudgeAt: rand(4.5, 7.5),
     pw: 245,
     ph: 355,
+    stageRect: null as null | { left: number; top: number; width: number; height: number },
     tearPath: createTearPath(TEAR_SEGMENTS),
     frozenSlices: new Array<boolean>(TEAR_SLICES).fill(false),
+    rimTrimmed: new Array<boolean>(RIMS.length).fill(false),
     P: createPose({ x: 0, y: 0, rx: 0, ry: 0, rz: 0 }, 0.68, 0.28),
     star: createPose({ x: 0, y: 0 }, 0.18, 0.3),
     tearP: new Spring(0, 0.1, 0),
@@ -156,6 +165,7 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
     tearPh: new Spring(0, 0.3, 0.2),
     squeeze: new Spring(0, 0.3, 0.45),
     glow: new Spring(0, 0.45, 0),
+    allSprings: [] as Spring[],
     tearDir: 1 as 1 | -1,
     tearLast: 0,
     pointer: { x: 0, y: 0, in: false },
@@ -177,7 +187,7 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
     committed: false,
     pendingResult: null as PackOpenResult | null,
     resolvedRarity: null as Rarity | null,
-    // Ribbon flow state
+    // Canvas ribbon flow state
     ribbonPaletteKey: 'aurora',
     ribbons: [] as {
       mx: number;
@@ -187,11 +197,18 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
       on: boolean;
       len: number;
       g: Spring;
+      col: string;
+      hotCol: string;
+      ux: number;
+      uy: number;
+      grad: CanvasGradient | null;
     }[],
     lines: [] as { ox: number; x: number; ux: number; uy: number; ph: number; r: number }[],
-    bandEls: [] as SVGPathElement[],
-    edgeEls: [] as SVGPathElement[],
-    motes: [] as { el: SVGCircleElement; j: number; u: number; v: number; sp: number; r: number }[],
+    motes: [] as { j: number; u: number; v: number; sp: number; r: number }[],
+    raysCtx: null as CanvasRenderingContext2D | null,
+    raysScale: 1,
+    raysFadeGrad: null as CanvasGradient | null,
+    raysVisible: false,
     Y0: 62.5,
     R0: 45,
     reach: 260,
@@ -222,10 +239,29 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
     onLockedTap,
   };
 
-  /** Builds or re-tints the SVG light ribbons tucked behind the front pouch face. */
+  const refreshSpringsList = () => {
+    const sim = simRef.current;
+    sim.allSprings = [
+      sim.P.x,
+      sim.P.y,
+      sim.P.rx,
+      sim.P.ry,
+      sim.P.rz,
+      sim.star.x,
+      sim.star.y,
+      sim.tearP,
+      sim.tearTh,
+      sim.tearPh,
+      sim.squeeze,
+      sim.glow,
+      ...sim.ribbons.map((b) => b.g),
+    ];
+  };
+
+  /** Builds or re-tints the Canvas 2D light ribbons tucked behind the front pouch face. */
   const rebuildRibbons = (palette: readonly string[], paletteKey: string, preserveActive = false) => {
-    const svg = raysSvgRef.current;
-    if (!svg) return;
+    const canvas = raysCanvasRef.current;
+    if (!canvas) return;
     const sim = simRef.current;
     const u = Math.max(1, sim.pw) / 100;
     const Y0 = 62.5 + ((Y_MAX - TEAR_NOMINAL) / 100) * (sim.ph / u);
@@ -251,59 +287,71 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
     const reach = reduce ? 90 : 280;
     sim.reach = reach;
 
+    // Size ribbon canvas at crisp ~1.25x logical scale (soft light beams need zero 2x overhead).
+    const dpr = Math.min(1.25, window.devicePixelRatio || 1);
+    const scale = Math.max(1, Math.min(2.2, u * dpr));
+    const targetW = Math.round(RAYS_W * scale);
+    const targetH = Math.round(RAYS_H * scale);
+    if (canvas.width !== targetW || canvas.height !== targetH) {
+      canvas.width = targetW;
+      canvas.height = targetH;
+    }
+    sim.raysScale = scale;
+    const ctx = canvas.getContext('2d');
+    sim.raysCtx = ctx;
+
+    const hot = 26 + Y0 - 62.5;
     const k0 = Math.floor(rand(0, palette.length));
     sim.ribbons = Array.from({ length: RIBBON_COUNT }, (_, j) => {
       const r = (sim.lines[j].r + sim.lines[j + 1].r) / 2;
       const g = new Spring(prevG[j] ?? 0, 0.4, reduce ? 0 : 0.28);
+      const col = palette[(j + k0) % palette.length];
+      const hotCol = tintWhite(col, 0.72);
+      const gx = (sim.lines[j].x + sim.lines[j + 1].x) / 2;
+      const ux = (sim.lines[j].ux + sim.lines[j + 1].ux) / 2;
+      const uy = (sim.lines[j].uy + sim.lines[j + 1].uy) / 2;
+      let grad: CanvasGradient | null = null;
+      if (ctx) {
+        grad = ctx.createLinearGradient(gx, Y0, gx + ux * hot, Y0 + uy * hot);
+        grad.addColorStop(0, hotCol);
+        grad.addColorStop(1, col);
+      }
       return {
         mx: (sim.lines[j].ox + sim.lines[j + 1].ox) / 2,
-        gx: (sim.lines[j].x + sim.lines[j + 1].x) / 2,
+        gx,
         r,
         L: reach - r,
         on: prevOn[j] ?? false,
         len: 0,
         g,
+        col,
+        hotCol,
+        ux,
+        uy,
+        grad,
       };
     });
 
-    const hot = 26 + Y0 - 62.5;
-    const defs = sim.ribbons
-      .map((b, j) => {
-        const col = palette[(j + k0) % palette.length];
-        const ux = (sim.lines[j].ux + sim.lines[j + 1].ux) / 2;
-        const uy = (sim.lines[j].uy + sim.lines[j + 1].uy) / 2;
-        return `<linearGradient id="${uid}-b${j}" gradientUnits="userSpaceOnUse" x1="${b.gx.toFixed(2)}" y1="${Y0.toFixed(2)}" x2="${(b.gx + ux * hot).toFixed(2)}" y2="${(Y0 + uy * hot).toFixed(2)}"><stop stop-color="${tintWhite(col, 0.72)}"/><stop offset="1" stop-color="${col}"/></linearGradient>`;
-      })
-      .join('');
+    if (ctx) {
+      const fade = ctx.createRadialGradient(50, Y0 + R0, 0, 50, Y0 + R0, RIBBON_SPAN);
+      fade.addColorStop(0, 'rgba(255,255,255,0)');
+      fade.addColorStop(0.04, 'rgba(255,255,255,1)');
+      fade.addColorStop(0.11, 'rgba(255,255,255,1)');
+      fade.addColorStop(0.18, 'rgba(255,255,255,0)');
+      sim.raysFadeGrad = fade;
+    }
 
-    svg.innerHTML = `<defs>
-      <radialGradient id="${uid}-mote"><stop offset=".2" stop-color="#fff"/><stop offset=".45" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
-      ${defs}
-      <radialGradient id="${uid}-fade-g" gradientUnits="userSpaceOnUse" cx="50" cy="${(Y0 + R0).toFixed(1)}" r="${RIBBON_SPAN}">
-        <stop offset="0" stop-color="#fff" stop-opacity="0"/>
-        <stop offset="0.04" stop-color="#fff"/>
-        <stop offset="0.11" stop-color="#fff"/>
-        <stop offset="0.18" stop-color="#fff" stop-opacity="0"/>
-      </radialGradient>
-      <mask id="${uid}-fade" maskUnits="userSpaceOnUse" x="-160" y="-260" width="420" height="360"><rect x="-160" y="-260" width="420" height="360" fill="url(#${uid}-fade-g)"/></mask>
-      <filter id="${uid}-bloom" filterUnits="userSpaceOnUse" x="-160" y="-260" width="420" height="360"><feGaussianBlur stdDeviation="2.2"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-    </defs>
-    <g filter="url(#${uid}-bloom)"><g mask="url(#${uid}-fade)">
-      ${sim.ribbons.map((_, j) => `<path class="pk-band" fill="url(#${uid}-b${j})"/>`).join('')}
-      <g fill="none" stroke="#fff" stroke-opacity=".65" stroke-width=".38">${'<path class="pk-edge"/>'.repeat(RIBBON_COUNT + 1)}</g>
-      ${'<circle class="pk-ray-mote" fill="url(#' + uid + '-mote)"/>'.repeat(8)}
-    </g></g>`;
+    if (!preserveActive || sim.motes.length === 0) {
+      sim.motes = Array.from({ length: 8 }, () => ({
+        j: -1,
+        u: Math.random(),
+        v: rand(0.2, 0.8),
+        sp: rand(0.32, 0.55),
+        r: rand(1.4, 2.8),
+      }));
+    }
 
-    sim.bandEls = [...svg.querySelectorAll<SVGPathElement>('.pk-band')];
-    sim.edgeEls = [...svg.querySelectorAll<SVGPathElement>('.pk-edge')];
-    sim.motes = [...svg.querySelectorAll<SVGCircleElement>('.pk-ray-mote')].map((el) => ({
-      el,
-      j: -1,
-      u: Math.random(),
-      v: rand(0.2, 0.8),
-      sp: rand(0.32, 0.55),
-      r: rand(1.4, 2.8),
-    }));
+    refreshSpringsList();
   };
 
   /** Resets visual clips and simulation to a fresh sealed pack. */
@@ -317,6 +365,7 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
     }
     sim.tearPath = createTearPath(TEAR_SEGMENTS);
     sim.frozenSlices.fill(false);
+    sim.rimTrimmed.fill(false);
     sim.committed = false;
     sim.pendingResult = null;
     sim.resolvedRarity = null;
@@ -332,15 +381,29 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
 
     for (const sp of Object.values(sim.P)) sp.snap(0).set(0.68, 0.28);
 
-    if (frontSkinRef.current) frontSkinRef.current.style.clipPath = '';
-    if (backSkinRef.current) backSkinRef.current.style.clipPath = '';
+    if (frontSkinRef.current) {
+      frontSkinRef.current.style.clipPath = '';
+      frontSkinRef.current.style.visibility = flyIn && !reducedMotion() ? 'hidden' : 'visible';
+    }
+    if (backSkinRef.current) {
+      backSkinRef.current.style.clipPath = '';
+      backSkinRef.current.style.visibility = flyIn && !reducedMotion() ? 'visible' : 'hidden';
+    }
     if (bodyLipRef.current) bodyLipRef.current.style.clipPath = 'polygon(0 0)';
     if (flapRef.current) {
       flapRef.current.classList.remove('on');
       flapRef.current.style.transform = '';
     }
     if (packRef.current) packRef.current.classList.remove('pk-held', 'pk-hurt', 'pk-tug');
-    if (raysSvgRef.current) raysSvgRef.current.style.opacity = '0';
+    if (raysCanvasRef.current) {
+      raysCanvasRef.current.style.opacity = '0';
+      raysCanvasRef.current.style.visibility = 'hidden';
+      sim.raysVisible = false;
+      if (sim.raysCtx) {
+        sim.raysCtx.setTransform(1, 0, 0, 1, 0, 0);
+        sim.raysCtx.clearRect(0, 0, raysCanvasRef.current.width, raysCanvasRef.current.height);
+      }
+    }
     for (let i = 0; i < RIMS.length; i++) {
       const el = rimRefs.current[i];
       if (el) el.style.top = `${RIMS[i].top}%`;
@@ -386,13 +449,14 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
     });
 
     if (frontSkinRef.current) frontSkinRef.current.style.clipPath = geo.frontBodyClip;
-    if (backSkinRef.current) backSkinRef.current.style.clipPath = geo.backBodyClip;
+    // Skip updating `backSkinRef` clipPath during tear: it's backface-hidden at 180deg while tearing.
     if (bodyLipRef.current) bodyLipRef.current.style.clipPath = geo.bodyLipClip;
     if (flapRef.current) flapRef.current.style.transformOrigin = geo.flapOrigin;
 
-    // Trim the 3D side rims once the tear passes the left or right edge.
+    // Trim each 3D side rim AT MOST ONCE when the tear passes the left or right edge.
     const xt = geo.xt;
     for (let i = 0; i < RIMS.length; i++) {
+      if (sim.rimTrimmed[i]) continue;
       const r = RIMS[i];
       const el = rimRefs.current[i];
       if (!el) continue;
@@ -400,6 +464,7 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
       if (sim.tearDir > 0 ? edgeX <= xt : edgeX >= xt) {
         const edgeY = sim.tearPath.points[r.side > 0 ? sim.tearPath.points.length - 1 : 0].y;
         el.style.top = `${Math.max(r.top, edgeY + 1.4).toFixed(2)}%`;
+        sim.rimTrimmed[i] = true;
       }
     }
 
@@ -408,10 +473,10 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
       const dom = plyRefs.current[k];
       if (!dom?.el) continue;
       if (!s.visible) {
-        dom.el.hidden = true;
+        if (!dom.el.hidden) dom.el.hidden = true;
         continue;
       }
-      dom.el.hidden = false;
+      if (dom.el.hidden) dom.el.hidden = false;
       if (s.frontClip && dom.front && dom.foil && dom.lip) {
         dom.front.style.clipPath = s.frontClip;
         dom.foil.style.clipPath = s.foilClip ?? '';
@@ -546,21 +611,32 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
     wasSuspended.current = suspended;
   }, [suspended]);
 
-  // Initial mount setup + ResizeObserver + main animation loop.
+  // Initial mount setup + ResizeObserver + main animation loop (pauses completely when suspended).
   useEffect(() => {
+    if (suspended) return;
     const sim = simRef.current;
+
     const measure = () => {
-      if (!packRef.current) return;
-      sim.pw = packRef.current.offsetWidth || 245;
-      sim.ph = packRef.current.offsetHeight || 355;
+      if (packRef.current) {
+        sim.pw = packRef.current.offsetWidth || 245;
+        sim.ph = packRef.current.offsetHeight || 355;
+      }
+      if (wrapRef.current) {
+        const r = wrapRef.current.getBoundingClientRect();
+        sim.stageRect = { left: r.left, top: r.top, width: r.width, height: r.height };
+      }
     };
     measure();
-    resetPack(false, enterFromRight);
+    if (sim.allSprings.length === 0) {
+      resetPack(false, enterFromRight);
+    }
 
     const ro = new ResizeObserver(measure);
     if (packRef.current) ro.observe(packRef.current);
+    if (wrapRef.current) ro.observe(wrapRef.current);
 
     const onGlobalMove = (e: globalThis.PointerEvent) => {
+      if (!sim.pointer.in) measure();
       sim.pointer.x = e.clientX;
       sim.pointer.y = e.clientY;
       sim.pointer.in = true;
@@ -568,76 +644,151 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
     const onGlobalLeave = () => {
       sim.pointer.in = false;
     };
-    window.addEventListener('pointermove', onGlobalMove);
+    window.addEventListener('pointermove', onGlobalMove, { passive: true });
+    window.addEventListener('resize', measure, { passive: true });
+    window.addEventListener('scroll', measure, { passive: true, capture: true });
     document.documentElement.addEventListener('pointerleave', onGlobalLeave);
 
     let rafId = 0;
     sim.lastNow = performance.now();
 
-    const updateRibbons = (dt: number) => {
+    const drawRibbons = (dt: number) => {
+      const canvas = raysCanvasRef.current;
+      const ctx = sim.raysCtx;
+      if (!canvas || !ctx) return;
+
       const reduce = reducedMotion();
       const ft = reduce ? 0 : sim.t;
       const xt = sim.tearDir > 0 ? sim.tearP.x * 100 : 100 - sim.tearP.x * 100;
       const sway = Math.sin(ft * 0.9) * 1.4;
 
+      let anyActive = false;
       for (const b of sim.ribbons) {
         if (sim.tearP.x > 0 && (sim.tearDir > 0 ? b.mx < xt : b.mx > xt)) b.on = true;
         b.g.to = b.on ? 1 : 0;
         b.len = b.L * Math.max(0, b.g.x);
+        if (b.len > 0.5) anyActive = true;
       }
 
-      const step = 3.2;
-      const fix = (v: number) => Math.round(v * 20) / 20;
-      const at = (j: number, d: number): [number, number] => {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (!anyActive) return;
+
+      const scale = sim.raysScale;
+      ctx.setTransform(scale, 0, 0, scale, -RAYS_MIN_X * scale, -RAYS_MIN_Y * scale);
+
+      const step = 7;
+      const at = (j: number, d: number, out: [number, number]): void => {
         const e = sim.lines[j];
-        const k = Math.min(1, d / 90);
+        const k = d < 90 ? d / 90 : 1;
         const w = (0.4 + 2 * k) * Math.sin((d / 22 - ft * 1.45) * 2 * Math.PI + e.ph) + sway * k;
-        return [e.x + e.ux * d - e.uy * w, sim.Y0 + e.uy * d + e.ux * w];
+        out[0] = e.x + e.ux * d - e.uy * w;
+        out[1] = sim.Y0 + e.uy * d + e.ux * w;
       };
 
-      const edges = sim.lines.map((_, j) => {
+      const lineCount = sim.lines.length;
+      const edgesX: number[][] = new Array(lineCount);
+      const edgesY: number[][] = new Array(lineCount);
+      const pt: [number, number] = [0, 0];
+
+      for (let j = 0; j < lineCount; j++) {
         const len = Math.max(sim.ribbons[j - 1]?.len || 0, sim.ribbons[j]?.len || 0);
-        const pts: string[] = [];
-        if (len > 0) {
+        const xs: number[] = [];
+        const ys: number[] = [];
+        if (len > 0.5) {
           for (let i = 0; ; i++) {
             const d = Math.min(i * step, len);
-            const [x, y] = at(j, d);
-            pts.push(`${fix(x)} ${fix(y)}`);
+            at(j, d, pt);
+            xs.push(pt[0]);
+            ys.push(pt[1]);
             if (d >= len) break;
           }
         }
-        return pts;
-      });
+        edgesX[j] = xs;
+        edgesY[j] = ys;
+      }
 
-      const upto = (pts: string[], len: number) => pts.slice(0, Math.max(0, Math.ceil(len / step) + 1));
-      sim.ribbons.forEach((b, j) => {
-        const A = upto(edges[j], b.len);
-        const B = upto(edges[j + 1], b.len);
-        sim.bandEls[j]?.setAttribute('d', A.length > 1 && B.length > 1 ? `M${A.join('L')}L${B.slice().reverse().join('L')}Z` : '');
-      });
-      sim.edgeEls.forEach((el, j) => {
-        el.setAttribute('d', edges[j].length > 1 ? `M${edges[j].join('L')}` : '');
-      });
+      // 1. Filled iridescent color ribbons.
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 1;
+      for (let j = 0; j < sim.ribbons.length; j++) {
+        const b = sim.ribbons[j];
+        if (b.len <= 0.5) continue;
+        const maxPts = Math.ceil(b.len / step) + 1;
+        const ax = edgesX[j];
+        const ay = edgesY[j];
+        const bx = edgesX[j + 1];
+        const by = edgesY[j + 1];
+        const na = Math.min(ax.length, maxPts);
+        const nb = Math.min(bx.length, maxPts);
+        if (na < 2 || nb < 2) continue;
 
-      const activeIndices = sim.ribbons.flatMap((b, j) => (b.on ? [j] : []));
-      for (const m of sim.motes) {
-        if (!reduce) m.u += dt * m.sp;
-        if (m.u > 1 || !sim.ribbons[m.j]?.on) {
-          if (m.u > 1) m.u -= 1;
-          if (activeIndices.length === 0) {
-            m.el.setAttribute('opacity', '0');
-            continue;
+        ctx.beginPath();
+        ctx.moveTo(ax[0], ay[0]);
+        for (let i = 1; i < na; i++) ctx.lineTo(ax[i], ay[i]);
+        for (let i = nb - 1; i >= 0; i--) ctx.lineTo(bx[i], by[i]);
+        ctx.closePath();
+        ctx.fillStyle = b.grad ?? b.col;
+        ctx.fill();
+      }
+
+      // 2. Soft luminous edge highlights (emulates subtle bloom without SVG feGaussianBlur!).
+      ctx.beginPath();
+      for (let j = 0; j < lineCount; j++) {
+        const xs = edgesX[j];
+        const ys = edgesY[j];
+        if (xs.length < 2) continue;
+        ctx.moveTo(xs[0], ys[0]);
+        for (let i = 1; i < xs.length; i++) ctx.lineTo(xs[i], ys[i]);
+      }
+      ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+      ctx.lineWidth = 2.4;
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.62)';
+      ctx.lineWidth = 0.45;
+      ctx.stroke();
+
+      // 3. Floating glowing motes inside active ribbons.
+      const activeIndices: number[] = [];
+      for (let j = 0; j < sim.ribbons.length; j++) {
+        if (sim.ribbons[j].on && sim.ribbons[j].len > 2) activeIndices.push(j);
+      }
+      if (activeIndices.length > 0) {
+        const p1: [number, number] = [0, 0];
+        const p2: [number, number] = [0, 0];
+        for (const m of sim.motes) {
+          if (!reduce) m.u += dt * m.sp;
+          if (m.u > 1 || !sim.ribbons[m.j]?.on) {
+            if (m.u > 1) m.u -= 1;
+            m.j = activeIndices[Math.floor(rand(0, activeIndices.length))];
           }
-          m.j = activeIndices[Math.floor(rand(0, activeIndices.length))];
+          const len = sim.ribbons[m.j].len;
+          const d = m.u * len;
+          at(m.j, d, p1);
+          at(m.j + 1, d, p2);
+          const mx = p1[0] + (p2[0] - p1[0]) * m.v;
+          const my = p1[1] + (p2[1] - p1[1]) * m.v;
+          const mr = m.r * (0.6 + m.u * 0.7);
+          const ma = Math.sin(Math.PI * m.u) * Math.min(1, len / 18);
+          if (ma > 0.02) {
+            ctx.fillStyle = `rgba(255,255,255,${(ma * 0.35).toFixed(2)})`;
+            ctx.beginPath();
+            ctx.arc(mx, my, mr * 2.1, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = `rgba(255,255,255,${ma.toFixed(2)})`;
+            ctx.beginPath();
+            ctx.arc(mx, my, mr * 0.75, 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
-        const len = sim.ribbons[m.j].len;
-        const d = m.u * len;
-        const [x1, y1] = at(m.j, d);
-        const [x2, y2] = at(m.j + 1, d);
-        m.el.setAttribute('cx', (x1 + (x2 - x1) * m.v).toFixed(2));
-        m.el.setAttribute('cy', (y1 + (y2 - y1) * m.v).toFixed(2));
-        m.el.setAttribute('r', (m.r * (0.6 + m.u * 0.7)).toFixed(2));
-        m.el.setAttribute('opacity', (Math.sin(Math.PI * m.u) * Math.min(1, len / 18)).toFixed(2));
+      }
+
+      // 4. Radial fade mask matching the original SVG <mask id="fade">.
+      if (sim.raysFadeGrad) {
+        ctx.globalCompositeOperation = 'destination-in';
+        ctx.fillStyle = sim.raysFadeGrad;
+        ctx.fillRect(RAYS_MIN_X, RAYS_MIN_Y, RAYS_W, RAYS_H);
+        ctx.globalCompositeOperation = 'source-over';
       }
     };
 
@@ -673,8 +824,8 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
           : 0;
       sim.squeeze.to = tug ? -Math.abs(tug) / 90 : held ? motion : 0;
 
-      // Pointer coordinates relative to the pack center.
-      const stageRect = wrapRef.current?.getBoundingClientRect();
+      // Pointer coordinates relative to cached stage rect (ZERO getBoundingClientRect in rAF!).
+      const stageRect = sim.stageRect;
       let nx = 0;
       let ny = 0;
       if (stageRect && sim.pointer.in) {
@@ -716,17 +867,7 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
         sim.tearP.to = 1;
       }
 
-      const springs = [
-        ...Object.values(sim.P),
-        ...Object.values(sim.star),
-        sim.tearP,
-        sim.tearTh,
-        sim.tearPh,
-        sim.squeeze,
-        sim.glow,
-        ...sim.ribbons.map((b) => b.g),
-      ];
-      stepSprings(springs, dt);
+      stepSprings(sim.allSprings, dt);
 
       if (sim.tearP.x > 0.001) {
         const p = Math.min(1, sim.tearP.x);
@@ -756,23 +897,52 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
       }
 
       sim.glow.to = sim.tearP.x > 0.01 ? 1 : 0;
-      if (raysSvgRef.current && (sim.glow.x > 0.003 || sim.glow.to > 0)) {
-        raysSvgRef.current.style.opacity = sim.glow.x.toFixed(3);
-        updateRibbons(dt);
+      const raysEl = raysCanvasRef.current;
+      if (raysEl) {
+        if (sim.glow.x > 0.003 || sim.glow.to > 0) {
+          if (!sim.raysVisible) {
+            raysEl.style.visibility = 'visible';
+            sim.raysVisible = true;
+          }
+          raysEl.style.opacity = sim.glow.x.toFixed(3);
+          drawRibbons(dt);
+        } else if (sim.raysVisible) {
+          raysEl.style.opacity = '0';
+          raysEl.style.visibility = 'hidden';
+          sim.raysVisible = false;
+        }
       }
 
       const packEl = packRef.current;
       if (packEl) {
         const transform = `translate3d(${sim.P.x.x.toFixed(2)}px,${sim.P.y.x.toFixed(2)}px,0) rotateX(${sim.P.rx.x.toFixed(2)}deg) rotateY(${sim.P.ry.x.toFixed(2)}deg) rotateZ(${sim.P.rz.x.toFixed(2)}deg) scale3d(${(1 + 0.03 * sim.squeeze.x).toFixed(4)},${(1 - 0.06 * sim.squeeze.x).toFixed(4)},1)`;
         packEl.style.transform = transform;
-        if (flowRef.current) flowRef.current.style.transform = transform;
+        if (flowRef.current && sim.raysVisible) flowRef.current.style.transform = transform;
 
-        // Live directional metallic reflections across the foil pouch.
-        packEl.style.setProperty('--gx', clamp(-sim.P.ry.x * 0.12, -1.5, 3).toFixed(2));
-        packEl.style.setProperty('--gl', clamp(0.82 - sim.P.ry.x * 0.012, 0.45, 1).toFixed(2));
-        packEl.style.setProperty('--gm', clamp(50 + sim.P.ry.x * 1.2, 20, 80).toFixed(1));
-        packEl.style.setProperty('--gt', clamp(0.86 + sim.P.rx.x * 0.015, 0.5, 1).toFixed(2));
-        packEl.style.setProperty('--sh', clamp(sim.P.ry.x * 1.25 + sim.P.rx.x * 0.85, -24, 24).toFixed(1));
+        // Explicitly toggle front/back visibility by Y angle because WebKit's `-webkit-mask`
+        // breaks `backface-visibility: hidden` inside `preserve-3d`, letting `.pk-back-skin` bleed through.
+        const normRy = Math.abs((((sim.P.ry.x % 360) + 540) % 360) - 180);
+        const showBack = normRy > 90;
+        if (backSkinRef.current) {
+          const want = showBack ? 'visible' : 'hidden';
+          if (backSkinRef.current.style.visibility !== want) backSkinRef.current.style.visibility = want;
+        }
+        if (frontSkinRef.current) {
+          const want = showBack ? 'hidden' : 'visible';
+          if (frontSkinRef.current.style.visibility !== want) frontSkinRef.current.style.visibility = want;
+        }
+
+        // Pure GPU transform/opacity updates on leaf specular layers (ZERO CSS variable mutations!).
+        if (glintRef.current) {
+          const gx = clamp(-sim.P.ry.x * 0.12, -1.5, 3);
+          const gl = clamp(0.82 - sim.P.ry.x * 0.012, 0.45, 1);
+          glintRef.current.style.transform = `translate3d(${gx.toFixed(2)}%,0,0)`;
+          glintRef.current.style.opacity = gl.toFixed(2);
+        }
+        if (creaseShineRef.current) {
+          const gt = clamp(0.86 + sim.P.rx.x * 0.015, 0.5, 1);
+          creaseShineRef.current.style.opacity = gt.toFixed(2);
+        }
       }
 
       if (starRef.current) {
@@ -793,10 +963,12 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
       clearTimeout(sim.settleTimer);
       ro.disconnect();
       window.removeEventListener('pointermove', onGlobalMove);
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('scroll', measure, true);
       document.documentElement.removeEventListener('pointerleave', onGlobalLeave);
       lotterySfx.rip(0);
     };
-  }, [uid]);
+  }, [uid, suspended]);
 
   // Pointer interaction handlers on the hit button.
   const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -804,6 +976,10 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
     sim.viaKey = false;
     if (e.button !== 0 || sim.drag || sim.committed) return;
     lotterySfx.unlock();
+    if (wrapRef.current) {
+      const r = wrapRef.current.getBoundingClientRect();
+      sim.stageRect = { left: r.left, top: r.top, width: r.width, height: r.height };
+    }
 
     if (packState !== 'ready') {
       lotterySfx.nope();
@@ -954,9 +1130,9 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
           </div>
         )}
 
-        {/* Live light ribbon flow sitting physically behind the front skin. */}
+        {/* Live Canvas 2D light ribbon flow sitting physically behind the front skin. */}
         <div ref={flowRef} className="pk-flow" aria-hidden>
-          <svg ref={raysSvgRef} className="pk-rays" viewBox="0 0 100 76" />
+          <canvas ref={raysCanvasRef} className="pk-rays" />
         </div>
 
         <div
@@ -967,6 +1143,8 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
           <div key={nudgeTick} className={`pk-nudge-layer ${nudgeTick > 0 ? 'pk-nudge' : ''}`}>
             {/* ---- Front pouch face ---- */}
             <div ref={frontSkinRef} className="pk-skin pk-front" aria-hidden>
+              <i ref={glintRef} className="pk-glint" />
+              <i ref={creaseShineRef} className="pk-crease-shine" />
               <span className="pk-tag">{tearLabel}</span>
               <span className="pk-tear-guide" />
               <span className="pk-lips">
@@ -1051,8 +1229,8 @@ export const FoilPack = forwardRef<FoilPackHandle, FoilPackProps>(function FoilP
               <span className="pk-foot-r">{cardsText}</span>
             </div>
 
-            {/* ---- Back pouch face (visible while spinning into stage) ---- */}
-            <div ref={backSkinRef} className="pk-skin pk-back-skin" aria-hidden>
+            {/* ---- Back pouch face (visible only while >90deg during spin-in; hidden otherwise for WebKit mask compatibility) ---- */}
+            <div ref={backSkinRef} className="pk-skin pk-back-skin" style={{ visibility: enterFromRight ? 'visible' : 'hidden' }} aria-hidden>
               <i className="pk-fin" />
               <b className="pk-mark-word sm">cloudborne</b>
               <p className="pk-blurb">

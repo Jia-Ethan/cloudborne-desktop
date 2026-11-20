@@ -95,12 +95,14 @@ describe('tear geometry', () => {
     }
   });
 
-  it('produces valid encoded SVG creases and 18 3D side rim specs', () => {
+  it('produces valid encoded SVG creases without SVG blur filters and 18 3D side rim specs', () => {
     const creases = generateFoilCreases(seededRng(11));
     expect(creases.shine.startsWith('url("data:image/svg+xml,')).toBe(true);
     expect(creases.shade.startsWith('url("data:image/svg+xml,')).toBe(true);
     expect(creases.shine).not.toContain('#');
     expect(creases.shade).not.toContain('#');
+    expect(creases.shine).not.toContain('feGaussianBlur');
+    expect(creases.shade).not.toContain('feGaussianBlur');
     const rims = createRimSpecs();
     expect(rims).toHaveLength(18);
     expect(rims.filter((r) => r.side === -1)).toHaveLength(9);

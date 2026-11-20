@@ -6,12 +6,12 @@ import { useI18n } from '../i18n';
 import { balanceGained, batchSize, dollars } from '../lottery';
 import { lotterySfx, setLotterySoundOn, useLotterySoundOn } from '../lottery/lotterySound';
 import { CONFETTI_COLORS, bestRarity, isMysteryDraw } from '../lottery/packThemes';
-import { clamp, createPose, rand, stepSprings, type Pose } from '../lottery/spring';
-import { arrangeBatchCards, computeCardLayout, poly, type CardSlot } from '../lottery/tearGeometry';
+import { allSettled, clamp, createPose, rand, stepSprings, type Pose, type Spring } from '../lottery/spring';
+import { arrangeBatchCards, computeCardLayout, getGlitterDataUrl, poly, type CardSlot } from '../lottery/tearGeometry';
 import { FoilPack, type FoilPackHandle, type PackHandoff, type PackOpenResult } from './FoilPack';
 import { Icon } from './Icon';
 import { PrizeCard } from './PrizeCard';
-import { burst, coinRain, confetti, lightning, packConfetti } from './fx';
+import { createFxEngine, type FxEngine } from './fx';
 
 const [MARK_X, MARK_Y, MARK_W, MARK_H] = markPath.viewBox;
 
@@ -25,6 +25,19 @@ interface PackPortalProps {
 
 type PortalMode = 'reveal' | 'next-pack';
 type CardPhase = 'in' | 'shot' | 'orbit' | 'spread';
+
+interface OpticalEls {
+  holo: HTMLElement | null;
+  holoRays: HTMLElement | null;
+  glitter: HTMLElement | null;
+  glare: HTMLElement | null;
+  glazeBand: HTMLElement | null;
+  backHolo: HTMLElement | null;
+  backHoloRays: HTMLElement | null;
+  backGlitter: HTMLElement | null;
+  backGlare: HTMLElement | null;
+  backGlazeBand: HTMLElement | null;
+}
 
 interface CardSim {
   draw: Draw;
@@ -46,7 +59,13 @@ interface CardSim {
   kb: boolean;
   hx: number;
   hy: number;
+  lastZ: number;
+  lastNx: number;
+  lastNy: number;
+  settled: boolean;
   p: Pose<'x' | 'y' | 'z' | 'rx' | 'ry' | 'rz' | 's'>;
+  springs: Spring[];
+  opt: OpticalEls | null;
 }
 
 const ORBIT_SINGLE = 0.78;
@@ -60,12 +79,59 @@ const smoothstep = (a: number, b: number, x: number) => {
   return k * k * (3 - 2 * k);
 };
 
+function queryOpticalEls(root: HTMLElement): OpticalEls {
+  const face = root.querySelector<HTMLElement>('.pk-face');
+  const back = root.querySelector<HTMLElement>('.pk-back');
+  return {
+    holo: face?.querySelector<HTMLElement>('.pk-holo') ?? null,
+    holoRays: face?.querySelector<HTMLElement>('.pk-holo-rays') ?? null,
+    glitter: face?.querySelector<HTMLElement>('.pk-glitter') ?? null,
+    glare: face?.querySelector<HTMLElement>('.pk-glare') ?? null,
+    glazeBand: face?.querySelector<HTMLElement>('.pk-glaze-band') ?? null,
+    backHolo: back?.querySelector<HTMLElement>('.pk-holo') ?? null,
+    backHoloRays: back?.querySelector<HTMLElement>('.pk-holo-rays') ?? null,
+    backGlitter: back?.querySelector<HTMLElement>('.pk-glitter') ?? null,
+    backGlare: back?.querySelector<HTMLElement>('.pk-glare') ?? null,
+    backGlazeBand: back?.querySelector<HTMLElement>('.pk-glaze-band') ?? null,
+  };
+}
+
+/** Updates only GPU-composited transform & opacity on a card's optical leaf elements. */
+function applyOptical(opt: OpticalEls, rarity: Rarity, isBack: boolean, nx: number, ny: number, hyp: number): void {
+  const holo = isBack ? opt.backHolo : opt.holo;
+  const holoRays = isBack ? opt.backHoloRays : opt.holoRays;
+  const glitter = isBack ? opt.backGlitter : opt.glitter;
+  const glare = isBack ? opt.backGlare : opt.glare;
+  const glazeBand = isBack ? opt.backGlazeBand : opt.glazeBand;
+
+  if (holo) {
+    holo.style.transform = `translate3d(${(-nx * 12).toFixed(2)}%,${(-ny * 12).toFixed(2)}%,0)`;
+    const baseOp =
+      rarity === 'legendary' ? 0.44 : rarity === 'epic' ? 0.36 : rarity === 'common' ? 0.24 : 0.28;
+    holo.style.opacity = (baseOp + hyp * 0.44).toFixed(2);
+  }
+  if (holoRays) {
+    holoRays.style.transform = `rotate(${(nx * 24 + ny * 10).toFixed(1)}deg)`;
+    holoRays.style.opacity = (0.34 + hyp * 0.4).toFixed(2);
+  }
+  if (glitter) {
+    glitter.style.opacity = (0.28 + hyp * 0.54).toFixed(2);
+  }
+  if (glare) {
+    glare.style.transform = `translate3d(${(nx * 20).toFixed(2)}%,${(-ny * 20).toFixed(2)}%,0)`;
+    glare.style.opacity = (0.16 + hyp * 0.5).toFixed(2);
+  }
+  if (glazeBand) {
+    glazeBand.style.transform = `translate3d(${(-nx * 18).toFixed(2)}%,0,0)`;
+  }
+}
+
 /**
  * Full-viewport warm studio gallery overlay (`holo.yashb.xyz` aesthetic) that
  * catches the torn pack seamlessly at its exact pixel coordinates, erupts 3D
- * confetti, launches cards through an orbital unwind into an interactive 3D
- * fan/gallery, supports Option B mystery card flipping for Epic/Legendary hits,
- * and allows tearing consecutive packs right inside the studio without closing.
+ * confetti on a single shared FX canvas, launches cards through an orbital
+ * unwind into an interactive 3D fan/gallery, supports Option B mystery card
+ * flipping, and sleeps its physics loop at 0% CPU/GPU when settled.
  */
 export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccepted, onClose }: PackPortalProps) {
   const { t } = useI18n();
@@ -89,10 +155,8 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
     return init;
   });
 
-  // Track which cards have landed in their resting slots (for Slot rolling & 3D emblem pop).
-  const [landedSet, setLandedSet] = useState<Set<number>>(() =>
-    reducedMotion() ? new Set(orderedDraws.map((_, i) => i)) : new Set(),
-  );
+  // Track when cards have landed (batched cleanly to avoid 10 mid-flight React re-renders).
+  const [landedAll, setLandedAll] = useState(() => reducedMotion());
   const [spreadReady, setSpreadReady] = useState(() => reducedMotion());
   const [inspectedIdx, setInspectedIdx] = useState<number | null>(null);
   const [flash, setFlash] = useState(false);
@@ -101,68 +165,71 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
   const sceneRef = useRef<HTMLDivElement>(null);
   const dropPackRef = useRef<HTMLDivElement>(null);
   const flyStripRef = useRef<HTMLDivElement>(null);
-  const fxMainRef = useRef<HTMLCanvasElement>(null);
-  const fxSparksRef = useRef<HTMLCanvasElement>(null);
-  const fxBoltsRef = useRef<HTMLCanvasElement>(null);
-  const fxCoinsRef = useRef<HTMLCanvasElement>(null);
+  const fxCanvasRef = useRef<HTMLCanvasElement>(null);
+  const fxEngineRef = useRef<FxEngine | null>(null);
   const cardElsRef = useRef<(HTMLDivElement | null)[]>([]);
   const nextPackRef = useRef<FoilPackHandle>(null);
-  const stopsRef = useRef<(() => void)[]>([]);
   const flipTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wakeSimRef = useRef<() => void>(() => {});
+  const refreshOptRef = useRef<() => void>(() => {});
 
-  // Refs synced to latest React state for the 60/120fps physics loop.
+  // Refs synced to latest React state for the physics loop.
   const inspectedRef = useRef<number | null>(inspectedIdx);
   inspectedRef.current = inspectedIdx;
   const flippedRef = useRef(flippedSet);
   flippedRef.current = flippedSet;
+  const spreadReadyRef = useRef(spreadReady);
+  spreadReadyRef.current = spreadReady;
+
+  // Initialize single shared FX engine once on mount.
+  useEffect(() => {
+    const canvas = fxCanvasRef.current;
+    if (!canvas) return;
+    const engine = createFxEngine(canvas);
+    fxEngineRef.current = engine;
+    return () => {
+      engine.destroy();
+      fxEngineRef.current = null;
+    };
+  }, []);
 
   // Trigger VFX & sound when a big hit reveals (either single-card landing or Option B mystery flip).
   const triggerRarityCelebration = useCallback((draw: Draw, cx: number, cy: number) => {
     if (reducedMotion()) return;
     if (draw.kind === 'none') return;
+    const fx = fxEngineRef.current;
+    if (!fx) return;
     const r = draw.rarity;
 
-    if (fxSparksRef.current) {
-      const colors: Record<Rarity, string[]> = {
-        common: ['#ffffff', '#f3eee4', '#d9dee5'],
-        rare: ['#bfdbfe', '#4d8dff', '#ffffff'],
-        epic: ['#e9d5ff', '#b06cff', '#f0abfc', '#ffffff'],
-        legendary: ['#fff1b8', '#ffc22e', '#ffffff', '#ff9d3c'],
-      };
-      const scale = r === 'legendary' ? 2 : r === 'epic' ? 1.55 : r === 'rare' ? 1.1 : 0.8;
-      stopsRef.current.push(
-        burst(fxSparksRef.current, { x: cx, y: cy, colors: colors[r], count: Math.round(78 * scale), power: 6.2 * scale }),
-      );
-    }
+    const colors: Record<Rarity, string[]> = {
+      common: ['#ffffff', '#f3eee4', '#d9dee5'],
+      rare: ['#bfdbfe', '#4d8dff', '#ffffff'],
+      epic: ['#e9d5ff', '#b06cff', '#f0abfc', '#ffffff'],
+      legendary: ['#fff1b8', '#ffc22e', '#ffffff', '#ff9d3c'],
+    };
+    const scale = r === 'legendary' ? 1.7 : r === 'epic' ? 1.35 : r === 'rare' ? 1.0 : 0.75;
+    fx.burst({ x: cx, y: cy, colors: colors[r], count: Math.round(64 * scale), power: 6.0 * scale });
 
     if (r === 'epic') {
-      if (fxBoltsRef.current) {
-        stopsRef.current.push(
-          lightning(fxBoltsRef.current, {
-            x: cx,
-            y: cy,
-            colors: ['#e9d5ff', '#a855f7', '#f0abfc', '#818cf8'],
-            ms: 1050,
-          }),
-        );
-      }
-      if (fxCoinsRef.current) {
-        stopsRef.current.push(confetti(fxCoinsRef.current, { colors: [...CONFETTI_COLORS.epic], ms: 1350 }));
-      }
+      fx.lightning({
+        x: cx,
+        y: cy,
+        colors: ['#e9d5ff', '#a855f7', '#f0abfc', '#818cf8'],
+        ms: 1000,
+      });
+      fx.confetti({ colors: CONFETTI_COLORS.epic, ms: 1250 });
     }
 
     if (r === 'legendary') {
-      setFlash(true);
       if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+      setFlash(true);
       flashTimerRef.current = setTimeout(() => {
         flashTimerRef.current = null;
         setFlash(false);
       }, 1150);
-      if (fxCoinsRef.current) stopsRef.current.push(coinRain(fxCoinsRef.current, 3800));
-      if (fxBoltsRef.current) {
-        stopsRef.current.push(confetti(fxBoltsRef.current, { colors: [...CONFETTI_COLORS.legendary], ms: 3100 }));
-      }
+      fx.coinRain(3400);
+      fx.confetti({ colors: CONFETTI_COLORS.legendary, ms: 2800 });
     }
   }, []);
 
@@ -183,8 +250,24 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
       const cx = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
       const cy = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
       triggerRarityCelebration(draw, cx, cy);
+      wakeSimRef.current();
     },
     [orderedDraws, triggerRarityCelebration],
+  );
+
+  // Stable card click handler so React.memo(PrizeCard) skips unaffected cards.
+  const handleCardSelect = useCallback(
+    (idx: number) => {
+      if (!spreadReadyRef.current) return;
+      if (!flippedRef.current.has(idx)) {
+        flipCard(idx);
+      } else if (orderedDraws.length > 5) {
+        lotterySfx.tick();
+        setInspectedIdx((prev) => (prev === idx ? null : idx));
+        wakeSimRef.current();
+      }
+    },
+    [flipCard, orderedDraws.length],
   );
 
   const unflippedIndices = useMemo(() => {
@@ -210,6 +293,12 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
     });
   }, [unflippedIndices, flipCard]);
 
+  // Wake physics loop & re-cache optical elements whenever flip/inspect state updates.
+  useEffect(() => {
+    refreshOptRef.current();
+    wakeSimRef.current();
+  }, [flippedSet, inspectedIdx]);
+
   // Reset per-reveal state whenever a fresh handoff arrives (including consecutive in-portal rips).
   useEffect(() => {
     const nextFlipped = new Set<number>();
@@ -217,7 +306,7 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
       if (!isMysteryDraw(d, orderedDraws.length)) nextFlipped.add(i);
     });
     setFlippedSet(nextFlipped);
-    setLandedSet(reducedMotion() ? new Set(orderedDraws.map((_, i) => i)) : new Set());
+    setLandedAll(reducedMotion());
     setSpreadReady(reducedMotion());
     setInspectedIdx(null);
     setPortalError('');
@@ -225,17 +314,19 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
     onResultAccepted(handoff.status);
   }, [handoff, orderedDraws, onResultAccepted]);
 
-  // Main 3D ejection -> orbital unwind -> interactive hover-tilt simulation.
+  // Main 3D ejection -> orbital unwind -> sleepable interactive hover-tilt simulation.
   useEffect(() => {
     if (portalMode !== 'reveal') return;
 
     const reduce = reducedMotion();
     const n = orderedDraws.length;
-    // Size native card pixels to peak scale so GPU layers never upscale past 1.0x (razor-sharp Retina text).
+    let vw = window.innerWidth;
+    let vh = window.innerHeight;
+
     const calcBaseCardW = () =>
       n === 1
-        ? clamp(Math.min(window.innerWidth - 120, (window.innerHeight - 210) / 1.4), 210, 272)
-        : clamp(Math.min(window.innerHeight * 0.56, 400) * 0.69 * 0.88, 175, 240);
+        ? clamp(Math.min(vw - 120, (vh - 210) / 1.4), 210, 272)
+        : clamp(Math.min(vh * 0.56, 400) * 0.69 * 0.88, 175, 240);
     let baseCardW = calcBaseCardW();
     if (stageRef.current) {
       stageRef.current.style.setProperty('--pk-cw', `${baseCardW.toFixed(1)}px`);
@@ -243,18 +334,18 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
     }
     const orbitDur = n === 1 ? ORBIT_SINGLE : ORBIT_BATCH;
 
-    // Starting coordinates relative to viewport center.
-    const startX = handoff.rect.left + handoff.rect.width / 2 - window.innerWidth / 2;
-    const startY = handoff.rect.top + handoff.rect.height / 2 - window.innerHeight / 2;
+    const startX = handoff.rect.left + handoff.rect.width / 2 - vw / 2;
+    const startY = handoff.rect.top + handoff.rect.height / 2 - vh / 2;
     const pw = handoff.rect.width || 245;
     const ph = handoff.rect.height || 355;
 
-    const layouts = computeCardLayout(n, window.innerWidth, window.innerHeight, baseCardW);
+    const layouts = computeCardLayout(n, vw, vh, baseCardW);
     const cards: CardSim[] = orderedDraws.map((draw, i) => {
       const slot = layouts[i] ?? { x: 0, y: 0, z: 0, rz: 0, s: 1, row: 0 };
       const initPose = reduce
         ? createPose({ x: slot.x, y: slot.y, z: slot.z, rx: 0, ry: 0, rz: slot.rz, s: slot.s }, 0.48, 0.22)
         : createPose({ x: startX, y: startY + ph * 0.04, z: 6 - i * 1.6, rx: 0, ry: 0, rz: 0, s: 0.76 }, 0.52, 0.22);
+      const springs = [initPose.x, initPose.y, initPose.z, initPose.rx, initPose.ry, initPose.rz, initPose.s];
       return {
         draw,
         index: i,
@@ -275,59 +366,100 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
         kb: false,
         hx: 0.5,
         hy: 0.5,
+        lastZ: -1,
+        lastNx: 99,
+        lastNy: 99,
+        settled: false,
         p: initPose,
+        springs,
+        opt: null,
       };
     });
+
+    const allSprings: Spring[] = [];
+    for (const c of cards) allSprings.push(...c.springs);
+
+    const refreshOpt = () => {
+      for (const c of cards) {
+        const el = cardElsRef.current[c.index];
+        c.opt = el ? queryOpticalEls(el) : null;
+        c.settled = false;
+        c.lastNx = 99;
+      }
+    };
+    refreshOpt();
+    refreshOptRef.current = refreshOpt;
 
     if (sceneRef.current) {
       sceneRef.current.classList.toggle('flat', reduce);
     }
 
-    // Launch perspective confetti straight out of the pack mouth!
+    // Launch perspective confetti straight out of the pack mouth on the single shared canvas!
     const topRarity = bestRarity(orderedDraws);
-    if (!reduce && fxMainRef.current) {
-      stopsRef.current.push(
-        packConfetti(fxMainRef.current, {
-          ox: handoff.rect.left + handoff.rect.width / 2,
-          oy: handoff.rect.top + ph * 0.14,
-          mouthWidth: pw * 0.82,
-          colors: CONFETTI_COLORS[topRarity],
-          count: topRarity === 'legendary' ? 230 : topRarity === 'epic' ? 190 : 140,
-        }),
-      );
+    if (!reduce && fxEngineRef.current) {
+      fxEngineRef.current.packConfetti({
+        ox: handoff.rect.left + handoff.rect.width / 2,
+        oy: handoff.rect.top + ph * 0.14,
+        mouthWidth: pw * 0.82,
+        colors: CONFETTI_COLORS[topRarity],
+        count: topRarity === 'legendary' ? 170 : topRarity === 'epic' ? 140 : 110,
+      });
     }
 
-    // Reduced-motion path: play quiet land cues and trigger non-flashing celebration.
     if (reduce) {
       orderedDraws.forEach((d, idx) => lotterySfx.land(d.rarity, isMysteryDraw(d, n), idx, n));
     }
 
-    const pointer = { x: window.innerWidth / 2, y: window.innerHeight / 2, in: false };
+    const pointer = { x: vw / 2, y: vh / 2, in: false };
+    let rafId = 0;
+    let sleeping = false;
+    let lastNow = performance.now();
+    let t = 0;
+
+    const wake = () => {
+      if (sleeping) {
+        sleeping = false;
+        lastNow = performance.now();
+        rafId = requestAnimationFrame(tick);
+      }
+    };
+    wakeSimRef.current = wake;
+
     const onMove = (e: globalThis.PointerEvent) => {
       pointer.x = e.clientX;
       pointer.y = e.clientY;
       pointer.in = true;
+      wake();
     };
     const onLeave = () => {
       pointer.in = false;
+      wake();
     };
+    const onFocusChange = () => wake();
     const onResize = () => {
+      vw = window.innerWidth;
+      vh = window.innerHeight;
       baseCardW = calcBaseCardW();
       if (stageRef.current) {
         stageRef.current.style.setProperty('--pk-cw', `${baseCardW.toFixed(1)}px`);
         stageRef.current.style.setProperty('--pk-ch', `${(baseCardW * 1.4).toFixed(1)}px`);
       }
-      const next = computeCardLayout(n, window.innerWidth, window.innerHeight, baseCardW);
+      const next = computeCardLayout(n, vw, vh, baseCardW);
       cards.forEach((c, i) => {
-        if (next[i]) c.slot = next[i];
+        if (next[i]) {
+          c.slot = next[i];
+          c.settled = false;
+        }
       });
+      wake();
     };
 
-    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointermove', onMove, { passive: true });
     document.documentElement.addEventListener('pointerleave', onLeave);
-    window.addEventListener('resize', onResize);
+    window.addEventListener('resize', onResize, { passive: true });
+    window.addEventListener('focusin', onFocusChange);
 
-    // Pack drop-away & loose foil strip launch physics (kicked by erupting cards).
+    // Pack drop-away & loose foil strip launch physics.
     let fallY = 0;
     let fallV = (1450 * ph) / 420;
     let fallRz = 0;
@@ -340,13 +472,9 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
     let stripRx = -24;
     let stripDone = reduce;
 
-    let t = 0;
-    let lastNow = performance.now();
     let unwound = reduce;
     let spreadAnnounced = reduce;
-    let rafId = 0;
 
-    // Hit-test cards from their stable resting slots so hover never flickers.
     const findAimed = (): CardSim | null => {
       if (!pointer.in) return null;
       const insp = inspectedRef.current;
@@ -355,10 +483,8 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
         if (!c) return null;
         const w = baseCardW * 1.12;
         const h = w * 1.4;
-        const hx = clamp((pointer.x - window.innerWidth / 2) / w + 0.5, 0, 1);
-        const hy = clamp((pointer.y - window.innerHeight / 2) / h + 0.5, 0, 1);
-        c.hx = hx;
-        c.hy = hy;
+        c.hx = clamp((pointer.x - vw / 2) / w + 0.5, 0, 1);
+        c.hy = clamp((pointer.y - vh / 2) / h + 0.5, 0, 1);
         return c;
       }
 
@@ -372,8 +498,8 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
         const sin = Math.sin(rad);
         const w = baseCardW * f.s * near;
         const h = w * 1.4;
-        const dx = pointer.x - (window.innerWidth / 2 + f.x * near);
-        const dy = pointer.y - (window.innerHeight * 0.4 + (window.innerHeight * 0.1 + f.y) * near);
+        const dx = pointer.x - (vw / 2 + f.x * near);
+        const dy = pointer.y - (vh * 0.4 + (vh * 0.1 + f.y) * near);
         const hx = (dx * cos + dy * sin) / w + 0.5;
         const hy = (dy * cos - dx * sin) / h + 0.5;
         if (hx >= 0 && hx <= 1 && hy >= 0 && hy <= 1 && (!best || f.z >= best.slot.z)) {
@@ -391,7 +517,7 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
       if (n > 1) lotterySfx.swirl(orbitDur);
       for (const c of cards) {
         c.phase = 'orbit';
-        c.from = t + c.index * (n > 5 ? 0.022 : 0.032);
+        c.from = t + c.index * (n > 5 ? 0.02 : 0.028);
         c.landAt = c.from + orbitDur;
         c.x0 = c.p.x.x;
         c.y0 = c.p.y.x;
@@ -406,7 +532,6 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
       const u = clamp((t - c.from) / orbitDur, 0, 1);
       const f = c.slot;
       if (n === 1) {
-        // Dramatic single-card upward sweep & full 360° presentation spin to center!
         const out = smoothstep(0.18, 1, u);
         const arc = Math.sin(u * Math.PI);
         c.p.x.x = c.x0 * (1 - out) + f.x * out;
@@ -422,9 +547,9 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
         const a = c.end + (1 - turn) * (c.even - c.end + Math.PI * 2.3);
         const sin = Math.sin(a);
         const cos = Math.cos(a);
-        const W = Math.min(window.innerWidth * 0.31, 390);
+        const W = Math.min(vw * 0.31, 390);
         const mid = c.y0 + (c.vy / 9) * (1 - Math.exp(-9 * Math.max(0, t - c.from)));
-        const cy = mid + (-window.innerHeight * 0.03 - mid) * smoothstep(0, 0.42, u);
+        const cy = mid + (-vh * 0.03 - mid) * smoothstep(0, 0.42, u);
         c.p.x.x = c.x0 * (1 - out) + f.x * out + cos * W * ring;
         c.p.y.x = cy * (1 - out) + f.y * out + sin * W * 0.19 * ring;
         c.p.z.x = f.z * out + sin * 280 * ring;
@@ -435,27 +560,21 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
 
       if (u >= 1) {
         c.phase = 'spread';
+        c.settled = false;
         for (const k of ['x', 'y', 'z', 'rx', 'ry', 'rz', 's'] as const) c.p[k].set(0.48, 0.22);
         const mystery = isMysteryDraw(c.draw, n);
         lotterySfx.land(c.draw.rarity, mystery, c.index, n);
-        setLandedSet((prev) => {
-          if (prev.has(c.index)) return prev;
-          const next = new Set(prev);
-          next.add(c.index);
-          return next;
-        });
-
-        // For single pulls, fire rarity celebration (lightning / flash / coin rain) right on landing!
         if (n === 1) {
-          triggerRarityCelebration(c.draw, window.innerWidth / 2, window.innerHeight / 2 - 12);
+          triggerRarityCelebration(c.draw, vw / 2, vh / 2 - 12);
         }
       }
     };
 
     const tick = (now: number) => {
-      rafId = requestAnimationFrame(tick);
+      rafId = 0;
       if (document.hidden) {
         lastNow = now;
+        rafId = requestAnimationFrame(tick);
         return;
       }
       const dt = Math.min(0.05, Math.max(0.001, (now - lastNow) / 1000));
@@ -470,7 +589,7 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
           fallRz += (handoff.tearDir * 10 - fallRz) * Math.min(1, dt * 8);
         }
         dropPackRef.current.style.transform = `translate3d(${startX.toFixed(1)}px,${(startY + fallY).toFixed(1)}px,0) rotateZ(${fallRz.toFixed(2)}deg)`;
-        if (startY + fallY > window.innerHeight + ph) {
+        if (startY + fallY > vh + ph) {
           packDropped = true;
           dropPackRef.current.style.visibility = 'hidden';
         }
@@ -507,10 +626,7 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
         }
       }
 
-      stepSprings(
-        cards.flatMap((c) => Object.values(c.p)),
-        dt,
-      );
+      stepSprings(allSprings, dt);
 
       for (const c of cards) {
         if (c.phase === 'orbit') stepOrbit(c);
@@ -520,13 +636,21 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
       const insp = inspectedRef.current;
       const motion = reduce ? 0 : 1;
 
+      // Compute z-order only when cards are moving or hovering.
       const sortedByZ = [...cards].sort((a, b) => a.p.z.x - b.p.z.x);
       const zRanks = new Map<number, number>();
-      sortedByZ.forEach((c, idx) => zRanks.set(c.index, idx + 1));
+      for (let idx = 0; idx < sortedByZ.length; idx++) {
+        zRanks.set(sortedByZ[idx].index, idx + 1);
+      }
+
+      let anyActiveMotion = !packDropped || !stripDone || !spreadAnnounced;
 
       for (const c of cards) {
         const el = cardElsRef.current[c.index];
         if (!el) continue;
+
+        const isBack = !flippedRef.current.has(c.index);
+        let needsContinuousMotion = c.phase !== 'spread';
 
         if (c.phase === 'spread') {
           c.kb = document.activeElement === el && el.matches(':focus-visible');
@@ -539,31 +663,80 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
           }
           if (on !== c.glad) {
             c.glad = on;
+            c.settled = false;
             if (on && !isInsp) lotterySfx.lift(c.index, n);
           }
 
           const f = c.slot;
           const w = t * 0.8 + c.index * 1.7;
-          const mysteryUnflipped = !flippedRef.current.has(c.index);
 
           if (isInsp) {
             c.p.x.to = 0;
             c.p.y.to = -14;
             c.p.z.to = 170;
             c.p.rz.to = 0;
-            c.p.s.to = clamp(Math.min((window.innerWidth - 120) / baseCardW, (window.innerHeight - 190) / (baseCardW * 1.4), 1.15), 0.82, 1.15);
-            c.p.rx.to = (0.5 - c.hy) * 28;
-            c.p.ry.to = (c.hx - 0.5) * 32;
-          } else {
-            // Subtle beckoning shimmer tilt for unflipped Epic/Legendary mystery cards!
-            const beckonRz = mysteryUnflipped && motion ? Math.sin(t * 3.1 + c.index) * 1.6 : 0;
+            c.p.s.to = clamp(Math.min((vw - 120) / baseCardW, (vh - 190) / (baseCardW * 1.4), 1.15), 0.82, 1.15);
+            c.p.rx.to = (0.5 - c.hy) * 26;
+            c.p.ry.to = (c.hx - 0.5) * 30;
+            needsContinuousMotion = true;
+          } else if (on) {
             c.p.x.to = f.x;
             c.p.s.to = f.s;
-            c.p.y.to = f.y + (on ? -14 : Math.sin(w * 1.15) * 4.2 * motion);
-            c.p.z.to = f.z + (on ? 105 : mysteryUnflipped ? 18 : 0);
-            c.p.rz.to = on ? f.rz * 0.25 : f.rz + beckonRz;
-            c.p.rx.to = on ? (0.5 - c.hy) * 34 : Math.cos(w * 0.9) * 3.5 * motion;
-            c.p.ry.to = on ? (c.hx - 0.5) * 38 : Math.sin(w) * (mysteryUnflipped ? 10 : 7) * motion;
+            c.p.y.to = f.y - 14;
+            c.p.z.to = f.z + 105;
+            c.p.rz.to = f.rz * 0.25;
+            c.p.rx.to = (0.5 - c.hy) * 32;
+            c.p.ry.to = (c.hx - 0.5) * 36;
+            needsContinuousMotion = true;
+          } else if (isBack) {
+            // Unflipped mystery cards rest slightly lifted in Z-space (their pulsing CTA & border invite clicking without burning 3D wobble every frame).
+            c.p.x.to = f.x;
+            c.p.s.to = f.s;
+            c.p.y.to = f.y - 4;
+            c.p.z.to = f.z + 18;
+            c.p.rz.to = f.rz;
+            c.p.rx.to = 0;
+            c.p.ry.to = 0;
+          } else if (n === 1 && motion) {
+            // Single showcase card maintains a gentle living float.
+            c.p.x.to = f.x;
+            c.p.s.to = f.s;
+            c.p.y.to = f.y + Math.sin(w * 1.1) * 4.0;
+            c.p.z.to = f.z;
+            c.p.rz.to = f.rz;
+            c.p.rx.to = Math.cos(w * 0.85) * 3.2;
+            c.p.ry.to = Math.sin(w) * 6.5;
+            needsContinuousMotion = true;
+          } else {
+            // Resting revealed batch cards settle cleanly into their arched fan so idle GPU/CPU drops to 0%.
+            c.p.x.to = f.x;
+            c.p.s.to = f.s;
+            c.p.y.to = f.y;
+            c.p.z.to = f.z;
+            c.p.rz.to = f.rz;
+            c.p.rx.to = 0;
+            c.p.ry.to = 0;
+          }
+
+          if (!needsContinuousMotion) {
+            if (allSettled(c.springs, 0.04, 0.08)) {
+              if (c.settled) continue;
+              // Final clean snap to exact resting coordinates, then mark settled!
+              c.p.x.snap(c.p.x.to);
+              c.p.y.snap(c.p.y.to);
+              c.p.z.snap(c.p.z.to);
+              c.p.rz.snap(c.p.rz.to);
+              c.p.rx.snap(0);
+              c.p.ry.snap(0);
+              c.p.s.snap(c.p.s.to);
+              c.settled = true;
+            } else {
+              c.settled = false;
+              anyActiveMotion = true;
+            }
+          } else {
+            c.settled = false;
+            anyActiveMotion = true;
           }
         }
 
@@ -574,21 +747,39 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
         el.style.transform = `translate3d(${c.p.x.x.toFixed(2)}px,${c.p.y.x.toFixed(2)}px,${c.p.z.x.toFixed(2)}px) rotateZ(${c.p.rz.x.toFixed(2)}deg) rotateX(${rx.toFixed(2)}deg) rotateY(${ry.toFixed(2)}deg) scale(${c.p.s.x.toFixed(4)})`;
 
         if (loose) c.up = c.hover || (c.up && c.p.z.x > c.slot.z + 25);
-        el.style.zIndex = String(insp === c.index ? 30 : c.up ? 20 : zRanks.get(c.index) ?? n - c.index);
+        const nextZ = insp === c.index ? 30 : c.up ? 20 : zRanks.get(c.index) ?? n - c.index;
+        if (nextZ !== c.lastZ) {
+          el.style.zIndex = String(nextZ);
+          c.lastZ = nextZ;
+        }
 
-        if (c.phase === 'spread') {
-          const alpha = reduce ? 1 : clamp((t - c.landAt - 0.1) / 0.4, 0, 1);
+        // Update GPU-composited optical leaf layers ONLY when tilt visibly changed.
+        if (c.phase === 'spread' && c.opt) {
+          const alpha = reduce ? 1 : clamp((t - c.landAt - 0.08) / 0.35, 0, 1);
           const nx = clamp(ry / 24, -1, 1) * alpha;
           const ny = clamp(rx / 24, -1, 1) * alpha;
-          el.style.setProperty('--px', (50 + nx * 50).toFixed(1));
-          el.style.setProperty('--py', (50 - ny * 50).toFixed(1));
-          el.style.setProperty('--hyp', Math.min(1, Math.hypot(nx, ny)).toFixed(3));
+          if (Math.abs(nx - c.lastNx) > 0.004 || Math.abs(ny - c.lastNy) > 0.004 || alpha < 1) {
+            c.lastNx = nx;
+            c.lastNy = ny;
+            const hyp = Math.min(1, Math.hypot(nx, ny));
+            applyOptical(c.opt, c.draw.rarity, isBack, nx, ny, hyp);
+            if (alpha < 1) anyActiveMotion = true;
+          }
         }
       }
 
       if (!spreadAnnounced && cards.every((c) => c.phase === 'spread')) {
         spreadAnnounced = true;
+        // Single batched state update after landing (replaces up to 10 consecutive mid-flight re-renders!).
+        setLandedAll(true);
         setSpreadReady(true);
+        anyActiveMotion = true;
+      }
+
+      if (anyActiveMotion) {
+        rafId = requestAnimationFrame(tick);
+      } else {
+        sleeping = true;
       }
     };
 
@@ -596,16 +787,20 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
 
     return () => {
       cancelAnimationFrame(rafId);
+      wakeSimRef.current = () => {};
+      refreshOptRef.current = () => {};
       window.removeEventListener('pointermove', onMove);
       document.documentElement.removeEventListener('pointerleave', onLeave);
       window.removeEventListener('resize', onResize);
+      window.removeEventListener('focusin', onFocusChange);
     };
   }, [portalMode, handoff, orderedDraws, triggerRarityCelebration]);
 
-  // Cleanup canvas loops and timers on unmount.
+  // Mark root document opaque while fullscreen portal is mounted to reduce macOS vibrancy compositing overhead.
   useEffect(() => {
+    document.documentElement.classList.add('pk-portal-open');
     return () => {
-      stopsRef.current.forEach((s) => s());
+      document.documentElement.classList.remove('pk-portal-open');
       flipTimersRef.current.forEach(clearTimeout);
       if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
     };
@@ -657,8 +852,7 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
 
   const openAnother = (count: number) => {
     lotterySfx.tick();
-    stopsRef.current.forEach((s) => s());
-    stopsRef.current = [];
+    fxEngineRef.current?.clear();
     flipTimersRef.current.forEach(clearTimeout);
     flipTimersRef.current = [];
     if (flashTimerRef.current) {
@@ -681,16 +875,20 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
     };
   }, [handoff]);
 
-  const cardSizeStyle = useMemo(() => {
+  const portalStyle = useMemo(() => {
     const cw =
       orderedDraws.length === 1
         ? clamp(Math.min(window.innerWidth - 120, (window.innerHeight - 210) / 1.4), 210, 272)
         : clamp(Math.min(window.innerHeight * 0.56, 400) * 0.69 * 0.88, 175, 240);
+    const glitterUrl = getGlitterDataUrl();
     return {
       '--pk-cw': `${cw.toFixed(1)}px`,
       '--pk-ch': `${(cw * 1.4).toFixed(1)}px`,
+      ...(glitterUrl ? { '--pk-glitter': glitterUrl } : {}),
     } as CSSProperties;
   }, [handoff, orderedDraws.length]);
+
+  const slabCount: 1 | 2 = orderedDraws.length === 1 ? 2 : 1;
 
   const content = (
     <div
@@ -699,7 +897,7 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
       role="dialog"
       aria-modal="true"
       aria-label={t('lottery.portalLabel')}
-      style={cardSizeStyle}
+      style={portalStyle}
       onClick={(e) => {
         if (inspectedIdx !== null && e.target === stageRef.current) setInspectedIdx(null);
       }}
@@ -807,9 +1005,9 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
 
           {/* Drawn collectible cards */}
           {orderedDraws.map((draw, idx) => {
+            const mystery = isMysteryDraw(draw, orderedDraws.length);
             const faceDown = !flippedSet.has(idx);
-            const landed = landedSet.has(idx);
-            const revealed = landed && !faceDown;
+            const revealed = landedAll && !faceDown;
             const isInspected = inspectedIdx === idx;
             return (
               <div
@@ -824,27 +1022,21 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    if (faceDown) flipCard(idx);
-                    else if (orderedDraws.length > 5) setInspectedIdx(isInspected ? null : idx);
+                    handleCardSelect(idx);
                   }
                 }}
               >
                 <PrizeCard
                   draw={draw}
+                  index={idx}
                   serial={idx + 1}
+                  isMystery={mystery}
                   faceDown={faceDown}
                   revealed={revealed}
-                  out={landed}
+                  out={landedAll}
                   inspected={isInspected}
-                  onClick={() => {
-                    if (!spreadReady) return;
-                    if (faceDown) {
-                      flipCard(idx);
-                    } else if (orderedDraws.length > 5) {
-                      lotterySfx.tick();
-                      setInspectedIdx(isInspected ? null : idx);
-                    }
-                  }}
+                  slabCount={slabCount}
+                  onSelect={handleCardSelect}
                 />
               </div>
             );
@@ -912,11 +1104,8 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
         </div>
       )}
 
-      {/* Full-viewport FX canvases (confetti, sparks, lightning, gold coin rain) */}
-      <canvas ref={fxMainRef} className="pk-fx-canvas" aria-hidden />
-      <canvas ref={fxCoinsRef} className="pk-fx-canvas" aria-hidden />
-      <canvas ref={fxBoltsRef} className="pk-fx-canvas" aria-hidden />
-      <canvas ref={fxSparksRef} className="pk-fx-canvas" aria-hidden />
+      {/* Single shared full-viewport FX canvas (auto-hidden when idle) */}
+      <canvas ref={fxCanvasRef} className="pk-fx-canvas" aria-hidden />
       {flash && <div className="lot-flash" aria-hidden />}
     </div>
   );

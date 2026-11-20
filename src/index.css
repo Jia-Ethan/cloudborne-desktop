@@ -3125,16 +3125,35 @@ html[data-glass='mica'] {
     justify-content: space-between;
     pointer-events: none;
   }
+  html.pk-portal-open,
+  html.pk-portal-open body {
+    background: #e8e5df;
+  }
+  @media (prefers-color-scheme: dark) {
+    html.pk-portal-open,
+    html.pk-portal-open body {
+      background: #1d1b22;
+    }
+  }
+
+  .pk-behind-portal {
+    visibility: hidden;
+    pointer-events: none;
+  }
+
   .pk-stage-hint {
     padding: 5px 12px;
     color: var(--pk-muted);
-    background: var(--pk-pill-bg);
+    background: rgb(255 255 255 / 0.9);
     border: 1px solid var(--pk-pill-border);
     border-radius: 999px;
     font-size: 12px;
     font-weight: 550;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+  }
+  @media (prefers-color-scheme: dark) {
+    .pk-stage-hint {
+      background: rgb(38 35 45 / 0.9);
+    }
   }
   .pk-mute-btn,
   .pk-chrome-btn {
@@ -3310,17 +3329,16 @@ html[data-glass='mica'] {
     position: absolute;
     left: 50%;
     top: 50%;
-    width: calc(var(--pw) * 0.96);
-    height: calc(var(--pw) * 0.16);
-    margin: calc(var(--pw) * -0.08) 0 0 calc(var(--pw) * -0.48);
+    width: calc(var(--pw) * 1.12);
+    height: calc(var(--pw) * 0.24);
+    margin: calc(var(--pw) * -0.12) 0 0 calc(var(--pw) * -0.56);
     border-radius: 50%;
-    background: radial-gradient(closest-side, rgb(30 25 15 / 0.28), transparent);
-    filter: blur(7px);
+    background: radial-gradient(closest-side, rgb(30 25 15 / 0.24) 0%, rgb(30 25 15 / 0.12) 48%, transparent 100%);
     pointer-events: none;
   }
   @media (prefers-color-scheme: dark) {
     .pk-ground {
-      background: radial-gradient(closest-side, rgb(0 0 0 / 0.56), transparent);
+      background: radial-gradient(closest-side, rgb(0 0 0 / 0.48) 0%, rgb(0 0 0 / 0.22) 50%, transparent 100%);
     }
   }
 
@@ -3417,28 +3435,25 @@ html[data-glass='mica'] {
   .pk-skin.pk-back-skin {
     transform: rotateY(180deg) translateZ(calc(var(--d) / 2));
   }
-  .pk-skin::before,
-  .pk-skin::after {
-    content: '';
+  /* Sliding vertical edge glint & top crease sheen on front pouch ONLY (pure GPU transform/opacity) */
+  .pk-glint,
+  .pk-crease-shine {
     position: absolute;
     inset: 0;
     z-index: 1;
     pointer-events: none;
   }
-  /* Sliding vertical edge glint on left side of foil */
-  .pk-skin::before {
+  .pk-glint {
     background: linear-gradient(90deg, transparent 2.4%, rgb(255 255 255 / 0.72) 3.1%, rgb(255 255 255 / 0.28) 5.2%, transparent 9.5%);
     mask: linear-gradient(transparent 7%, #000 13% 48%, transparent 84%);
     -webkit-mask: linear-gradient(transparent 7%, #000 13% 48%, transparent 84%);
-    transform: translateX(calc(var(--gx, 0) * 1%));
-    opacity: var(--gl, 0.82);
+    opacity: 0.82;
+    will-change: transform, opacity;
   }
-  /* Creased highlight streaks right under the top heat seal */
-  .pk-skin::after {
+  .pk-crease-shine {
     background: var(--shine, none) 0 0 / 100% 100%;
-    opacity: var(--gt, 0.86);
-    mask: linear-gradient(90deg, rgb(0 0 0 / 0.45), #000 40% 60%, rgb(0 0 0 / 0.45)) calc(var(--gm, 50) * 1%) 0 / 250% 100%;
-    -webkit-mask: linear-gradient(90deg, rgb(0 0 0 / 0.45), #000 40% 60%, rgb(0 0 0 / 0.45)) calc(var(--gm, 50) * 1%) 0 / 250% 100%;
+    opacity: 0.86;
+    will-change: opacity;
   }
 
   .pk-rim {
@@ -3446,7 +3461,7 @@ html[data-glass='mica'] {
     pointer-events: none;
   }
 
-  /* Light ribbons pouring out of the torn opening, sitting behind front skin */
+  /* Canvas 2D light ribbons pouring out of the torn opening, sitting behind front skin */
   .pk-flow {
     position: absolute;
     left: 50%;
@@ -3459,13 +3474,14 @@ html[data-glass='mica'] {
   }
   .pk-rays {
     position: absolute;
-    left: 0;
-    width: 100%;
-    top: calc(10.5% - var(--pw) * 0.6);
-    height: calc(var(--pw) * 0.76);
-    overflow: visible;
+    left: -160%;
+    width: 420%;
+    top: calc(10.5% - var(--pw) * 3.2);
+    height: calc(var(--pw) * 3.6);
     opacity: 0;
+    visibility: hidden;
     transform: translateZ(-5px);
+    pointer-events: none;
   }
 
   /* Pouch printed typography & Cloudborne emblem */
@@ -3563,11 +3579,11 @@ html[data-glass='mica'] {
   }
   .pk-orb-shade {
     transform: translateY(5.5%);
-    filter: blur(calc(var(--pw) * 0.026));
-    opacity: 0.32;
+    filter: blur(4px);
+    opacity: 0.28;
   }
   .pk-orb-body {
-    filter: hue-rotate(calc(var(--sh, 0) * 1deg));
+    filter: none;
   }
   .pk-core-star-anchor {
     position: absolute;
@@ -3741,16 +3757,24 @@ html[data-glass='mica'] {
     transform-style: preserve-3d;
     transform-origin: 0 0;
   }
+  /* Lightweight skins for the 12 curling tear strip slices (top ~20% only: no bottom crimp or bottom creases). */
+  .pk-ply .pk-skin {
+    background:
+      repeating-linear-gradient(90deg, rgb(0 0 0 / 0.19) 0 1px, rgb(255 255 255 / 0.09) 1px 2px, transparent 2px 5px) 0 0 / 100% var(--crimp) no-repeat,
+      var(--pack);
+    mask:
+      conic-gradient(from 135deg at 50% 0, #0000, #000 1deg 89deg, #0000 90deg) 0 0 / var(--tooth) calc(var(--tooth) / 2) repeat-x,
+      linear-gradient(#000, #000) 0 calc(var(--tooth) / 2) / 100% 100% no-repeat;
+    -webkit-mask:
+      conic-gradient(from 135deg at 50% 0, #0000, #000 1deg 89deg, #0000 90deg) 0 0 / var(--tooth) calc(var(--tooth) / 2) repeat-x,
+      linear-gradient(#000, #000) 0 calc(var(--tooth) / 2) / 100% 100% no-repeat;
+  }
   .pk-ply .pk-front {
     transform: translateZ(0.4px);
   }
   .pk-skin.pk-foil {
     transform: rotateY(180deg) translateZ(0.4px);
     background: linear-gradient(97deg, #e3e8f2, #fff 12%, #cfd7e6 26%, #fff 44%, #dbe1ee 58%, #fff 76%, #d3dbe9);
-  }
-  .pk-skin.pk-foil::before,
-  .pk-skin.pk-foil::after {
-    display: none;
   }
   .pk-tone {
     position: absolute;
@@ -3763,14 +3787,13 @@ html[data-glass='mica'] {
     position: absolute;
     inset: 0;
     z-index: 2;
-    filter: drop-shadow(0 1.5px 1.2px rgb(0 0 0 / 0.42));
   }
   .pk-lip {
     position: absolute;
     inset: 0;
     z-index: 2;
     clip-path: polygon(0 0);
-    background: linear-gradient(100deg, #f4f6fb, #fff 14%, #bfc8da 27%, #fff 42%, #c9d1e1 58%, #fbfcff 72%, #b9c2d4 86%, #eef1f7);
+    background: linear-gradient(100deg, #e5e9f2, #fff 14%, #aeb8cc 27%, #fff 42%, #bdc6d9 58%, #f8faff 72%, #a8b2c7 86%, #e4e9f2);
   }
 
   .pk-hit {
@@ -3819,7 +3842,6 @@ html[data-glass='mica'] {
     background: radial-gradient(120% 90% at 50% 38%, var(--pk-bg-1), var(--pk-bg-2) 58%, var(--pk-bg-3));
     user-select: none;
     -webkit-user-select: none;
-    animation: pk-portal-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
   }
   @media (prefers-color-scheme: dark) {
     .pk-portal {
@@ -3852,18 +3874,21 @@ html[data-glass='mica'] {
     gap: 10px;
     padding: 8px 16px;
     color: var(--pk-ink);
-    background: var(--pk-pill-bg);
+    background: rgb(255 255 255 / 0.93);
     border: 1px solid var(--pk-pill-border);
     border-radius: 999px;
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.6),
-      0 10px 28px -10px rgb(20 18 14 / 0.22);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
+      inset 0 1px 0 rgb(255 255 255 / 0.7),
+      0 10px 28px -10px rgb(20 18 14 / 0.2);
     font-size: 13px;
     font-weight: 600;
     white-space: nowrap;
     animation: pk-float-down 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  @media (prefers-color-scheme: dark) {
+    .pk-portal-summary {
+      background: rgb(38 35 45 / 0.93);
+    }
   }
   .pk-summary-count {
     color: var(--pk-muted);
@@ -3926,9 +3951,7 @@ html[data-glass='mica'] {
     position: fixed;
     inset: 0;
     z-index: 25;
-    background: rgb(20 18 14 / 0.24);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
+    background: rgb(20 18 14 / 0.34);
     animation: pk-portal-in 0.2s ease;
   }
 
@@ -4032,9 +4055,6 @@ html[data-glass='mica'] {
 
   /* ---- 5:7 Collectible Prize Card ---- */
   .pk-card-node {
-    --px: 50;
-    --py: 50;
-    --hyp: 0;
     position: absolute;
     left: 50%;
     top: 50%;
@@ -4053,8 +4073,7 @@ html[data-glass='mica'] {
   }
 
   .pk-card-shell {
-    --rainbow: repeating-linear-gradient(110deg, #ff7aa8 0%, #ffcf6b 5%, #a8ff8a 10%, #6be2ff 15%, #9b8cff 20%, #ff7aa8 25%);
-    --glitter: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 14 0 0 0 -8.6'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23g)'/%3E%3C/svg%3E");
+    --rainbow: repeating-linear-gradient(112deg, #ff5492 0%, #ffbe3b 6%, #5ff57c 12%, #36d6ff 18%, #826dff 24%, #ff5492 30%);
     --frame: linear-gradient(165deg, #fdfcf9, #ebe8e1);
     --text: #1b1a17;
     --edge: #cfcac0;
@@ -4064,7 +4083,7 @@ html[data-glass='mica'] {
     transform-style: preserve-3d;
   }
 
-  /* Physical cardstock thickness slabs */
+  /* Physical cardstock thickness slabs (1 slab for batches, 2 for single showcase) */
   .pk-slab {
     position: absolute;
     inset: 0;
@@ -4072,15 +4091,12 @@ html[data-glass='mica'] {
     background: var(--edge);
     pointer-events: none;
   }
-  .pk-slab:nth-child(1) {
-    transform: translateZ(-1.5px);
+  .pk-slab-mid {
+    transform: translateZ(-1.8px);
   }
-  .pk-slab:nth-child(2) {
-    transform: translateZ(-3px);
-  }
-  .pk-slab:nth-child(3) {
-    transform: translateZ(-4.5px);
-    box-shadow: 0 26px 42px -14px rgb(20 16 40 / 0.45);
+  .pk-slab-base {
+    transform: translateZ(-3.6px);
+    box-shadow: 0 20px 34px -12px rgb(20 16 40 / 0.38);
   }
 
   /* Two-sided 3D flip container (Option B mystery card back <-> revealed front) */
@@ -4202,13 +4218,12 @@ html[data-glass='mica'] {
   }
   .pk-drop {
     position: absolute;
-    left: 26%;
-    right: 26%;
-    bottom: 30%;
-    height: 7%;
+    left: 24%;
+    right: 24%;
+    bottom: 29%;
+    height: 8.5%;
     border-radius: 50%;
-    background: radial-gradient(closest-side, rgb(0 0 0 / 0.45), transparent);
-    filter: blur(2.5px);
+    background: radial-gradient(closest-side, rgb(0 0 0 / 0.36) 0%, rgb(0 0 0 / 0.16) 52%, transparent 100%);
     opacity: 0;
     transition: opacity 0.4s ease;
   }
@@ -4342,16 +4357,30 @@ html[data-glass='mica'] {
   }
   .pk-emblem-halo {
     position: absolute;
-    inset: 6%;
+    inset: 2%;
     border-radius: 50%;
-    background: radial-gradient(closest-side, rgb(255 255 255 / 0.55), transparent 72%);
-    filter: blur(6px);
+    background: radial-gradient(closest-side, rgb(255 255 255 / 0.48) 0%, rgb(255 255 255 / 0.22) 48%, transparent 100%);
+  }
+  .pk-emblem-round {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 78%;
+    height: 78%;
+    border-radius: 50%;
+    box-shadow: 0 7px 16px rgb(0 0 0 / 0.28);
+  }
+  .pk-emblem-round .pk-emblem-svg {
+    width: 108%;
+    height: 108%;
   }
   .pk-emblem-svg {
     position: relative;
     width: 82%;
     height: 82%;
-    filter: drop-shadow(0 6px 10px rgb(0 0 0 / 0.3));
+  }
+  .pk-emblem-svg-shaped {
+    filter: drop-shadow(0 5px 8px rgb(0 0 0 / 0.26));
   }
   .pk-emblem-disc {
     position: relative;
@@ -4379,8 +4408,10 @@ html[data-glass='mica'] {
     opacity: 0.52;
   }
 
-  /* Optical layers: rainbow holo + glitter specks + glare + twin-window studio glaze */
+  /* GPU-composited optical stack: compact static layers animated via transform/opacity only */
   .pk-holo,
+  .pk-holo-rays,
+  .pk-glitter,
   .pk-glare,
   .pk-glaze {
     position: absolute;
@@ -4389,62 +4420,61 @@ html[data-glass='mica'] {
     pointer-events: none;
   }
   .pk-holo {
+    inset: -20%;
     z-index: 2;
-    background: var(--rainbow) calc(var(--px) * 1%) calc(var(--py) * 1%) / 400% 400%;
-    mix-blend-mode: color-dodge;
-    opacity: calc(0.28 + var(--hyp) * 0.58);
-    filter: brightness(0.72) contrast(1.45) saturate(1.38);
+    background: var(--rainbow);
+    mix-blend-mode: screen;
+    opacity: 0.28;
   }
-  .pk-holo::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background: inherit;
-    mask: var(--glitter) 0 0 / 136px 136px;
-    -webkit-mask: var(--glitter) 0 0 / 136px 136px;
-    filter: brightness(1.85);
+  .pk-holo-rays {
+    inset: -26%;
+    z-index: 2;
+    background: repeating-conic-gradient(from 0deg at 50% 50%, #0000 0 3deg, rgb(255 255 255 / 0.42) 4deg 5deg, #0000 6deg 10deg);
+    mix-blend-mode: overlay;
+    opacity: 0.34;
+  }
+  .pk-glitter {
+    z-index: 2;
+    background-image: var(--pk-glitter, none);
+    background-size: 136px 136px;
+    background-repeat: repeat;
+    opacity: 0.34;
   }
   .pk-glare {
+    inset: -26%;
     z-index: 2;
     background: radial-gradient(
-      farthest-corner circle at calc(var(--px) * 1%) calc(var(--py) * 1%),
-      rgb(255 255 255 / 0.78),
-      rgb(255 255 255 / 0.12) 38%,
-      rgb(0 0 0 / 0.28)
+      circle at 50% 50%,
+      rgb(255 255 255 / 0.56) 0%,
+      rgb(255 255 255 / 0.14) 30%,
+      transparent 60%
     );
-    mix-blend-mode: overlay;
-    opacity: calc(0.22 + var(--hyp) * 0.52);
+    opacity: 0.18;
   }
   .pk-glaze {
     z-index: 3;
+    overflow: hidden;
     box-shadow:
-      inset 0 0 0 1px rgb(255 255 255 / 0.3),
+      inset 0 0 0 1px rgb(255 255 255 / 0.32),
       inset 0 2px 1.5px rgb(255 255 255 / 0.8),
       inset 0 -2px 4px rgb(0 0 0 / 0.18);
-    background:
-      radial-gradient(42% 26% at calc(var(--px) * 1%) calc(var(--py) * 1%), rgb(255 255 255 / calc(0.1 + var(--hyp) * 0.48)), #0000),
-      linear-gradient(rgb(255 255 255 / 0.24), #0000 16%);
+    background: linear-gradient(rgb(255 255 255 / 0.22), #0000 18%);
   }
-  .pk-glaze::before {
-    content: '';
+  .pk-glaze-band {
     position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    mask: linear-gradient(#000 30%, #0000 88%);
-    -webkit-mask: linear-gradient(#000 30%, #0000 88%);
+    inset: 0 -28%;
+    pointer-events: none;
     background: linear-gradient(
-        112deg,
-        #0000 44%,
-        rgb(255 255 255 / 0.4) 44.4%,
-        rgb(255 255 255 / 0.13) 52%,
-        #0000 52.4%,
-        #0000 54%,
-        rgb(255 255 255 / 0.22) 54.3%,
-        rgb(255 255 255 / 0.05) 56.4%,
-        #0000 56.7%
-      )
-      calc((100 - var(--px)) * 1%) 0 / 220% 100%;
+      112deg,
+      #0000 44%,
+      rgb(255 255 255 / 0.3) 44.4%,
+      rgb(255 255 255 / 0.09) 52%,
+      #0000 52.4%,
+      #0000 54%,
+      rgb(255 255 255 / 0.17) 54.3%,
+      rgb(255 255 255 / 0.03) 56.4%,
+      #0000 56.7%
+    );
   }
 
   /* ---- Four-Tier Rarity Card Materials ---- */
@@ -4460,14 +4490,12 @@ html[data-glass='mica'] {
       linear-gradient(165deg, #f3efe8, #dfdad0);
   }
   .pk-card-shell.r-common .pk-face .pk-holo {
+    display: none;
+  }
+  .pk-card-shell.r-common .pk-face .pk-glitter {
     inset: 14% 5.5% 24%;
     border-radius: 4.2cqw;
-    mask: var(--glitter) 0 0 / 110px 110px;
-    -webkit-mask: var(--glitter) 0 0 / 110px 110px;
-    opacity: calc(0.42 + var(--hyp) * 0.4);
-  }
-  .pk-card-shell.r-common .pk-face .pk-holo::after {
-    display: none;
+    opacity: 0.45;
   }
 
   /* Rare: midnight cobalt holo */
@@ -4496,8 +4524,7 @@ html[data-glass='mica'] {
       radial-gradient(circle at 50% 40%, #a855f7, #4c1d95 55%, #1e0b45);
   }
   .pk-card-shell.r-epic .pk-face .pk-holo {
-    opacity: calc(0.42 + var(--hyp) * 0.56);
-    filter: brightness(0.84) contrast(1.55) saturate(1.55);
+    opacity: 0.36;
   }
 
   /* Legendary: brushed champagne gold + rotating starburst conic prism */
@@ -4513,10 +4540,7 @@ html[data-glass='mica'] {
   }
   .pk-card-shell.r-legendary .pk-face .pk-holo {
     mix-blend-mode: overlay;
-    opacity: calc(0.5 + var(--hyp) * 0.48);
-    background:
-      repeating-conic-gradient(from calc(var(--px) * 1deg) at 50% 40%, #0000 0 3deg, rgb(255 255 255 / 0.48) 4deg 5deg, #0000 6deg 10deg),
-      var(--rainbow) calc(var(--px) * 1%) calc(var(--py) * 1%) / 400% 400%;
+    opacity: 0.44;
   }
 
   /* Thanks / none: quiet warm stone matte */
@@ -4528,9 +4552,6 @@ html[data-glass='mica'] {
   .pk-card-shell.k-none .pk-win-pattern {
     background: linear-gradient(165deg, #eae6df, #dcd6cc);
   }
-  .pk-card-shell.k-none .pk-holo {
-    display: none;
-  }
 
   /* ---- Option B Mystery Card Back (Epic & Legendary face-down in batch) ---- */
   .pk-back {
@@ -4538,24 +4559,29 @@ html[data-glass='mica'] {
     padding: 5.5%;
     display: grid;
   }
+  .pk-back.is-flipping-out .pk-back-rays,
+  .pk-back.is-flipping-out .pk-back-ring,
+  .pk-back.is-flipping-out .pk-back-cta {
+    animation: none;
+  }
   .pk-back.r-epic {
     background: radial-gradient(120% 90% at 50% 35%, #5b21b6, #240e4f 66%, #14072e);
-    box-shadow: 0 0 34px rgb(168 85 247 / 0.42);
+    box-shadow: 0 0 22px rgb(168 85 247 / 0.44);
   }
   .pk-back.r-epic .pk-holo {
-    mix-blend-mode: overlay;
-    opacity: calc(0.32 + var(--hyp) * 0.45);
+    mix-blend-mode: screen;
+    opacity: 0.26;
   }
   .pk-back.r-legendary {
     background: radial-gradient(120% 90% at 50% 35%, #a16207, #4a2c04 62%, #231402);
-    box-shadow: 0 0 44px rgb(245 179 1 / 0.56);
+    box-shadow: 0 0 26px rgb(245 179 1 / 0.54);
   }
   .pk-back.r-legendary .pk-holo {
     mix-blend-mode: overlay;
-    opacity: calc(0.45 + var(--hyp) * 0.48);
-    background:
-      repeating-conic-gradient(from calc(var(--px) * 1deg) at 50% 44%, #0000 0 3deg, rgb(255 240 165 / 0.45) 4deg 5deg, #0000 6deg 10deg),
-      var(--rainbow) calc(var(--px) * 1%) calc(var(--py) * 1%) / 400% 400%;
+    opacity: 0.4;
+  }
+  .pk-back.r-legendary .pk-holo-rays {
+    background: repeating-conic-gradient(from 0deg at 50% 50%, #0000 0 3deg, rgb(255 240 165 / 0.4) 4deg 5deg, #0000 6deg 10deg);
   }
   .pk-back-frame {
     position: relative;
@@ -4578,11 +4604,9 @@ html[data-glass='mica'] {
   }
   .pk-back-rays {
     position: absolute;
-    inset: -45%;
-    background: repeating-conic-gradient(from 0deg, rgb(255 255 255 / 0.16) 0deg 6deg, transparent 6deg 20deg);
-    mask-image: radial-gradient(closest-side, #000 12%, transparent 72%);
-    -webkit-mask-image: radial-gradient(closest-side, #000 12%, transparent 72%);
-    animation: pk-spin-slow 24s linear infinite;
+    inset: -20%;
+    background: repeating-conic-gradient(from 0deg, rgb(255 255 255 / 0.14) 0deg 6deg, transparent 6deg 20deg);
+    opacity: 0.78;
     pointer-events: none;
   }
   .pk-back-ring {
@@ -4591,7 +4615,6 @@ html[data-glass='mica'] {
     height: 66cqw;
     border-radius: 50%;
     border: 1px dashed rgb(255 255 255 / 0.36);
-    animation: pk-spin-slow 32s linear infinite reverse;
     pointer-events: none;
   }
   .pk-back-crest {
@@ -4681,8 +4704,6 @@ html[data-glass='mica'] {
     overflow: hidden;
     line-height: 1.1em;
     vertical-align: bottom;
-    mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent);
-    -webkit-mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent);
   }
   .slot-reel {
     display: flex;

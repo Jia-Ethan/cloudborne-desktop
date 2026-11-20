@@ -9,7 +9,7 @@ import { clamp, rand } from './spring';
  */
 
 export const TEAR_NOMINAL = 10.5;
-export const TEAR_SEGMENTS = 96;
+export const TEAR_SEGMENTS = 56;
 export const TEAR_SLICES = 12;
 export const Y_MIN = 8;
 export const Y_MAX = 19.5;
@@ -259,14 +259,68 @@ export function generateFoilCreases(rng: () => number = Math.random): { shine: s
   const wrap = (body: string) =>
     `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'>${body}</svg>`).replace(/%2523/g, '%23')}")`;
 
+  // Pure gradient creases without <feGaussianBlur> so WebKit/WKWebView never runs CPU SVG blur filters.
   return {
     shine: wrap(
-      `<linearGradient id='g' x2='0' y2='1'><stop stop-color='#fff' stop-opacity='.72'/><stop offset='1' stop-color='#fff' stop-opacity='0'/></linearGradient><filter id='b'><feGaussianBlur stdDeviation='.28 .5'/></filter><g filter='url(%23b)'>${lit}</g>`,
+      `<linearGradient id='g' x2='0' y2='1'><stop offset='0' stop-color='#fff' stop-opacity='0'/><stop offset='.22' stop-color='#fff' stop-opacity='.58'/><stop offset='1' stop-color='#fff' stop-opacity='0'/></linearGradient><g>${lit}</g>`,
     ),
     shade: wrap(
-      `<filter id='b'><feGaussianBlur stdDeviation='.35 .24'/></filter><path d='${dark}V93.2Z' fill-opacity='.11' filter='url(%23b)'/>`,
+      `<linearGradient id='s' x2='0' y2='1'><stop offset='0' stop-color='#000' stop-opacity='0'/><stop offset='.45' stop-color='#000' stop-opacity='.08'/><stop offset='1' stop-color='#000' stop-opacity='.13'/></linearGradient><path d='${dark}V93.2Z' fill='url(%23s)'/>`,
     ),
   };
+}
+
+let cachedGlitterUrl: string | null = null;
+
+/**
+ * Generates a tileable 160x160 PNG micro-diamond glitter sprite ONCE per session.
+ * Replaces SVG `<feTurbulence>` masks which force CPU software re-rasterization
+ * every frame in macOS WKWebView.
+ */
+export function getGlitterDataUrl(): string {
+  if (cachedGlitterUrl !== null) return cachedGlitterUrl;
+  if (typeof document === 'undefined') return '';
+  try {
+    const size = 160;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return '';
+
+    // Deterministic seeded PRNG so glitter grain stays crisp and uniform.
+    let s = 0x9e3779b9;
+    const next = () => {
+      s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+      return s / 0x100000000;
+    };
+
+    const count = 210;
+    for (let i = 0; i < count; i++) {
+      const x = next() * size;
+      const y = next() * size;
+      const bright = next() ** 2.2;
+      const r = 0.55 + bright * 1.15;
+      const alpha = 0.18 + bright * 0.78;
+      // Subtle prismatic sparkle tinting (white-dominant with hints of cyan/pink/gold).
+      const hue = i % 7 === 0 ? '255,235,190' : i % 5 === 0 ? '210,242,255' : i % 6 === 0 ? '255,216,244' : '255,255,255';
+      ctx.fillStyle = `rgba(${hue},${alpha.toFixed(2)})`;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+      if (bright > 0.72) {
+        // Tiny 4-point specular glint on the brightest micro-diamonds.
+        const arm = r * 2.1;
+        ctx.fillStyle = `rgba(255,255,255,${(alpha * 0.65).toFixed(2)})`;
+        ctx.fillRect(x - arm, y - 0.35, arm * 2, 0.7);
+        ctx.fillRect(x - 0.35, y - arm, 0.7, arm * 2);
+      }
+    }
+    cachedGlitterUrl = `url("${canvas.toDataURL('image/png')}")`;
+    return cachedGlitterUrl;
+  } catch {
+    return '';
+  }
 }
 
 /**

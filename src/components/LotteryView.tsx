@@ -15,6 +15,7 @@ import {
   type Phase as ActivityPhase,
 } from '../lottery';
 import { lotterySfx, setLotterySoundOn, useLotterySoundOn } from '../lottery/lotterySound';
+import { getGlitterDataUrl } from '../lottery/tearGeometry';
 import { Dialog } from './Dialog';
 import { FoilPack, type FoilPackHandle, type PackHandoff, type PackIdleState, type PackOpenResult } from './FoilPack';
 import { Icon } from './Icon';
@@ -72,8 +73,13 @@ export function LotteryView({
   useEffect(() => {
     alive.current = true;
     load();
+    // Pre-bake the 160x160 glitter PNG sprite off the critical path so opening PackPortal has zero stall.
+    const warmId = setTimeout(() => {
+      getGlitterDataUrl();
+    }, 250);
     return () => {
       alive.current = false;
+      clearTimeout(warmId);
     };
   }, [load]);
 
@@ -148,16 +154,18 @@ export function LotteryView({
     packRef.current?.triggerTear(count, false);
   };
 
+  const portalOpen = portalHandoff !== null;
+
   return (
     <div className="main-scroll">
-      <div className="main-column">
+      <div className={`main-column ${portalOpen ? 'pk-behind-portal' : ''}`}>
         <section className="card lot-head rise" style={{ '--i': 0 } as CSSProperties}>
           <div className="lot-head-text">
             <h1>
               {t('lottery.myChests', { n: s ? s.chests : '—' })}
               {cap > 0 && <em className={s?.full ? 'full' : ''}>{t('lottery.held', { n: s?.chests ?? 0, cap })}</em>}
             </h1>
-            {s && <ActivityLine status={s} phase={win} skew={skew} />}
+            {s && <ActivityLine status={s} phase={win} skew={skew} paused={portalOpen} />}
             {s?.bonus && <BonusLine bonus={s.bonus} />}
             {s?.full && <p className="lot-full">{t('lottery.full')}</p>}
           </div>
@@ -263,7 +271,7 @@ export function LotteryView({
 
         {s && (
           <div className="lot-ways">
-            {s.daily && <DailyCard status={s} phase={win} skew={skew} index={1} />}
+            {s.daily && <DailyCard status={s} phase={win} skew={skew} index={1} paused={portalOpen} />}
             <EarnCard status={s} phase={win} index={2} />
             <BuyCard
               status={s}
@@ -281,7 +289,7 @@ export function LotteryView({
         {s && s.perks.length > 0 && (
           <div className="lot-perks">
             {s.perks.map((p, i) => (
-              <PerkCard key={p.id} perk={p} index={i + 1} />
+              <PerkCard key={p.id} perk={p} index={i + 1} paused={portalOpen} />
             ))}
           </div>
         )}
@@ -355,18 +363,20 @@ function SpendRing({ ratio }: { ratio: number }) {
   );
 }
 
-function useNow(ms = 1000) {
+function useNow(ms = 1000, paused = false) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
+    if (paused) return;
+    setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), ms);
     return () => clearInterval(id);
-  }, [ms]);
+  }, [ms, paused]);
   return now;
 }
 
-function PerkCard({ perk, index }: { perk: Perk; index: number }) {
+function PerkCard({ perk, index, paused }: { perk: Perk; index: number; paused?: boolean }) {
   const { t } = useI18n();
-  const now = useNow();
+  const now = useNow(1000, paused);
   const left = countdown(new Date(perk.expires_at).getTime() - now);
   const clock = left.days > 0 ? t('lottery.daysClock', { d: left.days, clock: left.clock }) : left.clock;
   const discount = perk.kind === 'discount';
@@ -410,9 +420,9 @@ function BonusLine({ bonus: b }: { bonus: LotteryBonus }) {
   );
 }
 
-function ActivityLine({ status: s, phase, skew }: { status: LotteryStatus; phase: ActivityPhase; skew: number }) {
+function ActivityLine({ status: s, phase, skew, paused }: { status: LotteryStatus; phase: ActivityPhase; skew: number; paused?: boolean }) {
   const { t } = useI18n();
-  const now = useNow() + skew;
+  const now = useNow(1000, paused) + skew;
   const start = s.starts_at ? shanghaiShort(s.starts_at) : null;
   const end = s.ends_at ? shanghaiShort(s.ends_at) : null;
   const range = !start && !end ? t('lottery.forever') : `${start ?? t('lottery.fromNow')} – ${end ?? t('lottery.forever')}`;
@@ -603,7 +613,7 @@ function BuyCard({
   );
 }
 
-function DailyCard({ status: s, phase, skew, index }: { status: LotteryStatus; phase: ActivityPhase; skew: number; index: number }) {
+function DailyCard({ status: s, phase, skew, index, paused }: { status: LotteryStatus; phase: ActivityPhase; skew: number; index: number; paused?: boolean }) {
   const { t } = useI18n();
   const d = s.daily!;
   const st = dailyState(d, s.earn.today_spend);
@@ -645,14 +655,14 @@ function DailyCard({ status: s, phase, skew, index }: { status: LotteryStatus; p
           </div>
         </>
       )}
-      {d.unopened > 0 && <DailyExpiry n={d.unopened} at={d.expires_at} skew={skew} />}
+      {d.unopened > 0 && <DailyExpiry n={d.unopened} at={d.expires_at} skew={skew} paused={paused} />}
     </section>
   );
 }
 
-function DailyExpiry({ n, at, skew }: { n: number; at: string; skew: number }) {
+function DailyExpiry({ n, at, skew, paused }: { n: number; at: string; skew: number; paused?: boolean }) {
   const { t } = useI18n();
-  const now = useNow() + skew;
+  const now = useNow(1000, paused) + skew;
   const left = countdown(Date.parse(at) - now);
   return (
     <p className="lot-expiry">
