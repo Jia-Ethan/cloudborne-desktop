@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import markPath from '../../brand/dist/mark-path.json';
-import type { Draw, LotteryStatus, Rarity } from '../api';
+import { errorText, type Draw, type LotteryStatus, type Rarity } from '../api';
 import { useI18n } from '../i18n';
 import { balanceGained, batchSize, dollars } from '../lottery';
 import { lotterySfx, setLotterySoundOn, useLotterySoundOn } from '../lottery/lotterySound';
@@ -109,6 +109,7 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
   const nextPackRef = useRef<FoilPackHandle>(null);
   const stopsRef = useRef<(() => void)[]>([]);
   const flipTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Refs synced to latest React state for the 60/120fps physics loop.
   const inspectedRef = useRef<number | null>(inspectedIdx);
@@ -153,7 +154,11 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
 
     if (r === 'legendary') {
       setFlash(true);
-      setTimeout(() => setFlash(false), 1150);
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+      flashTimerRef.current = setTimeout(() => {
+        flashTimerRef.current = null;
+        setFlash(false);
+      }, 1150);
       if (fxCoinsRef.current) stopsRef.current.push(coinRain(fxCoinsRef.current, 3800));
       if (fxBoltsRef.current) {
         stopsRef.current.push(confetti(fxBoltsRef.current, { colors: [...CONFETTI_COLORS.legendary], ms: 3100 }));
@@ -597,11 +602,12 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
     };
   }, [portalMode, handoff, orderedDraws, triggerRarityCelebration]);
 
-  // Cleanup canvas loops and flip cascade timers on unmount.
+  // Cleanup canvas loops and timers on unmount.
   useEffect(() => {
     return () => {
       stopsRef.current.forEach((s) => s());
       flipTimersRef.current.forEach(clearTimeout);
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
     };
   }, []);
 
@@ -655,6 +661,11 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
     stopsRef.current = [];
     flipTimersRef.current.forEach(clearTimeout);
     flipTimersRef.current = [];
+    if (flashTimerRef.current) {
+      clearTimeout(flashTimerRef.current);
+      flashTimerRef.current = null;
+    }
+    setFlash(false);
     setInspectedIdx(null);
     setPortalError('');
     setNextPackCount(count);
@@ -856,7 +867,7 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
               setHandoff(nextHandoff);
               setPortalMode('reveal');
             }}
-            onError={(err) => setPortalError(err instanceof Error ? err.message : String(err))}
+            onError={(err) => setPortalError(errorText(err, t('common.genericError')))}
           />
           <p className="pk-portal-hint">{t('lottery.dragHint')}</p>
         </div>

@@ -23,6 +23,8 @@ Use `CLOUDBORNE_HOME=<directory>` for isolated configuration tests; do not touch
 - Scope DDZ state classes with `ddz-`; the chat `.turn` class changes layout spacing. Keep avatar/status slots stable across turns and fit the game to the actual pane width and height.
 - After changing the pinned Codex `VERSION` in `src-tauri/src/agent/runtime.rs`, run the ignored agent tests (README 开发); `request_user_input` in Default mode depends on an under-development Codex feature.
 - Browser simulation and release checks do not establish native Tauri live-game acceptance. DDZ behavior, evidence and rollback boundaries live in [the DDZ document](docs/DOUDIZHU-IMPROVEMENT-2026-10-15.md).
+- Card-pack UI (`src/lottery/`, `FoilPack`, `PackPortal`, `PrizeCard`): `.pk-face` and `.pk-back` declare `container-type: inline-size`, so never use `cqw` for padding on those containers themselves (CSS resolves self `cqw` against the viewport); use `%` instead. Keep `.pk-core-star-anchor` aligned to the cutout coordinates in `brand/dist/mark-path.json`.
+- Card-pack business boundaries: dragging 0–55% and releasing must never call `api.lotteryOpen`; in 2–10× openings, Epic/Legendary draws land face-down and the top summary pill must not spoil unflipped dollar totals; sound mute state persists in `localStorage['cloudborne.lottery.sound']`.
 
 ## Release checklist
 
