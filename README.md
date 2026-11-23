@@ -6,7 +6,12 @@ Cloudborne（栖云）中转站的桌面客户端：用中转站账号登录、�
 
 ## 状态
 
-v0.9.36 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
+v0.9.37 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
+
+- 卡包新奖品：永久并发与保底加速（v0.9.37）：
+  - 认得中转站新增的两种奖品：紫色史诗「并发 +1」（开出即永久加到账号并发上限）和稀有「保底加速」（离「必出史诗或传说」立刻少几包）。卡面分别是并行通道和快进图标，今日结果与兑换记录显示「并发 +1」「保底提前 N 包」「卡包并发」。
+  - 管理端奖品编辑支持这两种类型（并发 1–10、推进 1–1000 包，保底加速只能是普通或稀有），成本上限按缩短后的保底间隔计算，与中转站一致。
+  - 需要 relay `0.2.8-cloudborne.144-lottery-concurrency`；旧客户端会把这两种奖品显示成 $0.00，所以先发客户端再开奖品。
 
 - 卡包揭晓不再提前露出金额（v0.9.36）：
   - 卡牌翻出、落位前金额就显示真实值，落位后数字滚轮又从 $0.00 滚一遍，用户在动画前就知道结果。现在落位前只显示滚轮起点的 0，滚轮转完才停在真实金额。
@@ -182,6 +187,6 @@ brand/render.sh          # 用本机 Chrome 渲染 app-icon-1024.png 和 preview
 3. CI 构建 macOS 通用包和 Windows 安装包，生成 `.app.tar.gz` / `-setup.exe` 的签名和 `latest.json`，挂到一个 draft Release 上。
 4. 检查 draft 没问题后点 Publish（不要勾 pre-release，保持 Latest）。发布那一刻起，已安装的客户端在下次检查时就会看到更新。
 
-当前公开版本：[`v0.9.36`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.36)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.36/Cloudborne-Windows-setup.exe)。
+当前公开版本：[`v0.9.37`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.37)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.37/Cloudborne-Windows-setup.exe)。
 
 更新私钥在本机 `~/.cloudborne-desktop-signing/`（权限 700），CI 里是 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 两个 secret。私钥丢了，已装的客户端就收不到后续更新，只能手动重装，所以要另外备份。0.2.0 及更早的版本没有更新功能，需要手动装一次 0.2.1。
