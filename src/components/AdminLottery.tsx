@@ -766,6 +766,22 @@ function Params({ p, groups, onChange }: { p: Prize; groups: AdminGroup[]; onCha
         </div>
       );
     }
+    case 'concurrency':
+      return (
+        <div className="prize-params">
+          <Tagged label={t('admin.lottery.addConcurrency')}>
+            <Num value={p.amount ?? 0} prefix="+" onChange={(v) => set('amount', Math.round(v))} />
+          </Tagged>
+        </div>
+      );
+    case 'pity_boost':
+      return (
+        <div className="prize-params">
+          <Tagged label={t('admin.lottery.pitySkip')}>
+            <Num value={p.amount ?? 0} onChange={(v) => set('amount', Math.round(v))} />
+          </Tagged>
+        </div>
+      );
     case 'extra_draw':
       return <div className="prize-params empty">—</div>;
   }

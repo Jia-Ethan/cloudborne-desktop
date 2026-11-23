@@ -29,6 +29,8 @@ function historyKey(item: Pick<RedeemItem, 'type' | 'value'>): MessageKey {
       return item.value >= 0 ? 'redeem.type.adminAdd' : 'redeem.type.adminDeduct';
     case 'admin_concurrency':
       return 'redeem.type.adminConcurrency';
+    case 'lottery_concurrency':
+      return 'redeem.type.lotteryConcurrency';
     case 'affiliate_balance':
       return 'redeem.type.affiliate';
     case 'lottery':

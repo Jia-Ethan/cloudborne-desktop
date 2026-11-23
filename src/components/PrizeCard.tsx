@@ -187,6 +187,10 @@ function cardSubtitle(draw: Draw, t: ReturnType<typeof useI18n>['t']): string {
       return h.group ? `${h.group} · ${t('lottery.hours', { n: h.hours })}` : t('lottery.validFor', { n: h.hours });
     case 'again':
       return t('lottery.againSub');
+    case 'concurrency':
+      return t('lottery.concurrencySub');
+    case 'pity':
+      return t('lottery.pitySub');
     case 'none':
       return t('lottery.thanksSub');
   }
@@ -288,6 +292,52 @@ function PrizeEmblem({ draw, vendor }: { draw: Draw; vendor: ReturnType<typeof m
     );
   }
 
+  if (h.kind === 'concurrency') {
+    const gid = `${uid}-lanes`;
+    return (
+      <div className="pk-emblem pk-emblem-credit">
+        <span className="pk-emblem-halo" />
+        <span className="pk-emblem-round">
+          <svg viewBox="0 0 64 64" className="pk-emblem-svg">
+            <defs>
+              <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#ffffff" />
+                <stop offset="50%" stopColor="#f3d5ff" />
+                <stop offset="100%" stopColor="#a855f7" />
+              </linearGradient>
+            </defs>
+            <circle cx="32" cy="32" r="24" fill="rgba(255,255,255,0.16)" stroke="rgba(255,255,255,0.65)" strokeWidth="1.5" />
+            <path d="M17 22h22l-4-4M17 32h26l-4-4M17 42h22l-4-4" fill="none" stroke={`url(#${gid})`} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M46 38v10M41 43h10" stroke="#fff" strokeWidth="3.2" strokeLinecap="round" />
+          </svg>
+        </span>
+      </div>
+    );
+  }
+
+  if (h.kind === 'pity') {
+    const gid = `${uid}-ff`;
+    return (
+      <div className="pk-emblem pk-emblem-credit">
+        <span className="pk-emblem-halo" />
+        <span className="pk-emblem-round">
+          <svg viewBox="0 0 64 64" className="pk-emblem-svg">
+            <defs>
+              <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="#ffffff" />
+                <stop offset="50%" stopColor="#bae6fd" />
+                <stop offset="100%" stopColor="#60a5fa" />
+              </linearGradient>
+            </defs>
+            <circle cx="32" cy="32" r="24" fill="rgba(255,255,255,0.16)" stroke="rgba(255,255,255,0.65)" strokeWidth="1.5" />
+            <path d="M15 20l15 12-15 12zM31 20l15 12-15 12z" fill={`url(#${gid})`} stroke="rgba(255,255,255,0.8)" strokeWidth="1.2" strokeLinejoin="round" />
+            <rect x="47" y="20" width="4" height="24" rx="2" fill="#fff" />
+          </svg>
+        </span>
+      </div>
+    );
+  }
+
   // Default: balance / cashback / balance_percent sculpted coin medallion
   const isGold = draw.rarity === 'legendary';
   const isEpic = draw.rarity === 'epic';
@@ -334,6 +384,22 @@ function CardHeadline({ draw, revealed }: { draw: Draw; revealed: boolean }) {
   }
   if (h.kind === 'again') {
     return <div className="pk-amount pk-amount-words">+1 {t('lottery.packUnit')}</div>;
+  }
+  if (h.kind === 'concurrency') {
+    return (
+      <div className="pk-amount pk-amount-pack">
+        <SlotDigits text={`+${h.n}`} active={revealed} slow={slow} />
+        <small>{t('lottery.concurrencyUnit')}</small>
+      </div>
+    );
+  }
+  if (h.kind === 'pity') {
+    return (
+      <div className="pk-amount pk-amount-pack">
+        <SlotDigits text={`−${h.n}`} active={revealed} slow={slow} />
+        <small>{t('lottery.pityUnit')}</small>
+      </div>
+    );
   }
   if (h.kind === 'money') {
     return (

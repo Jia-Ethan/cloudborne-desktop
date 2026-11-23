@@ -109,7 +109,17 @@ export function displayName(u: { username?: string; email: string }): string {
 }
 
 export type Rarity = 'common' | 'rare' | 'epic' | 'legendary';
-export type PrizeKind = 'balance_fixed' | 'cashback' | 'balance_percent' | 'discount' | 'credit' | 'token_pack' | 'extra_draw' | 'none';
+export type PrizeKind =
+  | 'balance_fixed'
+  | 'cashback'
+  | 'balance_percent'
+  | 'discount'
+  | 'credit'
+  | 'token_pack'
+  | 'concurrency'
+  | 'pity_boost'
+  | 'extra_draw'
+  | 'none';
 
 /** A prize as configured by the admin. Percent kinds store fractions (0.05 = 5%). */
 export interface Prize {

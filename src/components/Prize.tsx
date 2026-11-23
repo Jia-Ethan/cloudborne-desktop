@@ -39,6 +39,10 @@ export function PrizeText({ draw }: { draw: Pick<Draw, 'kind' | 'amount' | 'deta
       return <>{packText(t, h)}</>;
     case 'again':
       return <>{t('lottery.again')}</>;
+    case 'concurrency':
+      return <>{t('lottery.concurrencyText', { n: h.n })}</>;
+    case 'pity':
+      return <>{t('lottery.pityText', { n: h.n })}</>;
     case 'none':
       return <>{t('lottery.thanks')}</>;
   }

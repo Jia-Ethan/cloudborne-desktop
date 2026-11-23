@@ -368,3 +368,49 @@ describe('lottery', () => {
     expect(headline({ kind: 'none', amount: 0, detail: {} })).toEqual({ kind: 'none' });
   });
 });
+
+describe('concurrency and pity boost prizes', () => {
+  // 2026-11-23 table, same as the relay's lotteryPrizes20261123(3, 5): ceiling 4.515580 with pity 30, batch 5.
+  const T20261123: Prize[] = [
+    { id: 'coin_s', name: '零钱', rarity: 'common', kind: 'balance_fixed', weight: 47, min: 1, max: 3 },
+    { id: 'gpt_s', name: 'GPT 体验包', rarity: 'common', kind: 'token_pack', weight: 14, group_id: 57, tokens: 0.5, hours: 72, amount: 2.5 },
+    { id: 'again', name: '再开一包', rarity: 'rare', kind: 'extra_draw', weight: 10 },
+    { id: 'coin_m', name: '钱袋', rarity: 'rare', kind: 'balance_fixed', weight: 15, min: 4, max: 7 },
+    { id: 'gpt_m', name: 'GPT 畅聊包', rarity: 'rare', kind: 'token_pack', weight: 4, group_id: 57, tokens: 2, hours: 168, amount: 9.5 },
+    { id: 'coin_l', name: '金币包', rarity: 'epic', kind: 'balance_fixed', weight: 3, min: 10, max: 16 },
+    { id: 'claude_l', name: 'Claude 包', rarity: 'epic', kind: 'token_pack', weight: 1.5, group_id: 79, tokens: 1, hours: 168, amount: 25 },
+    { id: 'jackpot', name: '头奖', rarity: 'legendary', kind: 'balance_fixed', weight: 0.5, min: 66, max: 66 },
+    { id: 'mega', name: '超级头奖', rarity: 'legendary', kind: 'balance_fixed', weight: 0.1, min: 188, max: 188 },
+    { id: 'conc', name: '并发 +1', rarity: 'epic', kind: 'concurrency', weight: 2, amount: 1 },
+    { id: 'pity', name: '保底加速', rarity: 'rare', kind: 'pity_boost', weight: 3, amount: 5 },
+  ];
+
+  it('costs nothing themselves but pity boost raises the ceiling like the relay', () => {
+    expect(prizeMax(T20261123[9])).toBe(0);
+    expect(prizeMax(T20261123[10])).toBe(0);
+    expect(costCeiling(T20261123, 30, 5)).toBeCloseTo(4.51558, 5);
+    const flat = T20261123.map((p) => (p.kind === 'pity_boost' ? { ...p, amount: 0 } : p));
+    expect(costCeiling(T20261123, 30, 5)).toBeGreaterThan(costCeiling(flat, 30, 5));
+  });
+
+  it('validates amounts and pity boost rarity', () => {
+    const base = withKind({ id: 'x', name: 'x', rarity: 'epic', kind: 'concurrency', weight: 1 }, 'concurrency');
+    expect(base.amount).toBe(1);
+    const one = (p: Prize) => settings([p]);
+    expect(settingsProblem(one(base))).toBeNull();
+    expect(settingsProblem(one({ ...base, amount: 11 }))?.problem).toBe('concurrency');
+    expect(settingsProblem(one({ ...base, amount: 1.5 }))?.problem).toBe('concurrency');
+    const pity = withKind({ id: 'p', name: 'p', rarity: 'rare', kind: 'pity_boost', weight: 1 }, 'pity_boost');
+    expect(pity.amount).toBe(5);
+    expect(settingsProblem(one(pity))).toBeNull();
+    expect(settingsProblem(one({ ...pity, amount: 0 }))?.problem).toBe('pityBoost');
+    expect(settingsProblem(one({ ...pity, rarity: 'epic' }))?.problem).toBe('pityBoostRarity');
+    // The 2026-11-23 table sells without loss at $5
+    expect(settingsProblem(settings(T20261123, { buy_enabled: true, pity_epic: 30, batch_rare: 5, first_open_boost: 2 }))).toBeNull();
+  });
+
+  it('reads the headline from the draw detail', () => {
+    expect(headline({ kind: 'concurrency', amount: 0, detail: { concurrency: 1 } })).toEqual({ kind: 'concurrency', n: 1 });
+    expect(headline({ kind: 'pity_boost', amount: 0, detail: { skip: 5 } })).toEqual({ kind: 'pity', n: 5 });
+  });
+});

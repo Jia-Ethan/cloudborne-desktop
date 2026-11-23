@@ -2,7 +2,17 @@ import type { Draw, LotterySettings, Prize, PrizeKind, Rarity } from './api';
 import { tokenCount } from './tokenPacks';
 
 export const RARITIES: Rarity[] = ['common', 'rare', 'epic', 'legendary'];
-export const KINDS: Prize['kind'][] = ['balance_fixed', 'cashback', 'balance_percent', 'discount', 'credit', 'token_pack', 'extra_draw'];
+export const KINDS: Prize['kind'][] = [
+  'balance_fixed',
+  'cashback',
+  'balance_percent',
+  'discount',
+  'credit',
+  'token_pack',
+  'concurrency',
+  'pity_boost',
+  'extra_draw',
+];
 
 /** Kinds whose min/max are fractions of something, edited as percents. */
 export const PERCENT_KINDS: PrizeKind[] = ['cashback', 'balance_percent'];
@@ -43,6 +53,8 @@ export function prizeMax(p: Prize): number {
     case 'credit':
     case 'token_pack':
       return Math.max(0, p.amount ?? 0);
+    case 'concurrency':
+    case 'pity_boost':
     case 'extra_draw':
       return 0;
   }
@@ -88,7 +100,20 @@ export function costCeiling(prizes: Prize[], pity = 0, batch = 0): number {
       bigCost += d * prizeMax(p);
     } else lowCost += d * prizeMax(p);
   }
-  const r = pity >= 2 && big > 0 ? big / (1 - (1 - big) ** pity) : big;
+  // A pity boost advances the pity count by `amount` on top of 1, so the effective pity span shrinks
+  // to 1 + (pity−1)/(1+m), m = mean extra advance per non-big draw (the relay does the same).
+  let span = pity;
+  if (pity >= 2 && big > 0 && 1 - big > 1e-12) {
+    let m = 0;
+    for (const p of live) {
+      if (p.kind !== 'pity_boost' || isBig(p.rarity)) continue;
+      const d = (1 - f) * (p.weight / total) + (lifts(p) && upgrade > 0 ? (f * p.weight) / upgrade : 0);
+      m += d * (p.amount ?? 0);
+    }
+    m /= 1 - big;
+    if (m > 0) span = 1 + (pity - 1) / (1 + m);
+  }
+  const r = pity >= 2 && big > 0 ? big / (1 - (1 - big) ** span) : big;
   let cost = big > 0 ? (r * bigCost) / big : 0;
   let x = 0;
   if (1 - big > 1e-12) {
@@ -165,6 +190,9 @@ export type SettingsProblem =
   | 'packTokens'
   | 'packHours'
   | 'packAmount'
+  | 'concurrency'
+  | 'pityBoost'
+  | 'pityBoostRarity'
   | 'buyUncapped'
   | 'buyAllExtra'
   | 'buyLoss';
@@ -225,6 +253,15 @@ export function settingsProblem(s: LotterySettings): { problem: SettingsProblem;
       if (!(isInt(h) && h >= 1 && h <= 720)) return { problem: 'packHours', index: i };
       if (!((p.amount ?? 0) > 0)) return { problem: 'packAmount', index: i };
     }
+    if (p.kind === 'concurrency') {
+      const n = p.amount ?? 0;
+      if (!(isInt(n) && n >= 1 && n <= 10)) return { problem: 'concurrency', index: i };
+    }
+    if (p.kind === 'pity_boost') {
+      const n = p.amount ?? 0;
+      if (!(isInt(n) && n >= 1 && n <= 1000)) return { problem: 'pityBoost', index: i };
+      if (isBig(p.rarity)) return { problem: 'pityBoostRarity', index: i };
+    }
   }
   if (s.prizes.reduce((t, p) => t + p.weight, 0) <= 0) return { problem: 'totalWeight' };
   if (s.buy_enabled) {
@@ -253,6 +290,10 @@ export function withKind(p: Prize, kind: Prize['kind']): Prize {
       return { ...base, amount: 20, hours: 24 };
     case 'token_pack':
       return { ...base, group_id: 0, tokens: 1, hours: 168, amount: 5 };
+    case 'concurrency':
+      return { ...base, amount: 1 };
+    case 'pity_boost':
+      return { ...base, amount: 5 };
     case 'extra_draw':
       return base;
   }
@@ -406,6 +447,10 @@ export type Headline =
   /** `tokens` as shown ("1M", "500K"); `group` is empty when an older relay left it out. */
   | { kind: 'pack'; tokens: string; group: string; hours: number }
   | { kind: 'again' }
+  /** Permanent concurrency added to the account. */
+  | { kind: 'concurrency'; n: number }
+  /** Packs the pity counter jumped ahead. */
+  | { kind: 'pity'; n: number }
   | { kind: 'none' };
 
 export function headline(d: Pick<Draw, 'kind' | 'amount' | 'detail'>): Headline {
@@ -419,6 +464,10 @@ export function headline(d: Pick<Draw, 'kind' | 'amount' | 'detail'>): Headline 
       return { kind: 'pack', tokens: tokenCount(num('tokens')), group: String(d.detail?.group_name ?? ''), hours: num('hours') };
     case 'extra_draw':
       return { kind: 'again' };
+    case 'concurrency':
+      return { kind: 'concurrency', n: num('concurrency') || 1 };
+    case 'pity_boost':
+      return { kind: 'pity', n: num('skip') };
     case 'none':
       return { kind: 'none' };
     default:
