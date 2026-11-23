@@ -6,7 +6,12 @@ Cloudborne（栖云）中转站的桌面客户端：用中转站账号登录、�
 
 ## 状态
 
-v0.9.35 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
+v0.9.36 已发布（未做 Apple 公证和 Windows 代码签名；应用内更新包有独立签名）。已完成：
+
+- 卡包揭晓不再提前露出金额（v0.9.36）：
+  - 卡牌翻出、落位前金额就显示真实值，落位后数字滚轮又从 $0.00 滚一遍，用户在动画前就知道结果。现在落位前只显示滚轮起点的 0，滚轮转完才停在真实金额。
+  - 卡面右上角的 `NO.xxx` 编号去掉：它是全站开包记录 ID 的后三位，能推算出大概开了多少包。
+  - 同日中转站奖品表里「再开一箱」改名「再开一包」（只改现网配置，不需要更新 relay，记录在 relay `releases/lottery-again-rename-20261123/`）。
 
 - 彻底修复 macOS 毛玻璃窗口撕卡包与连抽画廊卡顿（v0.9.35）：
   - 修复 v0.9.34 在真实前台 macOS `NSVisualEffectView` 透明毛玻璃窗口下点开单包/十包仍卡在 22–36 FPS（频繁 200–370ms 卡顿）的根因：揭晓画廊打开时用 `content-visibility: hidden` 跳过背景工作区（含侧边栏、晨光渐变动画与卡片 `backdrop-filter`）的合成并保留滚动位置，将画廊背景拆为实底 + GPU 提升径向渐晕层，彻底消除后台毛玻璃重采样。
@@ -177,6 +182,6 @@ brand/render.sh          # 用本机 Chrome 渲染 app-icon-1024.png 和 preview
 3. CI 构建 macOS 通用包和 Windows 安装包，生成 `.app.tar.gz` / `-setup.exe` 的签名和 `latest.json`，挂到一个 draft Release 上。
 4. 检查 draft 没问题后点 Publish（不要勾 pre-release，保持 Latest）。发布那一刻起，已安装的客户端在下次检查时就会看到更新。
 
-当前公开版本：[`v0.9.35`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.35)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.35/Cloudborne-Windows-setup.exe)。
+当前公开版本：[`v0.9.36`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/tag/v0.9.36)，Windows 安装包：[`Cloudborne-Windows-setup.exe`](https://github.com/Jia-Ethan/cloudborne-desktop/releases/download/v0.9.36/Cloudborne-Windows-setup.exe)。
 
 更新私钥在本机 `~/.cloudborne-desktop-signing/`（权限 700），CI 里是 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 两个 secret。私钥丢了，已装的客户端就收不到后续更新，只能手动重装，所以要另外备份。0.2.0 及更早的版本没有更新功能，需要手动装一次 0.2.1。
