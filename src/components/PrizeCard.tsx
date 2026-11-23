@@ -20,7 +20,6 @@ const reducedMotion = () =>
 export const PrizeCard = memo(function PrizeCard({
   draw,
   index,
-  serial,
   isMystery,
   faceDown,
   revealed,
@@ -32,8 +31,6 @@ export const PrizeCard = memo(function PrizeCard({
   draw: Draw;
   /** 0-based card index in the current reveal batch. */
   index: number;
-  /** 1-based serial number for the collector card footer. */
-  serial: number;
   /** True if this card started face-down as an Option B mystery hit. */
   isMystery: boolean;
   /** True while an Epic/Legendary card is waiting face-down to be flipped. */
@@ -68,7 +65,6 @@ export const PrizeCard = memo(function PrizeCard({
   const h = headline(draw);
   const isNone = draw.kind === 'none';
   const isLegendary = draw.rarity === 'legendary';
-  const serialText = `NO.${String(draw.id ? draw.id % 1000 : serial).padStart(3, '0')}`;
   const sourceLabel = draw.source ? t(`lottery.source.${draw.source}`) : '';
   const vendor = h.kind === 'pack' ? matchVendorLogo(h.group) : null;
 
@@ -91,7 +87,6 @@ export const PrizeCard = memo(function PrizeCard({
               {!isNone ? <RarityTag rarity={draw.rarity} /> : <span className="pk-none-pill">{t('lottery.thanks')}</span>}
               <GuaranteeTag draw={draw} />
             </span>
-            <span className="pk-serial">{serialText}</span>
           </div>
 
           <div className="pk-win">
@@ -396,11 +391,20 @@ function SlotDigits({ text, active, slow }: { text: string; active: boolean; slo
     return () => clearTimeout(settleId);
   }, [phase, slow]);
 
-  // Before landing or once settled, render a single crisp text span with zero masked reel layers.
-  if (phase === 'settled' || !active) {
+  // Once settled, collapse to a single crisp text span with zero masked reel layers.
+  if (phase === 'settled') {
     return (
       <span className="slot" aria-label={text}>
         {text}
+      </span>
+    );
+  }
+  // Before landing, show the reels' resting zeros as plain text: the real amount must not
+  // flash on the flying card and then snap back to $0.00 when the reels start.
+  if (!active) {
+    return (
+      <span className="slot" aria-hidden>
+        {text.replace(/\d/g, '0')}
       </span>
     );
   }

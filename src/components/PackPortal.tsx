@@ -1084,7 +1084,6 @@ export function PackPortal({ initialHandoff, status, onCommitOpen, onResultAccep
                 <PrizeCard
                   draw={draw}
                   index={idx}
-                  serial={idx + 1}
                   isMystery={mystery}
                   faceDown={faceDown}
                   revealed={revealed}

@@ -4199,14 +4199,6 @@ html[data-glass='mica'] {
     font-weight: 650;
     line-height: 1.1;
   }
-  .pk-serial {
-    font-size: 4.5cqw;
-    font-weight: 650;
-    font-variant-numeric: tabular-nums;
-    letter-spacing: 0.04em;
-    opacity: 0.62;
-  }
-
   /* Central recessed artwork window */
   .pk-win {
     position: relative;
